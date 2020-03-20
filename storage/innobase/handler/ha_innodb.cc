@@ -20288,6 +20288,31 @@ static MYSQL_SYSVAR_BOOL(sync_debug, srv_sync_debug,
   NULL, NULL, FALSE);
 #endif /* UNIV_DEBUG */
 
+#ifdef UNIV_NVDIMM_CACHE
+static MYSQL_SYSVAR_BOOL(use_nvdimm_buffer, srv_use_nvdimm_buf,
+  PLUGIN_VAR_NOCMDARG | PLUGIN_VAR_READONLY,
+  "Enable NVDIMM buffer (disabled by default).",
+  NULL, NULL, FALSE);
+
+static MYSQL_SYSVAR_ULONG(nvdimm_buffer_pool_size, srv_nvdimm_buf_pool_size,
+  PLUGIN_VAR_OPCMDARG | PLUGIN_VAR_READONLY,
+  "The size of the memory buffer InnoDB uses to "
+  "cache data on NVDIMM", NULL, NULL,
+  1024 * 1024 * 1024L, 1024 * 1024 * 1024L,
+  UINT_MAX32, 0);
+
+static MYSQL_SYSVAR_ULONG(nvdimm_buffer_pool_instances, srv_nvdimm_buf_pool_instances,
+  PLUGIN_VAR_OPCMDARG | PLUGIN_VAR_READONLY,
+  "Number of buffer pool instances for NVDIMM",
+  NULL, NULL, 1, 1, 8, 0);
+
+static MYSQL_SYSVAR_ULONG(nvdimm_pc_threshold_pct, srv_nvdimm_pc_threshold_pct,
+  PLUGIN_VAR_OPCMDARG | PLUGIN_VAR_READONLY,
+  "The ratio of remaining free pages to determine when "
+  "the page cleaner to wakeup for NVDIMM buffer",
+  NULL, NULL, 5, 0, 50, 0);
+#endif /* UNIV_NVDIMM_CACHE */
+
 static struct st_mysql_sys_var* innobase_system_variables[]= {
   MYSQL_SYSVAR(api_trx_level),
   MYSQL_SYSVAR(api_bk_commit_interval),
@@ -20460,6 +20485,12 @@ static struct st_mysql_sys_var* innobase_system_variables[]= {
   MYSQL_SYSVAR(master_thread_disabled_debug),
   MYSQL_SYSVAR(sync_debug),
 #endif /* UNIV_DEBUG */
+#ifdef UNIV_NVDIMM_CACHE
+  MYSQL_SYSVAR(use_nvdimm_buffer),
+  MYSQL_SYSVAR(nvdimm_buffer_pool_size),
+  MYSQL_SYSVAR(nvdimm_buffer_pool_instances),
+  MYSQL_SYSVAR(nvdimm_pc_threshold_pct),
+#endif /* UNIV_NVDIMM_CACHE */
   NULL
 };
 

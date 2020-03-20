@@ -91,6 +91,11 @@ struct fil_addr_t;
 extern	buf_pool_t*	buf_pool_ptr;	/*!< The buffer pools
 					of the database */
 
+#ifdef UNIV_NVDIMM_CACHE
+extern buf_pool_t *nvdimm_buf_pool_ptr; /*!< The NVDIMM buffer pools
+                    of the database */
+#endif /* UNIV_NVDIMM_CACHE */
+
 extern	volatile bool	buf_pool_withdrawing; /*!< true when withdrawing buffer
 					pool pages might cause page relocation */
 
@@ -355,6 +360,28 @@ void
 buf_pool_mutex_exit_all(void);
 /*==========================*/
 
+#ifdef UNIV_NVDIMM_CACHE
+/********************************************************************//**
+Creates the NVDIMM buffer pool.
+@return DB_SUCCESS if success, DB_ERROR if not enough memory or error */
+dberr_t
+nvdimm_buf_pool_init(
+/*=========*/
+	ulint	size,		/*!< in: Size of the total pool in bytes */
+	ulint	n_instances);	/*!< in: Number of instances */
+
+/********************************************************************//**
+Frees the NVDIMM buffer pool at shutdown.  This must not be invoked before
+freeing all mutexes. */
+void
+nvdimm_buf_pool_free(
+/*==========*/
+	ulint	n_instances);	/*!< in: numbere of instances to free */
+
+/** Checks whether this page should be moved to the NVDIMM buffer. */
+bool buf_block_will_be_moved_to_nvdimm(const page_id_t& page_id);
+#endif /* UNIV_NVDIMM_CACHE */
+
 /********************************************************************//**
 Creates the buffer pool.
 @return DB_SUCCESS if success, DB_ERROR if not enough memory or error */
@@ -363,6 +390,7 @@ buf_pool_init(
 /*=========*/
 	ulint	size,		/*!< in: Size of the total pool in bytes */
 	ulint	n_instances);	/*!< in: Number of instances */
+
 /********************************************************************//**
 Frees the buffer pool at shutdown.  This must not be invoked before
 freeing all mutexes. */
@@ -1688,6 +1716,12 @@ public:
 					or buf_block_t::mutex. */
 # endif /* UNIV_DEBUG */
 #endif /* !UNIV_HOTBACKUP */
+#ifdef UNIV_NVDIMM_CACHE
+    bool cached_in_nvdimm; /*!< TRUE if the page is cached
+                             in the NVDIMM buffer */
+    bool moved_to_nvdimm;  /*!< TRUE if the page needs to
+                             be moved to the NVDIMM buffer */
+#endif /* UNIV_NVDIMM_CACHE */
 };
 
 /** The buffer control block structure */

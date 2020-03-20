@@ -75,6 +75,14 @@ Created 11/5/1995 Heikki Tuuri
 
 my_bool  srv_numa_interleave = FALSE;
 
+#ifdef UNIV_NVDIMM_CACHE
+#include "buf0nvdimm.h"
+ulint nvdimm_pc_threshold;
+
+/** The NVDIMM buffer pools of the database */
+buf_pool_t *nvdimm_buf_pool_ptr;
+#endif /* UNIV_NVDIMM_CACHE */
+
 #ifdef HAVE_LIBNUMA
 #include <numa.h>
 #include <numaif.h>
@@ -1856,6 +1864,189 @@ buf_pool_init_instance(
 	return(DB_SUCCESS);
 }
 
+#ifdef UNIV_NVDIMM_CACHE
+/********************************************************************//**
+Initialize a buffer pool instance.
+@return DB_SUCCESS if all goes well. */
+ulint
+nvdimm_buf_pool_init_instance(
+/*===================*/
+	buf_pool_t*	buf_pool,	/*!< in: buffer pool instance */
+	ulint		buf_pool_size,	/*!< in: size in bytes */
+	ulint		instance_no)	/*!< in: id of the instance */
+{
+	ulint		i;
+	ulint		chunk_size;
+	buf_chunk_t*	chunk;
+
+	ut_ad(buf_pool_size % srv_buf_pool_chunk_unit == 0);
+
+	/* 1. Initialize general fields
+	------------------------------- */
+	mutex_create(LATCH_ID_BUF_POOL, &buf_pool->mutex);
+
+	mutex_create(LATCH_ID_BUF_POOL_ZIP, &buf_pool->zip_mutex);
+
+	new(&buf_pool->allocator)
+		ut_allocator<unsigned char>(mem_key_buf_buf_pool);
+
+	buf_pool_mutex_enter(buf_pool);
+
+	if (buf_pool_size > 0) {
+		buf_pool->n_chunks
+			= buf_pool_size / srv_buf_pool_chunk_unit;
+		chunk_size = srv_buf_pool_chunk_unit;
+
+		buf_pool->chunks =
+			reinterpret_cast<buf_chunk_t*>(ut_zalloc_nokey(
+				buf_pool->n_chunks * sizeof(*chunk)));
+		buf_pool->chunks_old = NULL;
+
+		UT_LIST_INIT(buf_pool->LRU, &buf_page_t::LRU);
+		UT_LIST_INIT(buf_pool->free, &buf_page_t::list);
+		UT_LIST_INIT(buf_pool->withdraw, &buf_page_t::list);
+		buf_pool->withdraw_target = 0;
+		UT_LIST_INIT(buf_pool->flush_list, &buf_page_t::list);
+		UT_LIST_INIT(buf_pool->unzip_LRU, &buf_block_t::unzip_LRU);
+
+#if defined UNIV_DEBUG || defined UNIV_BUF_DEBUG
+		UT_LIST_INIT(buf_pool->zip_clean, &buf_page_t::list);
+#endif /* UNIV_DEBUG || UNIV_BUF_DEBUG */
+
+		for (i = 0; i < UT_ARR_SIZE(buf_pool->zip_free); ++i) {
+			UT_LIST_INIT(
+				buf_pool->zip_free[i], &buf_buddy_free_t::list);
+		}
+
+		buf_pool->curr_size = 0;
+		chunk = buf_pool->chunks;
+
+		do {
+			if (!buf_chunk_init(buf_pool, chunk, chunk_size)) {
+				while (--chunk >= buf_pool->chunks) {
+					buf_block_t*	block = chunk->blocks;
+
+					for (i = chunk->size; i--; block++) {
+						mutex_free(&block->mutex);
+						rw_lock_free(&block->lock);
+
+						ut_d(rw_lock_free(
+							&block->debug_latch));
+					}
+
+					buf_pool->allocator.deallocate_large(
+						chunk->mem, &chunk->mem_pfx);
+				}
+				ut_free(buf_pool->chunks);
+				buf_pool_mutex_exit(buf_pool);
+
+				return(DB_ERROR);
+			}
+
+			buf_pool->curr_size += chunk->size;
+		} while (++chunk < buf_pool->chunks + buf_pool->n_chunks);
+
+		buf_pool->instance_no = instance_no;
+		buf_pool->read_ahead_area =
+			ut_min(BUF_READ_AHEAD_PAGES,
+			       ut_2_power_up(buf_pool->curr_size /
+					     BUF_READ_AHEAD_PORTION));
+		buf_pool->curr_pool_size = buf_pool->curr_size * UNIV_PAGE_SIZE;
+
+		buf_pool->old_size = buf_pool->curr_size;
+		buf_pool->n_chunks_new = buf_pool->n_chunks;
+
+		buf_pool->page_hash = ib_create(
+			2 * buf_pool->curr_size,
+			LATCH_ID_HASH_TABLE_RW_LOCK,
+			srv_n_page_hash_locks, MEM_HEAP_FOR_PAGE_HASH);
+
+		buf_pool->page_hash_old = NULL;
+
+		buf_pool->zip_hash = hash_create(2 * buf_pool->curr_size);
+
+		buf_pool->last_printout_time = ut_time();
+	}
+	/* 2. Initialize flushing fields
+	-------------------------------- */
+
+	mutex_create(LATCH_ID_FLUSH_LIST, &buf_pool->flush_list_mutex);
+
+	for (i = BUF_FLUSH_LRU; i < BUF_FLUSH_N_TYPES; i++) {
+		buf_pool->no_flush[i] = os_event_create(0);
+	}
+
+	buf_pool->watch = (buf_page_t*) ut_zalloc_nokey(
+		sizeof(*buf_pool->watch) * BUF_POOL_WATCH_SIZE);
+	for (i = 0; i < BUF_POOL_WATCH_SIZE; i++) {
+		buf_pool->watch[i].buf_pool_index = buf_pool->instance_no;
+	}
+
+	/* All fields are initialized by ut_zalloc_nokey(). */
+
+	buf_pool->try_LRU_scan = TRUE;
+
+	/* Initialize the hazard pointer for flush_list batches */
+	new(&buf_pool->flush_hp)
+		FlushHp(buf_pool, &buf_pool->flush_list_mutex);
+
+	/* Initialize the hazard pointer for LRU batches */
+	new(&buf_pool->lru_hp) LRUHp(buf_pool, &buf_pool->mutex);
+
+	/* Initialize the iterator for LRU scan search */
+	new(&buf_pool->lru_scan_itr) LRUItr(buf_pool, &buf_pool->mutex);
+
+	/* Initialize the iterator for single page scan search */
+	new(&buf_pool->single_scan_itr) LRUItr(buf_pool, &buf_pool->mutex);
+
+	buf_pool_mutex_exit(buf_pool);
+
+    nvdimm_pc_threshold = (buf_pool_size / srv_page_size * srv_nvdimm_pc_threshold_pct) / 100;
+    NVDIMM_DEBUG_PRINT("NVDIMM buffer pool %lu is created with %lu capacity (%lu) and wakeup threshold %lu\n",
+        buf_pool->instance_no, buf_pool->curr_pool_size, buf_pool->curr_size, nvdimm_pc_threshold);
+
+	return(DB_SUCCESS);
+}
+
+/********************************************************************//**
+Creates the NVDIMM buffer pool.
+@return DB_SUCCESS if success, DB_ERROR if not enough memory or error */
+dberr_t
+nvdimm_buf_pool_init(
+/*==========*/
+	ulint	total_size,	/*!< in: size of the total pool in bytes */
+	ulint	n_instances)	/*!< in: number of instances */
+{
+	ulint		i;
+	const ulint	size	= total_size / n_instances;
+
+	ut_ad(n_instances > 0);
+	ut_ad(n_instances <= MAX_BUFFER_POOLS);
+	ut_ad(n_instances == srv_buf_pool_instances);
+
+	NUMA_MEMPOLICY_INTERLEAVE_IN_SCOPE;
+
+	nvdimm_buf_pool_ptr = (buf_pool_t*) ut_zalloc_nokey(
+		n_instances * sizeof *nvdimm_buf_pool_ptr);
+
+	for (i = 0; i < n_instances; i++) {
+		buf_pool_t*	ptr	= &nvdimm_buf_pool_ptr[i];
+
+		if (nvdimm_buf_pool_init_instance(ptr, size, i + srv_buf_pool_instances) != DB_SUCCESS) {
+
+			/* Free all the instances created so far. */
+			nvdimm_buf_pool_free(i);
+
+			return(DB_ERROR);
+		}
+	}
+    
+    nvdimm_buf_LRU_old_ratio_update(100 * 3/ 8, FALSE);
+
+	return(DB_SUCCESS);
+}
+#endif /* UNIV_NVDIMM_CACHE */
+
 /********************************************************************//**
 free one buffer pool instance */
 static
@@ -1982,6 +2173,8 @@ buf_pool_free(
 /*==========*/
 	ulint	n_instances)	/*!< in: numbere of instances to free */
 {
+    nvdimm_buf_pool_free(srv_nvdimm_buf_pool_instances);
+
 	for (ulint i = 0; i < n_instances; i++) {
 		buf_pool_free_instance(buf_pool_from_array(i));
 	}
@@ -1992,6 +2185,24 @@ buf_pool_free(
 	ut_free(buf_pool_ptr);
 	buf_pool_ptr = NULL;
 }
+
+#ifdef UNIV_NVDIMM_CACHE
+/********************************************************************//**
+Frees the buffer pool at shutdown.  This must not be invoked before
+freeing all mutexes. */
+void
+nvdimm_buf_pool_free(
+/*==========*/
+	ulint	n_instances)	/*!< in: numbere of instances to free */
+{
+    for (ulint i = 0; i < n_instances; i++) {
+		buf_pool_free_instance(&nvdimm_buf_pool_ptr[i]);
+	}
+
+	ut_free(nvdimm_buf_pool_ptr);
+	nvdimm_buf_pool_ptr = NULL;
+}
+#endif /* UNIV_NVDIMM_CACHE */
 
 /** Reallocate a control block.
 @param[in]	buf_pool	buffer pool instance
@@ -4999,6 +5210,11 @@ buf_page_init_low(
 	bpage->oldest_modification = 0;
 	HASH_INVALIDATE(bpage, hash);
 
+#ifdef UNIV_NVDIMM_CACHE
+    bpage->cached_in_nvdimm = false;
+    bpage->moved_to_nvdimm = false;
+#endif /* UNIV_NVDIMM_CACHE */
+
 	ut_d(bpage->file_page_was_freed = FALSE);
 }
 
@@ -5085,6 +5301,13 @@ buf_page_init(
 	HASH_INSERT(buf_page_t, hash, buf_pool->page_hash,
 		    page_id.fold(), &block->page);
 
+#ifdef UNIV_NVDIMM_CACHE
+    if (page_id.space() == 4294967279 || page_id.space() == 4294967278 /* Undo tablespaces */
+        || page_id.space() == 15 /* New-Orders table */) {
+        srv_stats.nvdimm_pages_stored_no_undo.inc();
+    }
+#endif /* UNIV_NVDIMM_CACHE */
+
 	if (page_size.is_compressed()) {
 		page_zip_set_size(&block->page.zip, page_size.physical());
 	}
@@ -5118,7 +5341,17 @@ buf_page_init_for_read(
 	mtr_t		mtr;
 	ibool		lru	= FALSE;
 	void*		data;
-	buf_pool_t*	buf_pool = buf_pool_get(page_id);
+	buf_pool_t*	buf_pool;
+    
+#ifdef UNIV_NVDIMM_CACHE
+    if (mode == BUF_MOVE_TO_NVDIMM) {
+        buf_pool = &nvdimm_buf_pool_ptr[0];
+    } else {
+        buf_pool = buf_pool_get(page_id);
+    }
+#else
+    buf_pool = buf_pool_get(page_id);
+#endif /* UNIV_NVDIMM_CACHE */
 
 	ut_ad(buf_pool);
 
@@ -5867,6 +6100,28 @@ corrupt:
 
 		mutex_exit(buf_page_get_mutex(bpage));
 
+#ifdef UNIV_NVDIMM_CACHE
+        if (bpage->cached_in_nvdimm) {
+            if (bpage->id.space() == 17) {
+                srv_stats.nvdimm_pages_read_ol.inc();
+            } else if (bpage->id.space() == 19) {
+                srv_stats.nvdimm_pages_read_st.inc();
+            } else {
+                srv_stats.nvdimm_pages_read_no_undo.inc();
+            }
+        }
+
+        if (buf_pool->instance_no == 8) {
+            bpage->cached_in_nvdimm = true;
+
+            ulint remains = UT_LIST_GET_LEN(buf_pool->free);
+
+            if (remains < nvdimm_pc_threshold) {
+                os_event_set(buf_flush_nvdimm_event);
+            }
+        }
+#endif /* UNIV_NVDIMM_CACHE */
+
 		break;
 
 	case BUF_IO_WRITE:
@@ -5888,13 +6143,20 @@ corrupt:
 		* BUF_FLUSH_LRU: always evict
 		* BUF_FLUSH_SINGLE_PAGE: eviction preference is passed
 		by the caller explicitly. */
-		if (buf_page_get_flush_type(bpage) == BUF_FLUSH_LRU) {
+		if (buf_page_get_flush_type(bpage) == BUF_FLUSH_LRU
+#ifdef UNIV_NVDIMM_CACHE
+            || bpage->moved_to_nvdimm
+#endif /* UNIV_NVDIMM_CACHE */
+            ) {
 			evict = true;
 		}
 
 		if (evict) {
 			mutex_exit(buf_page_get_mutex(bpage));
 			buf_LRU_free_page(bpage, true);
+#ifdef NVDIMM_CACHE
+            bpage->moved_to_nvdimm = false;
+#endif /* NVDIMM_CACHE */
 		} else {
 			mutex_exit(buf_page_get_mutex(bpage));
 		}
@@ -6016,6 +6278,12 @@ buf_pool_invalidate(void)
 	for (i = 0; i < srv_buf_pool_instances; i++) {
 		buf_pool_invalidate_instance(buf_pool_from_array(i));
 	}
+
+#ifdef UNIV_NVDIMM_CACHE
+	for (i = 0; i < srv_nvdimm_buf_pool_instances; i++) {
+		buf_pool_invalidate_instance(&nvdimm_buf_pool_ptr[i]);
+	}
+#endif /* UNIV_NVDIMM_CACHE */
 }
 
 #if defined UNIV_DEBUG || defined UNIV_BUF_DEBUG
@@ -6816,6 +7084,54 @@ buf_print_io_instance(
 		pool_info->unzip_sum, pool_info->unzip_cur);
 }
 
+#ifdef UNIV_NVDIMM_CACHE
+/*********************************************************************//**
+Prints info of the NVDIMM buffer. */
+void
+buf_print_nvdimm_instance(
+/*==================*/
+	buf_pool_info_t*pool_info,	/*!< in: buffer pool info */
+	FILE*		file)		/*!< in/out: buffer where to print */
+{
+	ut_ad(pool_info);
+
+    fprintf(file,
+        "---The number of pages stored in NVDIMM buffer\n"
+        "New-Orders/UNDO " ULINTPF
+        "\n"
+        "Order-Line      " ULINTPF
+        "\n"
+        "Stock           " ULINTPF "\n",
+        (ulint)srv_stats.nvdimm_pages_stored_no_undo,
+        (ulint)srv_stats.nvdimm_pages_stored_ol,
+        (ulint)srv_stats.nvdimm_pages_stored_st);
+
+    fprintf(file,
+        "---The number of pages read\n"
+        "New-Orders/UNDO " ULINTPF
+        "\n"
+        "Order-Line      " ULINTPF
+        "\n"
+        "Stock           " ULINTPF "\n",
+        (ulint)srv_stats.nvdimm_pages_read_no_undo,
+        (ulint)srv_stats.nvdimm_pages_read_ol,
+        (ulint)srv_stats.nvdimm_pages_read_st);
+
+    fprintf(file,
+        "---The number of pages written\n"
+        "New-Orders/UNDO " ULINTPF
+        "\n"
+        "Order-Line      " ULINTPF
+        "\n"
+        "Stock           " ULINTPF "\n",
+        (ulint)srv_stats.nvdimm_pages_written_no_undo,
+        (ulint)srv_stats.nvdimm_pages_written_ol,
+        (ulint)srv_stats.nvdimm_pages_written_st);
+
+    fprintf(file, "Total number of page gets performed = " ULINTPF "\n", pool_info->n_page_gets);
+}
+#endif /* UNIV_NVDIMM_CACHE */
+
 /*********************************************************************//**
 Prints info of the buffer i/o. */
 void
@@ -6831,9 +7147,13 @@ buf_print_io(
 	one extra buf_pool_info_t, the last one stores
 	aggregated/total values from all pools */
 	if (srv_buf_pool_instances > 1) {
-		pool_info = (buf_pool_info_t*) ut_zalloc_nokey((
+#ifdef UNIV_NVDIMM_CACHE
+        pool_info = (buf_pool_info_t*) ut_zalloc_nokey((
+			srv_buf_pool_instances + 2) * sizeof *pool_info);
+#else
+        pool_info = (buf_pool_info_t*) ut_zalloc_nokey((
 			srv_buf_pool_instances + 1) * sizeof *pool_info);
-
+#endif /* UNIV_NVDIMM_CACHE */
 		pool_info_total = &pool_info[srv_buf_pool_instances];
 	} else {
 		ut_a(srv_buf_pool_instances == 1);
@@ -6843,7 +7163,11 @@ buf_print_io(
 				ut_zalloc_nokey(sizeof *pool_info));
 	}
 
-	for (i = 0; i < srv_buf_pool_instances; i++) {
+#ifdef UNIV_NVDIMM_CACHE
+	for (i = 0; i < srv_buf_pool_instances + 1; i++) {
+#else
+    for (i = 0; i < srv_buf_pool_instances; i++) {
+#endif /* UNIV_NVDIMM_CACHE */ 
 		buf_pool_t*	buf_pool;
 
 		buf_pool = buf_pool_from_array(i);
@@ -6876,8 +7200,34 @@ buf_print_io(
 		}
 	}
 
+#ifdef UNIV_NVDIMM_CACHE
+    if (srv_nvdimm_buf_pool_instances > 1) {
+        fputs("----------------------\n"
+        "NVDIMM BUFFER POOL INFO\n"
+        "----------------------\n", file);
+
+        for (i = srv_buf_pool_instances; i < srv_buf_pool_instances + srv_nvdimm_buf_pool_instances; i++) {
+            fprintf(file, "---BUFFER POOL " ULINTPF "\n", i);
+            buf_print_io_instance(&pool_info[i], file);
+            buf_print_nvdimm_instance(&pool_info[i], file);
+        }
+    }
+#endif /* UNIV_NVDIMM_CACHE */
+
 	ut_free(pool_info);
 }
+
+#ifdef UNIV_NVDIMM_CACHE
+/** Checks whether this page should be moved to the NVDIMM buffer. */
+bool buf_block_will_be_moved_to_nvdimm(const page_id_t& page_id) {
+    if (page_id.space() == 4294967279 || page_id.space() == 4294967278 /* Undo tablespaces */
+        || page_id.space() == 15 /* New-Orders table */) {
+        return (true);
+    } else {
+        return (false);
+    }
+}
+#endif /* UNIV_NVDIMM_CACHE */
 
 /**********************************************************************//**
 Refreshes the statistics used to print per-second averages. */
@@ -7048,3 +7398,4 @@ operator<<(
 	return(out);
 }
 #endif /* !UNIV_INNOCHECKSUM */
+

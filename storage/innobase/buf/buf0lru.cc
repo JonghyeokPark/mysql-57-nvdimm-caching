@@ -1400,7 +1400,15 @@ loop:
 	page_cleaner do an LRU batch for us. */
 
 	if (!srv_read_only_mode) {
-		os_event_set(buf_flush_event);
+#ifdef UNIV_NVDIMM_CACHE
+        if (buf_pool->instance_no == 8) {
+            os_event_set(buf_flush_nvdimm_event);
+        } else {
+            os_event_set(buf_flush_event);
+        }
+#else
+        os_event_set(buf_flush_event);
+#endif /* UNIV_NVDIMM_CACHE */
 	}
 
 	if (n_iterations > 1) {
@@ -1420,10 +1428,17 @@ loop:
 	involved (particularly in case of compressed pages). We
 	can do that in a separate patch sometime in future. */
 
-	if (!buf_flush_single_page_from_LRU(buf_pool)) {
-		MONITOR_INC(MONITOR_LRU_SINGLE_FLUSH_FAILURE_COUNT);
-		++flush_failures;
-	}
+#ifdef UNIV_NVDIMM_CACHE
+    if (buf_pool->instance_no != 8 && !buf_flush_single_page_from_LRU(buf_pool)) {
+        MONITOR_INC(MONITOR_LRU_SINGLE_FLUSH_FAILURE_COUNT);
+        ++flush_failures;
+    }
+#else
+    if (!buf_flush_single_page_from_LRU(buf_pool)) {
+        MONITOR_INC(MONITOR_LRU_SINGLE_FLUSH_FAILURE_COUNT);
+        ++flush_failures;
+    }
+#endif /* UNIV_NVDIMM_CACHE */
 
 	srv_stats.buf_pool_wait_free.add(n_iterations, 1);
 
@@ -2511,6 +2526,32 @@ buf_LRU_old_ratio_update_instance(
 	ratio = old_pct * BUF_LRU_OLD_RATIO_DIV / 100 */
 	return((uint) (ratio * 100 / (double) BUF_LRU_OLD_RATIO_DIV + 0.5));
 }
+
+#ifdef UNIV_NVDIMM_CACHE
+/**********************************************************************//**
+Updates buf_pool->LRU_old_ratio.
+@return updated old_pct */
+uint
+nvdimm_buf_LRU_old_ratio_update(
+/*=====================*/
+	uint	old_pct,/*!< in: Reserve this percentage of
+			the buffer pool for "old" blocks. */
+	ibool	adjust)	/*!< in: TRUE=adjust the LRU list;
+			FALSE=just assign buf_pool->LRU_old_ratio
+			during the initialization of InnoDB */
+{
+	uint	new_ratio = 0;
+
+	for (ulint i = 0; i < srv_buf_pool_instances; i++) {
+		buf_pool_t* buf_pool = &nvdimm_buf_pool_ptr[i];
+
+		new_ratio = buf_LRU_old_ratio_update_instance(
+			buf_pool, old_pct, adjust);
+	}
+
+	return(new_ratio);
+}
+#endif /* UNIV_NVDIMM_CACHE */
 
 /**********************************************************************//**
 Updates buf_pool->LRU_old_ratio.

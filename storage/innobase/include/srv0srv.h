@@ -96,6 +96,38 @@ struct srv_stats_t {
 	doublewrite buffer */
 	ulint_ctr_1_t		dblwr_pages_written;
 
+#ifdef UNIV_NVDIMM_CACHE
+    /** Store the number of Stock pages that currently been
+      stored in the NVDIMM buffer */
+    ulint_ctr_1_t       nvdimm_pages_stored_st;
+
+    /** Store the number of Order-Line pages that currently been
+      stored in the NVDIMM buffer */
+    ulint_ctr_1_t       nvdimm_pages_stored_ol;
+
+    /** Store the number of New-Orders/UNDO pages that currently
+      been stored in the NVDIMM buffer */
+    ulint_ctr_1_t       nvdimm_pages_stored_no_undo;
+
+    /** Store the number of Stock pages that been read */
+    ulint_ctr_1_t       nvdimm_pages_read_st;
+
+    /** Store the number of Order-Line pages that been read */
+    ulint_ctr_1_t       nvdimm_pages_read_ol;
+
+    /** Store the number of New-Orders/UNDO pages that been read */
+    ulint_ctr_1_t       nvdimm_pages_read_no_undo;
+
+    /** Store the number of Stock pages that been written */
+    ulint_ctr_1_t       nvdimm_pages_written_st;
+
+    /** Store the number of Order-Line pages that been written */
+    ulint_ctr_1_t       nvdimm_pages_written_ol;
+
+    /** Store the number of New-Orders/UNDO pages that been written */
+    ulint_ctr_1_t       nvdimm_pages_written_no_undo;
+#endif /* UNIV_NVDIMM_CACHE */
+
 	/** Store the number of write requests issued */
 	ulint_ctr_1_t		buf_pool_write_requests;
 
@@ -297,6 +329,17 @@ even if they are marked as "corrupted". Mostly it is for DBA to process
 corrupted index and table */
 extern my_bool	srv_load_corrupted;
 
+#ifdef UNIV_NVDIMM_CACHE
+/** If true then enable NVDIMM buffer */
+extern my_bool srv_use_nvdimm_buf;
+/** Requested size in bytes */
+extern ulint srv_nvdimm_buf_pool_size;
+/** Requested number of NVDIMM buffer pool instances */
+extern ulong srv_nvdimm_buf_pool_instances;
+/** Wakeup the NVDIMM page cleaner when this % of free pages remaining */
+extern ulong srv_nvdimm_pc_threshold_pct;
+#endif /* UNIV_NVDIMM_CACHE */
+
 /** Requested size in bytes */
 extern ulint		srv_buf_pool_size;
 /** Minimum pool size in bytes */
@@ -474,6 +517,9 @@ extern mysql_pfs_key_t	io_log_thread_key;
 extern mysql_pfs_key_t	io_read_thread_key;
 extern mysql_pfs_key_t	io_write_thread_key;
 extern mysql_pfs_key_t	page_cleaner_thread_key;
+#ifdef UNIV_NVDIMM_CACHE
+extern mysql_pfs_key_t  page_flush_nvdimm_thread_key;
+#endif /* UNIV_NVDIMM_CACHE */
 extern mysql_pfs_key_t	recv_writer_thread_key;
 extern mysql_pfs_key_t	srv_error_monitor_thread_key;
 extern mysql_pfs_key_t	srv_lock_timeout_thread_key;
@@ -899,7 +945,18 @@ struct export_var_t{
 	ulint innodb_buffer_pool_read_ahead_evicted;/*!< srv_read_ahead evicted*/
 	ulint innodb_dblwr_pages_written;	/*!< srv_dblwr_pages_written */
 	ulint innodb_dblwr_writes;		/*!< srv_dblwr_writes */
-	ulint innodb_log_waits;			/*!< srv_log_waits */
+#ifdef UNIV_NVDIMM_CACHE
+    ulint innodb_nvdimm_pages_stored_st;       /*!< srv_nvdimm_pages_stored_st */
+    ulint innodb_nvdimm_pages_stored_ol;       /*!< srv_nvdimm_pages_stored_ol */
+    ulint innodb_nvdimm_pages_stored_no_undo;  /*!< srv_nvdimm_pages_stored_no_undo */
+    ulint innodb_nvdimm_pages_read_st;         /*!< srv_nvdimm_pages_read_st */
+    ulint innodb_nvdimm_pages_read_ol;         /*!< srv_nvdimm_pages_read_ol */
+    ulint innodb_nvdimm_pages_read_no_undo;    /*!< srv_nvdimm_pages_read_no_undo */
+    ulint innodb_nvdimm_pages_written_st;      /*!< srv_nvdimm_pages_written_st */
+    ulint innodb_nvdimm_pages_written_ol;      /*!< srv_nvdimm_pages_written_ol */
+    ulint innodb_nvdimm_pages_written_no_undo; /*!< srv_nvdimm_pages_written_no_undo */
+#endif /* UNIV_NVDIMM_CACHE */
+    ulint innodb_log_waits;			/*!< srv_log_waits */
 	ulint innodb_log_write_requests;	/*!< srv_log_write_requests */
 	ulint innodb_log_writes;		/*!< srv_log_writes */
 	lsn_t innodb_os_log_written;		/*!< srv_os_log_written */

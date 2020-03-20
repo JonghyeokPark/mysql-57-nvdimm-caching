@@ -104,6 +104,10 @@ Created 2/16/1996 Heikki Tuuri
 # include "ut0crc32.h"
 # include "ut0new.h"
 
+#ifdef UNIV_NVDIMM_CACHE
+#include "buf0nvdimm.h"
+#endif /* UNIV_NVDIMM_CACHE */
+
 #ifdef HAVE_LZO1X
 #include <lzo/lzo1x.h>
 extern bool srv_lzo_disabled;
@@ -1287,6 +1291,9 @@ srv_shutdown_all_bg_threads()
 			}
 
 			os_event_set(buf_flush_event);
+#ifdef UNIV_NVDIMM_CACHE
+            os_event_set(buf_flush_nvdimm_event);
+#endif /* UNIV_NVDIMM_CACHE */
 
 			if (!buf_page_cleaner_is_active
 			    && os_aio_all_slots_free()) {
@@ -1832,6 +1839,31 @@ innobase_start_or_create_for_mysql(void)
 
 	ib::info() << "Completed initialization of buffer pool";
 
+#ifdef UNIV_NVDIMM_CACHE
+    if (srv_use_nvdimm_buf) {
+        if (srv_nvdimm_buf_pool_size >= 1024 * 1024 * 1024) {
+            size = ((double)srv_nvdimm_buf_pool_size) / (1024 * 1024 * 1024);
+            unit = 'G';
+        } else {
+            size = ((double)srv_nvdimm_buf_pool_size) / (1024 * 1024);
+            unit = 'M';
+        }
+
+        NVDIMM_DEBUG_PRINT("Initializing NVDIMM buffer pool, total size = %lf%c, instances = %lu\n",
+                size, unit, srv_nvdimm_buf_pool_instances);
+
+        err = nvdimm_buf_pool_init(srv_nvdimm_buf_pool_size, srv_nvdimm_buf_pool_instances);
+
+        if (err != DB_SUCCESS) {
+            NVDIMM_DEBUG_PRINT("Cannot allocate memory for the NVDIMM buffer pool\n");
+
+            return (srv_init_abort(DB_ERROR));
+        }
+
+        NVDIMM_DEBUG_PRINT("Completed initialization of buffer pool\n");
+    }
+#endif /* UNIV_NVDIMM_CACHE */
+
 #ifdef UNIV_DEBUG
 	/* We have observed deadlocks with a 5MB buffer pool but
 	the actual lower limit could very well be a little higher. */
@@ -1868,6 +1900,10 @@ innobase_start_or_create_for_mysql(void)
 
 	os_thread_create(buf_flush_page_cleaner_coordinator,
 			 NULL, NULL);
+
+#ifdef UNIV_NVDIMM_CACHE
+    os_thread_create(buf_flush_nvdimm_page_cleaner_thread, NULL, NULL);
+#endif /* UNIV_NVDIMM_CACHE */
 
 	for (i = 1; i < srv_n_page_cleaners; ++i) {
 		os_thread_create(buf_flush_page_cleaner_worker,

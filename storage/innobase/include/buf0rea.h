@@ -154,6 +154,10 @@ invoked */
 #define BUF_READ_IBUF_PAGES_ONLY	131
 /** read any page */
 #define BUF_READ_ANY_PAGE		132
+#ifdef UNIV_NVDIMM_CACHE
+/** move the target page to NVDIMM buffer */
+#define BUF_MOVE_TO_NVDIMM 133
+#endif /* UNIV_NVDIMM_CACHE */
 /* @} */
 
 #endif

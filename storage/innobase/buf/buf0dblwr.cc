@@ -726,7 +726,11 @@ buf_dblwr_update(
 {
 	if (!srv_use_doublewrite_buf
 	    || buf_dblwr == NULL
-	    || fsp_is_system_temporary(bpage->id.space())) {
+	    || fsp_is_system_temporary(bpage->id.space())
+#ifdef UNIV_NVDIMM_CACHE
+        || bpage->cached_in_nvdimm
+#endif /* UNIV_NVDIMM_CACHE */       
+       ) {
 		return;
 	}
 
