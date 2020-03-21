@@ -50,6 +50,5 @@ innodb_nvdimm_buffer_pool_instances=1
 2. Run the MySQL server:
 
 ```bash
-$ cd bld
 $ ./bin/mysqld --defaults-file=my-nvdimm.cnf
 ``` 
