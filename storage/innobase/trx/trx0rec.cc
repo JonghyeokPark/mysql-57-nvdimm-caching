@@ -161,7 +161,10 @@ static
 ulint
 trx_undo_page_set_next_prev_and_add(
 /*================================*/
-	page_t*		undo_page,	/*!< in/out: undo log page */
+#ifdef UNIV_NVDIMM_CACHE
+    bool is_nvm_page,
+#endif /* UNIV_NVDIMM_CACHE */
+    page_t*		undo_page,	/*!< in/out: undo log page */
 	byte*		ptr,		/*!< in: ptr up to where data has been
 					written on this undo page. */
 	mtr_t*		mtr)		/*!< in: mtr */
@@ -198,8 +201,20 @@ trx_undo_page_set_next_prev_and_add(
 	mach_write_to_2(ptr_to_first_free, end_of_rec);
 
 	/* Write this log entry to the UNDO log */
+#ifdef UNIV_NVDIMM_CACHE
+    if (is_nvm_page){
+        // skip generate UNDO logs and REDO logs of UNDO page
+        // FIXME(jhpark): (INSERT) allow to write UNDO + REDO of UNDO log in mtr log heap
+        trx_undof_page_add_undo_rec_log(undo_page, first_free,
+                        end_of_rec, mtr);
+    } else {
+        trx_undof_page_add_undo_rec_log(undo_page, first_free,
+                        end_of_rec, mtr);
+    }
+#else
 	trx_undof_page_add_undo_rec_log(undo_page, first_free,
 					end_of_rec, mtr);
+#endif /* UNIV_NVDIMM_CACHE*/
 
 	return(first_free);
 }
@@ -464,6 +479,9 @@ static
 ulint
 trx_undo_page_report_insert(
 /*========================*/
+#ifdef UNIV_NVDIMM_CACHE
+    bool is_nvm_page,
+#endif /* UNIV_NVDIMM_CACHE */
 	page_t*		undo_page,	/*!< in: undo log page */
 	trx_t*		trx,		/*!< in: transaction */
 	dict_index_t*	index,		/*!< in: clustered index */
@@ -533,7 +551,12 @@ trx_undo_page_report_insert(
 		}
 	}
 
+#ifdef UNIV_NVDIMM_CACHE
+    return (trx_undo_page_set_next_prev_and_add(is_nvm_page, undo_page, ptr, mtr));
+#else
 	return(trx_undo_page_set_next_prev_and_add(undo_page, ptr, mtr));
+#endif /* UNIV_NVDIMM_CACHE */
+
 }
 
 /**********************************************************************//**
@@ -1389,9 +1412,22 @@ trx_undo_page_report_modify(
 			ptr - undo_page);
 
 	/* Write to the REDO log about this change in the UNDO log */
-
+#ifdef UNIV_NVDIMM_CACHE
+    /*Skip write REDO log for UNDO page of hot pages*/
+    if (true) {
+        /*skip*/
+        // FIXME(jhpark): (UPDATE) allow to write UNDO + REDO of UNDO log in mtr log heap
+        trx_undof_page_add_undo_rec_log(undo_page, first_free,
+                        ptr - undo_page, mtr);
+    } else {
+        trx_undof_page_add_undo_rec_log(undo_page, first_free,
+                        ptr - undo_page, mtr);
+    }
+#else
 	trx_undof_page_add_undo_rec_log(undo_page, first_free,
 					ptr - undo_page, mtr);
+#endif /* UNIV_NVDIMM_CACHE*/
+
 	return(first_free);
 }
 
@@ -1835,7 +1871,10 @@ transaction.
 dberr_t
 trx_undo_report_row_operation(
 /*==========================*/
-	ulint		flags,		/*!< in: if BTR_NO_UNDO_LOG_FLAG bit is
+#ifdef UNIV_NVDIMM_CACHE
+    bool is_nvm_page,
+#endif /* UNIV_NVDIMM_CACHE */
+    ulint		flags,		/*!< in: if BTR_NO_UNDO_LOG_FLAG bit is
 					set, does nothing */
 	ulint		op_type,	/*!< in: TRX_UNDO_INSERT_OP or
 					TRX_UNDO_MODIFY_OP */
@@ -1980,8 +2019,14 @@ trx_undo_report_row_operation(
 
 		switch (op_type) {
 		case TRX_UNDO_INSERT_OP:
-			offset = trx_undo_page_report_insert(
+#ifdef UNIV_NVDIMM_CACHE
+        	offset = trx_undo_page_report_insert(
+				is_nvm_page, undo_page, trx, index, clust_entry, &mtr);
+#else
+        	offset = trx_undo_page_report_insert(
 				undo_page, trx, index, clust_entry, &mtr);
+#endif /* UNIV_NVDIMM_CACHE */
+
 			break;
 		default:
 			ut_ad(op_type == TRX_UNDO_MODIFY_OP);
@@ -2028,8 +2073,19 @@ trx_undo_report_row_operation(
 		} else {
 			/* Success */
 			undo->withdraw_clock = buf_withdraw_clock;
-			mtr_commit(&mtr);
-
+			
+            // FIXME(jhpark): for NVDIMM resident pages, we don't need to flush mtr log to WAL log buffer
+            //                                  just release the mtr structure.
+#ifdef UNIV_NVDIMM_CACHE
+            if (is_nvm_page) {
+                mtr_commit_nvm(&mtr);
+            } else {
+                mtr_commit(&mtr);
+            }
+#else
+            mtr_commit(&mtr);
+#endif /* UNIV_NVDIMM_CACHE */
+            
 			undo->empty = FALSE;
 			undo->top_page_no = page_no;
 			undo->top_offset  = offset;

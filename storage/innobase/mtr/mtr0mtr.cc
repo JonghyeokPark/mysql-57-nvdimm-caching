@@ -674,6 +674,20 @@ mtr_t::is_named_space(ulint space) const
 }
 #endif /* UNIV_DEBUG */
 
+#ifdef UNIV_NVDIMM_CACHE
+/** Commit a mini-transaction for NVDIMM resident page. */
+void mtr_t::commit_nvm() {
+    ut_ad(is_active());
+    ut_ad(!is_inside_ibuf());
+    ut_ad(m_impl.m_magic_n == MTR_MAGIC_N);
+    m_impl.m_state = MTR_STATE_COMMITTING;
+    // jhpark: release the mtr structure 
+    Command cmd(this);
+    cmd.release_all();
+    cmd.release_resources();
+}
+#endif /* UNIV_NVDIMM_CACHE */
+
 /** Acquire a tablespace X-latch.
 NOTE: use mtr_x_lock_space().
 @param[in]	space_id	tablespace ID

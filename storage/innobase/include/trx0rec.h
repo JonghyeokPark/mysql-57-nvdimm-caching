@@ -198,6 +198,9 @@ transaction.
 dberr_t
 trx_undo_report_row_operation(
 /*==========================*/
+#ifdef UNIV_NVDIMM_CACHE
+    bool is_nvm_page,
+#endif /* UNIV_NVDIMM_CACHE */
 	ulint		flags,		/*!< in: if BTR_NO_UNDO_LOG_FLAG bit is
 					set, does nothing */
 	ulint		op_type,	/*!< in: TRX_UNDO_INSERT_OP or

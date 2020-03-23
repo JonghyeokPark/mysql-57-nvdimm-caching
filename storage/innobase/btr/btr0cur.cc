@@ -2978,11 +2978,25 @@ btr_cur_ins_lock_and_undo(
 		return(err);
 	}
 
+#ifdef UNIV_NVDIMM_CACHE
+    buf_block_t* nvm_block = btr_cur_get_block(cursor);
+    buf_page_t* nvm_bpage = &(nvm_block->page);
+
+    bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
+
+	err = trx_undo_report_row_operation(is_nvm_page, flags, TRX_UNDO_INSERT_OP,
+					    thr, index, entry,
+					    NULL, 0, NULL, NULL,
+					    &roll_ptr);
+#else
 	err = trx_undo_report_row_operation(flags, TRX_UNDO_INSERT_OP,
 					    thr, index, entry,
 					    NULL, 0, NULL, NULL,
 					    &roll_ptr);
-	if (err != DB_SUCCESS) {
+#endif /* UNIV_NVDIMM_CACHE */
+    
+    
+    if (err != DB_SUCCESS) {
 
 		return(err);
 	}
@@ -3532,11 +3546,23 @@ btr_cur_upd_lock_and_undo(
 	}
 
 	/* Append the info about the update in the undo log */
+#ifdef UNIV_NVDIMM_CACHE
+    buf_block_t* nvm_block = btr_cur_get_block(cursor);
+    buf_page_t* nvm_bpage = &(nvm_block->page);
 
+    bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
+
+
+	return(trx_undo_report_row_operation(
+		       is_nvm_page, flags, TRX_UNDO_MODIFY_OP, thr,
+		       index, NULL, update,
+		       cmpl_info, rec, offsets, roll_ptr));
+#else
 	return(trx_undo_report_row_operation(
 		       flags, TRX_UNDO_MODIFY_OP, thr,
 		       index, NULL, update,
 		       cmpl_info, rec, offsets, roll_ptr));
+#endif /* UNIV_NVDIMM_CACHE */
 }
 
 /***********************************************************//**
@@ -3793,6 +3819,10 @@ btr_cur_update_in_place(
 	roll_ptr_t	roll_ptr	= 0;
 	ulint		was_delete_marked;
 	ibool		is_hashed;
+#ifdef UNIV_NVDIMM_CACHE
+    buf_block_t* nvm_block;
+    buf_page_t* nvm_bpage;
+#endif /* UNIV_NVDIMM_CACHE */
 
 	rec = btr_cur_get_rec(cursor);
 	index = cursor->index;
@@ -3881,8 +3911,20 @@ btr_cur_update_in_place(
 		rw_lock_x_unlock(btr_get_search_latch(index));
 	}
 
+#ifdef UNIV_NVDIMM_CACHE
+    nvm_block = btr_cur_get_block(cursor);
+    nvm_bpage = &(nvm_block->page);
+
+    if (nvm_bpage->cached_in_nvdimm) {
+        // skip generating REDO logs for NVM-resident pages
+    } else {
+        btr_cur_update_in_place_log(flags, rec, index, update,
+                        trx_id, roll_ptr, mtr);
+    }
+#else
 	btr_cur_update_in_place_log(flags, rec, index, update,
 				    trx_id, roll_ptr, mtr);
+#endif /* UNIV_NVDIMM_CACHE */
 
 	if (was_delete_marked
 	    && !rec_get_deleted_flag(
@@ -4798,6 +4840,11 @@ btr_cur_del_mark_set_clust_rec(
 	page_zip_des_t*	page_zip;
 	trx_t*		trx;
 
+#ifdef UNIV_NVDIMM_CACHE
+    buf_page_t* nvm_bpage;
+    bool is_nvm_page;
+#endif /* UNIV_NVDIMM_CACHE */
+
 	ut_ad(dict_index_is_clust(index));
 	ut_ad(rec_offs_validate(rec, index, offsets));
 	ut_ad(!!page_rec_is_comp(rec) == dict_table_is_comp(index->table));
@@ -4819,9 +4866,19 @@ btr_cur_del_mark_set_clust_rec(
 		return(err);
 	}
 
+#ifdef UNIV_NVDIMM_CACHE
+    nvm_bpage = &(block->page);
+    is_nvm_page = nvm_bpage->cached_in_nvdimm;
+
+	err = trx_undo_report_row_operation(is_nvm_page, flags, TRX_UNDO_MODIFY_OP, thr,
+					    index, entry, NULL, 0, rec, offsets,
+					    &roll_ptr);
+#else
 	err = trx_undo_report_row_operation(flags, TRX_UNDO_MODIFY_OP, thr,
 					    index, entry, NULL, 0, rec, offsets,
 					    &roll_ptr);
+#endif /* UNIV_NVDIMM_CACHE */
+
 	if (err != DB_SUCCESS) {
 
 		return(err);
@@ -4859,8 +4916,17 @@ btr_cur_del_mark_set_clust_rec(
 
 	row_upd_rec_sys_fields(rec, page_zip, index, offsets, trx, roll_ptr);
 
+#ifdef UNIV_NVDIMM_CACHE
+    if (is_nvm_page) {
+        // skip generating REDO logs for nvm-page
+    } else {
+        btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
+					    roll_ptr, mtr);
+    }
+#else
 	btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
 					   roll_ptr, mtr);
+#endif /* UNIV_NVDIMM_CACHE */
 
 	return(err);
 }
