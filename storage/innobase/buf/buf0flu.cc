@@ -1125,11 +1125,6 @@ buf_flush_write_block_low(
                     << " newest: " << bpage->newest_modification
                     << " fix-count: " << bpage->buf_total_fix_count;
             }*/
-
-            fil_io(request,
-                   sync, bpage->id, bpage->size, 0, bpage->size.physical(),
-                   frame, bpage);
-
         } else if (flush_type == BUF_FLUSH_SINGLE_PAGE) {
             buf_dblwr_write_single_page(bpage, sync);
         } else {
