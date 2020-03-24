@@ -5302,8 +5302,7 @@ buf_page_init(
 		    page_id.fold(), &block->page);
 
 #ifdef UNIV_NVDIMM_CACHE
-    if (page_id.space() == 4294967279 || page_id.space() == 4294967278 /* Undo tablespaces */
-        || page_id.space() == 15 /* New-Orders table */) {
+    if (page_id.space() == 28 /* New-Orders table */) {
         srv_stats.nvdimm_pages_stored_no_undo.inc();
     }
 #endif /* UNIV_NVDIMM_CACHE */
@@ -6102,11 +6101,11 @@ corrupt:
 
 #ifdef UNIV_NVDIMM_CACHE
         if (bpage->cached_in_nvdimm) {
-            if (bpage->id.space() == 17) {
+            if (bpage->id.space() == 30) {
                 srv_stats.nvdimm_pages_read_ol.inc();
-            } else if (bpage->id.space() == 19) {
+            /*} else if (bpage->id.space() == 32) {
                 srv_stats.nvdimm_pages_read_st.inc();
-            } else {
+            */} else {
                 srv_stats.nvdimm_pages_read_no_undo.inc();
             }
         }
@@ -7201,7 +7200,7 @@ buf_print_io(
 	}
 
 #ifdef UNIV_NVDIMM_CACHE
-    if (srv_nvdimm_buf_pool_instances > 1) {
+    if (srv_nvdimm_buf_pool_instances > 0) {
         fputs("----------------------\n"
         "NVDIMM BUFFER POOL INFO\n"
         "----------------------\n", file);
@@ -7220,8 +7219,7 @@ buf_print_io(
 #ifdef UNIV_NVDIMM_CACHE
 /** Checks whether this page should be moved to the NVDIMM buffer. */
 bool buf_block_will_be_moved_to_nvdimm(const page_id_t& page_id) {
-    if (page_id.space() == 4294967279 || page_id.space() == 4294967278 /* Undo tablespaces */
-        || page_id.space() == 15 /* New-Orders table */) {
+    if (page_id.space() == 28 /* New-Orders table */) {
         return (true);
     } else {
         return (false);

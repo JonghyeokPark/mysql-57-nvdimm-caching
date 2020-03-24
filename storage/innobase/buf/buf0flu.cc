@@ -1281,7 +1281,7 @@ buf_flush_page(
 
 #ifdef UNIV_NVDIMM_CACHE
         /* Separate Order-Line leaf page from the other pages. */
-        if (bpage->id.space() == 17 /* Order-Line tablespace */
+        if (bpage->id.space() == 30 /* Order-Line tablespace */
             && bpage->buf_fix_count == 0 /* Not fixed */) {
             
             const byte *frame =
@@ -1295,7 +1295,9 @@ buf_flush_page(
                 bpage->moved_to_nvdimm = true;
                 srv_stats.nvdimm_pages_stored_ol.inc();
             }
-        } else if (bpage->id.space() == 19 /* Stock tablespace */
+        }
+#if 0
+        else if (bpage->id.space() == 32 /* Stock tablespace */
                    && bpage->buf_fix_count == 0 /* Not fixed */
                    && !bpage->cached_in_nvdimm /* Not cached in NVDIMM */) {
             lsn_t before_lsn = mach_read_from_8(reinterpret_cast<const buf_block_t *>(bpage)->frame + FIL_PAGE_LSN);
@@ -1308,6 +1310,7 @@ buf_flush_page(
                 //fprintf(stderr, "try..\n");
             }
         }
+#endif
 #endif /* UNIV_NVDIMM_CACHE */
 
 		/* If there is an observer that want to know if the asynchronous
@@ -1728,7 +1731,8 @@ buf_flush_nvdimm_LRU_list_batch(
 		buf_page_t* prev = UT_LIST_GET_PREV(LRU, bpage);
 		buf_pool->lru_hp.set(prev);
 
-        if (bpage->id.space() != 17 && bpage->id.space() != 19)  continue;
+        if (bpage->id.space() != 30)  continue;
+        //if (bpage->id.space() != 30 && bpage->id.space() != 32)  continue;
 
 		BPageMutex*	block_mutex = buf_page_get_mutex(bpage);
 
@@ -1865,9 +1869,9 @@ DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
         n_flushed = buf_flush_nvdimm_LRU_list_batch(buf_pool, 1024);
         buf_pool_mutex_exit(buf_pool);
 
-        //if (n_flushed) {
+        if (n_flushed) {
         /*sig_count = */os_event_reset(buf_flush_nvdimm_event);
-        //}
+        }
         //buf_dblwr_flush_buffered_writes();
     }
 

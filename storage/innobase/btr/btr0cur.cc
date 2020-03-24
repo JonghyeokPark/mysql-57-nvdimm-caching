@@ -348,7 +348,15 @@ btr_cur_latch_leaves(
 #ifdef UNIV_BTR_DEBUG
 			ut_a(page_is_comp(get_block->frame)
 			     == page_is_comp(page));
-			ut_a(btr_page_get_prev(get_block->frame, mtr)
+			/* mijin */
+            if (btr_page_get_prev(get_block->frame, mtr) != page_get_page_no(page)) {
+                fprintf(stderr, "%lu != %lu, %lu\n",
+                    btr_page_get_prev(get_block->frame, mtr),
+                    page_get_space_id(page),
+                    page_get_page_no(page));    
+            }
+            /* end */
+            ut_a(btr_page_get_prev(get_block->frame, mtr)
 			     == page_get_page_no(page));
 #endif /* UNIV_BTR_DEBUG */
 			if (spatial) {
