@@ -5303,7 +5303,7 @@ buf_page_init(
 
 #ifdef UNIV_NVDIMM_CACHE
     if (page_id.space() == 28 /* New-Orders table */) {
-        srv_stats.nvdimm_pages_stored_no_undo.inc();
+        srv_stats.nvdimm_pages_stored_no.inc();
     }
 #endif /* UNIV_NVDIMM_CACHE */
 
@@ -6103,10 +6103,10 @@ corrupt:
         if (bpage->cached_in_nvdimm) {
             if (bpage->id.space() == 30) {
                 srv_stats.nvdimm_pages_read_ol.inc();
-            /*} else if (bpage->id.space() == 32) {
+            } else if (bpage->id.space() == 32) {
                 srv_stats.nvdimm_pages_read_st.inc();
-            */} else {
-                srv_stats.nvdimm_pages_read_no_undo.inc();
+            } else {
+                srv_stats.nvdimm_pages_read_no.inc();
             }
         }
 
@@ -7096,34 +7096,34 @@ buf_print_nvdimm_instance(
 
     fprintf(file,
         "---The number of pages stored in NVDIMM buffer\n"
-        "New-Orders/UNDO " ULINTPF
+        "New-Orders      " ULINTPF
         "\n"
         "Order-Line      " ULINTPF
         "\n"
         "Stock           " ULINTPF "\n",
-        (ulint)srv_stats.nvdimm_pages_stored_no_undo,
+        (ulint)srv_stats.nvdimm_pages_stored_no,
         (ulint)srv_stats.nvdimm_pages_stored_ol,
         (ulint)srv_stats.nvdimm_pages_stored_st);
 
     fprintf(file,
         "---The number of pages read\n"
-        "New-Orders/UNDO " ULINTPF
+        "New-Orders      " ULINTPF
         "\n"
         "Order-Line      " ULINTPF
         "\n"
         "Stock           " ULINTPF "\n",
-        (ulint)srv_stats.nvdimm_pages_read_no_undo,
+        (ulint)srv_stats.nvdimm_pages_read_no,
         (ulint)srv_stats.nvdimm_pages_read_ol,
         (ulint)srv_stats.nvdimm_pages_read_st);
 
     fprintf(file,
         "---The number of pages written\n"
-        "New-Orders/UNDO " ULINTPF
+        "New-Orders      " ULINTPF
         "\n"
         "Order-Line      " ULINTPF
         "\n"
         "Stock           " ULINTPF "\n",
-        (ulint)srv_stats.nvdimm_pages_written_no_undo,
+        (ulint)srv_stats.nvdimm_pages_written_no,
         (ulint)srv_stats.nvdimm_pages_written_ol,
         (ulint)srv_stats.nvdimm_pages_written_st);
 

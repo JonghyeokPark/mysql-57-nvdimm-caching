@@ -1029,7 +1029,7 @@ buf_pool_get(
 #ifdef UNIV_NVDIMM_CACHE
     if (buf_block_will_be_moved_to_nvdimm(page_id)) {
         return(&nvdimm_buf_pool_ptr[0]);
-    } else if ((page_id.space() == 30/* || page_id.space() == 32*/)
+    } else if ((page_id.space() == 30 || page_id.space() == 32)
                && buf_page_hash_get_low(&nvdimm_buf_pool_ptr[0], page_id)) {
         return (&nvdimm_buf_pool_ptr[0]);
     } else {

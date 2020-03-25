@@ -1193,11 +1193,11 @@ static monitor_info_t	innodb_counter_info[] =
      static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
      MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_OL},
 
-    {"innodb_nvdimm_pages_stored_no_undo", "server",
-     "Number of new-orders/undo pages that currently been stored in NVDIMM buffer"
-     " (innodb_nvdimm_pages_stored_no_undo)",
+    {"innodb_nvdimm_pages_stored_no", "server",
+     "Number of new-orders pages that currently been stored in NVDIMM buffer"
+     " (innodb_nvdimm_pages_stored_no)",
      static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
-     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_NO_UNDO},
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_NO},
 
     {"innodb_nvdimm_pages_read_st", "server",
      "Number of stock pages that been read"
@@ -1211,11 +1211,11 @@ static monitor_info_t	innodb_counter_info[] =
      static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
      MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_OL},
 
-    {"innodb_nvdimm_pages_read_no_undo", "server",
-     "Number of new-orders/undo pages that been read"
-     " (innodb_nvdimm_pages_read_no_undo)",
+    {"innodb_nvdimm_pages_read_no", "server",
+     "Number of new-orders pages that been read"
+     " (innodb_nvdimm_pages_read_no)",
      static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
-     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_NO_UNDO},
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_NO},
 
     {"innodb_nvdimm_pages_written_st", "server",
      "Number of stock pages that been written"
@@ -1229,11 +1229,11 @@ static monitor_info_t	innodb_counter_info[] =
      static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
      MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_OL},
 
-    {"innodb_nvdimm_pages_written_no_undo", "server",
-     "Number of new-orders/undo pages that been written"
-     " (innodb_nvdimm_pages_written_no_undo)",
+    {"innodb_nvdimm_pages_written_no", "server",
+     "Number of new-orders pages that been written"
+     " (innodb_nvdimm_pages_written_no)",
      static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
-     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_NO_UNDO},
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_NO},
 #endif /* UNIV_NVDIMM_CACHE */
 
 	{"innodb_page_size", "server",
@@ -1788,9 +1788,9 @@ srv_mon_process_existing_counter(
         value = srv_stats.nvdimm_pages_stored_ol;
         break;
 
-    /* innodb_nvdimm_pages_stored_no_undo */
-    case MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_NO_UNDO:
-        value = srv_stats.nvdimm_pages_stored_no_undo;
+    /* innodb_nvdimm_pages_stored_no */
+    case MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_NO:
+        value = srv_stats.nvdimm_pages_stored_no;
         break;
 
     /* innodb_nvdimm_pages_read_st */
@@ -1803,9 +1803,9 @@ srv_mon_process_existing_counter(
         value = srv_stats.nvdimm_pages_read_ol;
         break;
 
-    /* innodb_nvdimm_pages_read_no_undo */
-    case MONITOR_OVLD_SRV_NVDIMM_PAGES_READ_NO_UNDO:
-        value = srv_stats.nvdimm_pages_read_no_undo;
+    /* innodb_nvdimm_pages_read_no */
+    case MONITOR_OVLD_SRV_NVDIMM_PAGES_READ_NO:
+        value = srv_stats.nvdimm_pages_read_no;
         break;
 
     /* innodb_nvdimm_pages_written_st */
@@ -1818,9 +1818,9 @@ srv_mon_process_existing_counter(
         value = srv_stats.nvdimm_pages_written_ol;
         break;
 
-    /* innodb_nvdimm_pages_written_no_undo */
-    case MONITOR_OVLD_SRV_NVDIMM_PAGES_WRITTEN_NO_UNDO:
-        value = srv_stats.nvdimm_pages_written_no_undo;
+    /* innodb_nvdimm_pages_written_no */
+    case MONITOR_OVLD_SRV_NVDIMM_PAGES_WRITTEN_NO:
+        value = srv_stats.nvdimm_pages_written_no;
         break;
 #endif /* UNIV_NVDIMM_CACHE */
 
