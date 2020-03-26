@@ -1123,7 +1123,6 @@ buf_flush_write_block_low(
                     << ") is written from " << bpage->cached_in_nvdimm
                     << " with oldest: " << bpage->oldest_modification
                     << " newest: " << bpage->newest_modification
-                    << " fix-count: " << bpage->buf_total_fix_count;
             }*/
         } else if (flush_type == BUF_FLUSH_SINGLE_PAGE) {
             buf_dblwr_write_single_page(bpage, sync);
@@ -1282,7 +1281,8 @@ buf_flush_page(
 #ifdef UNIV_NVDIMM_CACHE
         /* Separate Order-Line leaf page from the other pages. */
         if (bpage->id.space() == 30 /* Order-Line tablespace */
-            && bpage->buf_fix_count == 0 /* Not fixed */) {
+            && bpage->buf_fix_count == 0 /* Not fixed */
+            && !bpage->cached_in_nvdimm /* Not cached in NVDIMM */) {
             
             const byte *frame =
                 bpage->zip.data != NULL ? bpage->zip.data : ((buf_block_t *)bpage)->frame;
@@ -1290,8 +1290,7 @@ buf_flush_page(
             const ulint page_type = fil_page_get_type(frame);
 
             if ((page_type == FIL_PAGE_INDEX || page_type == FIL_PAGE_RTREE) /* Index page */
-                && page_is_leaf(frame) /* Leaf page */
-                && !bpage->cached_in_nvdimm /* Not cached in NVDIMM */) {
+                && page_is_leaf(frame) /* Leaf page */) {
                 bpage->moved_to_nvdimm = true;
                 srv_stats.nvdimm_pages_stored_ol.inc();
             }
@@ -1301,8 +1300,10 @@ buf_flush_page(
             lsn_t before_lsn = mach_read_from_8(reinterpret_cast<const buf_block_t *>(bpage)->frame + FIL_PAGE_LSN);
             lsn_t lsn_gap = bpage->oldest_modification - before_lsn;
 
+            //ib::info() << bpage->id.page_no() << " " << lsn_gap;
+            
             /* FIXME: Ad-hoc method */
-            if (3000000000 < lsn_gap && lsn_gap < 5000000000) {
+            if (4000000000 < lsn_gap && lsn_gap < 5000000000) {
                 bpage->moved_to_nvdimm = true;
                 srv_stats.nvdimm_pages_stored_st.inc();
             }
@@ -1728,7 +1729,7 @@ buf_flush_nvdimm_LRU_list_batch(
 		buf_pool->lru_hp.set(prev);
 
         //if (bpage->id.space() != 30)  continue;
-        if (bpage->id.space() != 30 && bpage->id.space() != 32)  continue;
+//        if (bpage->id.space() != 30 && bpage->id.space() != 32)  continue;
 
 		BPageMutex*	block_mutex = buf_page_get_mutex(bpage);
 
@@ -1779,6 +1780,38 @@ buf_flush_nvdimm_LRU_list_batch(
 	return(count);
 }
 
+/*********************************************************************//**
+Puts the NVDIMM page_cleaner thread to sleep if it has finished work in less
+than a second
+@retval 0 wake up by event set,
+@retval OS_SYNC_TIME_EXCEEDED if timeout was exceeded
+@param next_loop_time	time when next loop iteration should start
+@param sig_count	zero or the value returned by previous call of
+			os_event_reset() */
+static
+ulint
+pc_sleep_nvdimm_cleaner_if_needed(
+/*===============*/
+	ulint		next_loop_time,
+	int64_t		sig_count)
+{
+	ulint	cur_time = ut_time_ms();
+
+	if (next_loop_time > cur_time) {
+		/* Get sleep interval in micro seconds. We use
+		ut_min() to avoid long sleep in case of wrap around. */
+		ulint	sleep_us;
+
+		sleep_us = ut_min(static_cast<ulint>(1000000),
+				  (next_loop_time - cur_time) * 1000);
+
+		return(os_event_wait_time_low(buf_flush_nvdimm_event,
+					      sleep_us, sig_count));
+	}
+
+	return(OS_SYNC_TIME_EXCEEDED);
+}
+
 /******************************************************************//**
 NVDIMM page_cleaner thread tasked with flushing dirty pages from the
 buffer pools.
@@ -1793,82 +1826,79 @@ DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
 {
     my_thread_init();
 
-#ifdef UNIV_PFS_THREAD
+/*#ifdef UNIV_PFS_THREAD
 	pfs_register_thread(page_flush_nvdimm_thread_key);
-#endif /* UNIV_PFS_THREAD */
+#endif*/ /* UNIV_PFS_THREAD */
 
     ulint n_flushed = 0;
     buf_pool_t *buf_pool = buf_pool_from_array(8);
-    /*
-    ulint next_loop_time = ut_time_ms() + 500;
-    
+    ulint next_loop_time = ut_time_ms() + 1000;
+    ulint last_activity = srv_get_activity_count();
+
     os_event_wait(buf_flush_nvdimm_event);
-    int64_t sig_count = os_event_reset(buf_flush_nvdimm_event);
 
     ulint ret_sleep = 0;
     ulint warn_interval = 1;
     ulint warn_count = 0;
-    ulint last_activity = srv_get_activity_count();
-     */
+    int64_t sig_count = os_event_reset(buf_flush_nvdimm_event);
 
     for (;;) {
-        os_event_wait(buf_flush_nvdimm_event);
-        /*if (srv_check_activity(last_activity) || n_flushed == 0) {
-          ret_sleep = pc_sleep_nvdimm_cleaner_if_needed(next_loop_time, sig_count);
-          } else if (ut_time_ms() > next_loop_time) {
-          ret_sleep = OS_SYNC_TIME_EXCEEDED;
-          } else {
-          ret_sleep = 0;
-          }
+        //os_event_wait(buf_flush_nvdimm_event);
 
-          sig_count = os_event_reset(buf_flush_nvdimm_event);
+        if (srv_check_activity(last_activity) || n_flushed == 0) {
+            ret_sleep = pc_sleep_nvdimm_cleaner_if_needed(next_loop_time, sig_count);
+        } else if (ut_time_ms() > next_loop_time) {
+            ret_sleep = OS_SYNC_TIME_EXCEEDED;
+        } else {
+            ret_sleep = 0;
+        }
 
-          if (ret_sleep == OS_SYNC_TIME_EXCEEDED) {
-          ulint curr_time = ut_time_ms();
+        sig_count = os_event_reset(buf_flush_nvdimm_event);
 
-          if (curr_time > next_loop_time + 1500) {
-          if (warn_count == 0) {
-          ulint us;
+        if (ret_sleep == OS_SYNC_TIME_EXCEEDED) {
+            ulint curr_time = ut_time_ms();
 
-          us = 500 + curr_time - next_loop_time;
+            if (curr_time > next_loop_time + 3000) {
+                if (warn_count == 0) {
+                    ib::info()
+                        << "NVDIMM Page cleaner took "
+                        << 1000 + curr_time - next_loop_time; 
+                    if (warn_interval > 300) {
+                        warn_interval = 600;
+                    } else {
+                        warn_interval *= 2;
+                    }
 
-          ib::info(ER_IB_MSG_128)
-          << "NVDIMM Page cleaner took " << us; 
+                    warn_count = warn_interval;
+                } else {
+                    --warn_count;
+                }
+            } else {
+                /* reset counter */
+                warn_interval = 1;
+                warn_count = 0;
+            }
 
-          if (warn_interval > 300) {
-          warn_interval = 600;
-          } else {
-          warn_interval *= 2;
-          }
-
-          warn_count = warn_interval;
-          } else {
-          --warn_count;
-          }
-          } else {
-         */    /* reset counter */
-        /*    warn_interval = 1;
-              warn_count = 0;
-              }
-
-              next_loop_time = curr_time + 500;
-              }
-         */
+            next_loop_time = curr_time + 1000;
+        }
 
         /* TODO: Need to fix for shutdown */
         if (!page_cleaner->is_running) {
             break;
         }
 
-        /* Flush pages from end of LRU */
-        buf_pool_mutex_enter(buf_pool);
-        n_flushed = buf_flush_nvdimm_LRU_list_batch(buf_pool, 1024);
-        buf_pool_mutex_exit(buf_pool);
+        if (srv_check_activity(last_activity)) {
+            /* Flush pages from end of LRU */
+            buf_pool_mutex_enter(buf_pool);
+            n_flushed = buf_flush_nvdimm_LRU_list_batch(buf_pool, 1024);
+            buf_pool_mutex_exit(buf_pool);
+            
+            buf_dblwr_flush_buffered_writes();
+        }
 
         //if (n_flushed) {
-        /*sig_count = */os_event_reset(buf_flush_nvdimm_event);
+        /*sig_count = *///os_event_reset(buf_flush_nvdimm_event);
         //}
-        //buf_dblwr_flush_buffered_writes();
     }
 
     my_thread_end();
@@ -2938,40 +2968,6 @@ page_cleaner_flush_pages_recommendation(
 
 	return(n_pages);
 }
-
-#ifdef UNIV_NVDIMM_CACHE
-/*********************************************************************//**
-Puts the NVDIMM page_cleaner thread to sleep if it has finished work in less
-than a second
-@retval 0 wake up by event set,
-@retval OS_SYNC_TIME_EXCEEDED if timeout was exceeded
-@param next_loop_time	time when next loop iteration should start
-@param sig_count	zero or the value returned by previous call of
-			os_event_reset() */
-static
-ulint
-pc_sleep_nvdimm_cleaner_if_needed(
-/*===============*/
-	ulint		next_loop_time,
-	int64_t		sig_count)
-{
-	ulint	cur_time = ut_time_ms();
-
-	if (next_loop_time > cur_time) {
-		/* Get sleep interval in micro seconds. We use
-		ut_min() to avoid long sleep in case of wrap around. */
-		ulint	sleep_us;
-
-		sleep_us = ut_min(static_cast<ulint>(500000),
-				  (next_loop_time - cur_time) * 1000);
-
-		return(os_event_wait_time_low(buf_flush_nvdimm_event,
-					      sleep_us, sig_count));
-	}
-
-	return(OS_SYNC_TIME_EXCEEDED);
-}
-#endif /* UNIV_NVDIMM_CACHE */
 
 /*********************************************************************//**
 Puts the page_cleaner thread to sleep if it has finished work in less

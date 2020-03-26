@@ -2606,6 +2606,10 @@ files_checked:
 	/* wake main loop of page cleaner up */
 	os_event_set(buf_flush_event);
 
+#ifdef UNIV_NVDIMM_CACHE
+    os_event_set(buf_flush_nvdimm_event);
+#endif /* UNIV_NVDIMM_CACHE */
+
 	sum_of_data_file_sizes = srv_sys_space.get_sum_of_sizes();
 	ut_a(sum_of_new_sizes != ULINT_UNDEFINED);
 

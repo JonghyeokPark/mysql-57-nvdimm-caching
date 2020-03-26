@@ -6100,7 +6100,9 @@ corrupt:
 		mutex_exit(buf_page_get_mutex(bpage));
 
 #ifdef UNIV_NVDIMM_CACHE
-        if (bpage->cached_in_nvdimm) {
+        if (buf_pool->instance_no == 8) {
+            bpage->cached_in_nvdimm = true;
+
             if (bpage->id.space() == 30) {
                 srv_stats.nvdimm_pages_read_ol.inc();
             } else if (bpage->id.space() == 32) {
@@ -6108,16 +6110,11 @@ corrupt:
             } else {
                 srv_stats.nvdimm_pages_read_no.inc();
             }
-        }
-
-        if (buf_pool->instance_no == 8) {
-            bpage->cached_in_nvdimm = true;
-
-            ulint remains = UT_LIST_GET_LEN(buf_pool->free);
+            /*ulint remains = UT_LIST_GET_LEN(buf_pool->free);
 
             if (remains < nvdimm_pc_threshold) {
                 os_event_set(buf_flush_nvdimm_event);
-            }
+            }*/
         }
 #endif /* UNIV_NVDIMM_CACHE */
 
