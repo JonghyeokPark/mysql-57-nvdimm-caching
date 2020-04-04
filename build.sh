@@ -12,6 +12,21 @@ fi
 cd $BASE_DIR
 
 # Build and install the source code
-echo "Start build"
-cmake -DWITH_DEBUG=0 -DCMAKE_C_FLAGS="-DUNIV_NVDIMM_CACHE" -DCMAKE_CXX_FLAGS="-DUNIV_NVDIMM_CACHE" -DDOWNLOAD_BOOST=ON -DWITH_BOOST=$BASE_DIR/boost -DCMAKE_INSTALL_PREFIX=$BUILD_DIR
-make -j8 install
+if [ $1 = "origin" ]; then
+    # No caching
+    BUILD_FLAGS=""
+elif [ $1 = "nc-ol-st" ]; then
+    # Cache New-Orders, Order-Line and Stock pages
+    # FIXME: Need to debug (spf)
+    BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_NVDIMM_CACHE_NO -DUNIV_NVDIMM_CACHE_OL -DUNIV_NVDIMM_CACHE_ST"
+else
+    # Cache New-Orders and Order-Line pages (default)
+    BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_NVDIMM_CACHE_NO -DUNIV_NVDIMM_CACHE_OL"
+fi
+
+echo "Start build using $BUILD_FLAGS"
+
+cmake -DWITH_DEBUG=0 -DCMAKE_C_FLAGS="$BUILD_FLAGS" -DCMAKE_CXX_FLAGS="$BUILD_FLAGS" -DDOWNLOAD_BOOST=ON -DWITH_BOOST=$BASE_DIR/boost -DCMAKE_INSTALL_PREFIX=$BUILD_DIR
+
+make -j8
+sudo make install

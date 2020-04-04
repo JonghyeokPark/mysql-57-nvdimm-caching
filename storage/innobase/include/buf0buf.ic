@@ -1029,19 +1029,26 @@ buf_pool_get(
 #ifdef UNIV_NVDIMM_CACHE
     if (buf_block_will_be_moved_to_nvdimm(page_id)) {
         return(&nvdimm_buf_pool_ptr[0]);
-    } else if ((page_id.space() == 30 || page_id.space() == 32)
-               && buf_page_hash_get_low(&nvdimm_buf_pool_ptr[0], page_id)) {
+    } 
+#ifdef UNIV_NVDIMM_CACHE_OL
+    if (page_id.space() == 30 && buf_page_hash_get_low(&nvdimm_buf_pool_ptr[0], page_id)) {
         return (&nvdimm_buf_pool_ptr[0]);
-    } else {
-        /* 2log of BUF_READ_AHEAD_AREA (64) */
-        ulint       ignored_page_no = page_id.page_no() >> 6;
-
-        page_id_t   id(page_id.space(), ignored_page_no);
-
-        ulint       i = id.fold() % srv_buf_pool_instances;
-
-        return(&buf_pool_ptr[i]);
     }
+#endif /* UNIV_NVDIMM_CACHE_OL */
+#ifdef UNIV_NVDIMM_CACHE_ST
+    if (page_id.space() == 32 && buf_page_hash_get_low(&nvdimm_buf_pool_ptr[0], page_id)) {
+        return (&nvdimm_buf_pool_ptr[0]);
+    }
+#endif /* UNIV_NVDIMM_CACHE_ST */
+    
+    /* 2log of BUF_READ_AHEAD_AREA (64) */
+    ulint       ignored_page_no = page_id.page_no() >> 6;
+
+    page_id_t   id(page_id.space(), ignored_page_no);
+
+    ulint       i = id.fold() % srv_buf_pool_instances;
+
+    return(&buf_pool_ptr[i]);
 #else
     /* 2log of BUF_READ_AHEAD_AREA (64) */
     ulint       ignored_page_no = page_id.page_no() >> 6;

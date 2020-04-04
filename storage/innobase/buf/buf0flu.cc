@@ -1114,16 +1114,17 @@ buf_flush_write_block_low(
 
             IORequest	request(type);
 
+            /*if (bpage->cached_in_nvdimm) {
+                ib::info() << bpage->id.page_no()
+                    << " is written from " << bpage->cached_in_nvdimm
+                    << " flush-type: " << flush_type
+                    << " with oldest: " << bpage->oldest_modification
+                    << " newest: " << bpage->newest_modification;
+            }*/
+
             fil_io(request,
                     sync, bpage->id, bpage->size, 0, bpage->size.physical(),
-                    frame, bpage);
-
-            /*if (bpage->cached_in_nvdimm) {
-                ib::info(ER_IB_MSG_126) << "(" << bpage->id.space() << ", " << bpage->id.page_no()
-                    << ") is written from " << bpage->cached_in_nvdimm
-                    << " with oldest: " << bpage->oldest_modification
-                    << " newest: " << bpage->newest_modification
-            }*/
+                    frame, bpage);  
         } else if (flush_type == BUF_FLUSH_SINGLE_PAGE) {
             buf_dblwr_write_single_page(bpage, sync);
         } else {
@@ -1279,6 +1280,7 @@ buf_flush_page(
 		}
 
 #ifdef UNIV_NVDIMM_CACHE
+#ifdef UNIV_NVDIMM_CACHE_OL
         /* Separate Order-Line leaf page from the other pages. */
         if (bpage->id.space() == 30 /* Order-Line tablespace */
             && bpage->buf_fix_count == 0 /* Not fixed */
@@ -1294,20 +1296,22 @@ buf_flush_page(
                 bpage->moved_to_nvdimm = true;
                 srv_stats.nvdimm_pages_stored_ol.inc();
             }
-        } else if (bpage->id.space() == 32 /* Stock tablespace */
+        }
+#endif /* UNIV_NVDIMM_CACHE_OL */
+#ifdef UNIV_NVDIMM_CACHE_ST
+        if (bpage->id.space() == 32 /* Stock tablespace */
                    && bpage->buf_fix_count == 0 /* Not fixed */
                    && !bpage->cached_in_nvdimm /* Not cached in NVDIMM */) {
             lsn_t before_lsn = mach_read_from_8(reinterpret_cast<const buf_block_t *>(bpage)->frame + FIL_PAGE_LSN);
             lsn_t lsn_gap = bpage->oldest_modification - before_lsn;
 
-            //ib::info() << bpage->id.page_no() << " " << lsn_gap;
-            
             /* FIXME: Ad-hoc method */
-            if (4000000000 < lsn_gap && lsn_gap < 5000000000) {
+            if (200000000 < lsn_gap && lsn_gap < 400000000) {
                 bpage->moved_to_nvdimm = true;
                 srv_stats.nvdimm_pages_stored_st.inc();
             }
         }
+#endif /* UNIV_NVDIMM_CACHE_ST */
 #endif /* UNIV_NVDIMM_CACHE */
 
 		/* If there is an observer that want to know if the asynchronous
@@ -1728,7 +1732,7 @@ buf_flush_nvdimm_LRU_list_batch(
 		buf_page_t* prev = UT_LIST_GET_PREV(LRU, bpage);
 		buf_pool->lru_hp.set(prev);
 
-        //if (bpage->id.space() != 30)  continue;
+        //if (bpage->id.space() == 28)  continue;
 //        if (bpage->id.space() != 30 && bpage->id.space() != 32)  continue;
 
 		BPageMutex*	block_mutex = buf_page_get_mutex(bpage);
@@ -1765,17 +1769,17 @@ buf_flush_nvdimm_LRU_list_batch(
 	/* We keep track of all flushes happening as part of LRU
 	flush. When estimating the desired rate at which flush_list
 	should be flushed, we factor in this value. */
-	buf_lru_flush_page_count += count;
+	//buf_lru_flush_page_count += count;
 
 	ut_ad(buf_pool_mutex_own(buf_pool));
 
-	if (evict_count) {
+	/*if (evict_count) {
 		MONITOR_INC_VALUE_CUMULATIVE(
 			MONITOR_LRU_BATCH_EVICT_TOTAL_PAGE,
 			MONITOR_LRU_BATCH_EVICT_COUNT,
 			MONITOR_LRU_BATCH_EVICT_PAGES,
 			evict_count);
-	}
+	}*/
 
 	return(count);
 }
@@ -1895,7 +1899,7 @@ DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
             
             buf_dblwr_flush_buffered_writes();
         }
-
+//
         //if (n_flushed) {
         /*sig_count = *///os_event_reset(buf_flush_nvdimm_event);
         //}
@@ -2503,8 +2507,8 @@ buf_flush_single_page_from_LRU(
 			/* block is ready for eviction i.e., it is
 			clean and is not IO-fixed or buffer fixed. */
 			mutex_exit(block_mutex);
-
-			if (buf_LRU_free_page(bpage, true)) {
+            
+            if (buf_LRU_free_page(bpage, true)) {
 				buf_pool_mutex_exit(buf_pool);
 				freed = true;
 				break;
@@ -2520,7 +2524,7 @@ buf_flush_single_page_from_LRU(
 
 			Note: There is no guarantee that this page has actually
 			been freed, only that it has been flushed to disk */
-
+           
 			freed = buf_flush_page(
 				buf_pool, bpage, BUF_FLUSH_SINGLE_PAGE, true);
 
@@ -2532,8 +2536,8 @@ buf_flush_single_page_from_LRU(
 		} else {
 			mutex_exit(block_mutex);
 		}
-
-		ut_ad(!mutex_own(block_mutex));
+        
+        ut_ad(!mutex_own(block_mutex));
 	}
 
 	if (!freed) {
