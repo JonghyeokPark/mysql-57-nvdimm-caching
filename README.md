@@ -32,6 +32,7 @@ The above command will compile and build the source code with the default option
 | :--------- | :---------- |
 | --origin   | No caching (Vanilla version)                        |
 | --nc-ol    | Caching New-Orders and Order-Line pages (`default`) |
+| --nc-st    | Caching New-Orders and Stock pages                  |
 | --nc-ol-st | Caching New-Orders, Order-Line and Stock pages      |
 
 If you want the vanilla version, you can run the script as follows:
