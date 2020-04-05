@@ -18,6 +18,9 @@ if [ $1 = "--origin" ]; then
 elif [ $1 = "--nc-ol" ]; then
     # Cache New-Orders and Order-Line pages
     BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_NVDIMM_CACHE_NO -DUNIV_NVDIMM_CACHE_OL"
+elif [ $1 = "--nc-st" ]; then
+    # Cache New-Orders and Stock pages
+    BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_NVDIMM_CACHE_NO -DUNIV_NVDIMM_CACHE_ST"
 elif [ $1 = "--nc-ol-st" ]; then
     # Cache New-Orders, Order-Line and Stock pages
     BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_NVDIMM_CACHE_NO -DUNIV_NVDIMM_CACHE_OL -DUNIV_NVDIMM_CACHE_ST"
