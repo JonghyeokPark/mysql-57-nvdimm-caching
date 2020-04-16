@@ -47,6 +47,7 @@ extern os_event_t	buf_flush_event;
 
 #ifdef UNIV_NVDIMM_CACHE
 extern os_event_t buf_flush_nvdimm_event;
+extern bool buf_nvdimm_page_cleaner_is_active;
 #endif /* UNIV_NVDIMM_CACHE */
 
 class ut_stage_alter_t;
@@ -241,6 +242,12 @@ DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
 /*===============================================*/
 	void*	arg);		/*!< in: a dummy parameter required by
 				os_thread_create */
+
+/*********************************************************************//**
+Wait for any possible LRU flushes that are in progress to end. */
+void
+buf_flush_wait_nvdimm_LRU_batch_end(void);
+/*==============================*/
 #endif /* UNIV_NVDIMM_CACHE */
 /******************************************************************//**
 page_cleaner thread tasked with flushing dirty pages from the buffer

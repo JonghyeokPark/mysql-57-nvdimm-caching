@@ -1296,6 +1296,9 @@ srv_shutdown_all_bg_threads()
 #endif /* UNIV_NVDIMM_CACHE */
 
 			if (!buf_page_cleaner_is_active
+#ifdef UNIV_NVDIMM_CACHE
+                && !buf_nvdimm_page_cleaner_is_active
+#endif /* UNIV_NVDIMM_CACHE */
 			    && os_aio_all_slots_free()) {
 				os_aio_wake_all_threads_at_shutdown();
 			}
@@ -2782,7 +2785,6 @@ innobase_shutdown_for_mysql(void)
 
 	/* 2. Make all threads created by InnoDB to exit */
 	srv_shutdown_all_bg_threads();
-
 
 	if (srv_monitor_file) {
 		fclose(srv_monitor_file);

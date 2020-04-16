@@ -92,6 +92,7 @@ mysql_pfs_key_t page_cleaner_thread_key;
 #ifdef UNIV_NVDIMM_CACHE
 mysql_pfs_key_t page_flush_nvdimm_thread_key;
 os_event_t buf_flush_nvdimm_event;
+bool buf_nvdimm_page_cleaner_is_active = false;
 #endif /* UNIV_NVDIMM_CACHE */
 
 /** Event to synchronise with the flushing. */
@@ -1702,213 +1703,6 @@ buf_free_from_unzip_LRU_list_batch(
 
 	return(count);
 }
-
-#ifdef UNIV_NVDIMM_CACHE
-/*******************************************************************//**
-This utility flushes dirty blocks from the end of the LRU list.
-The calling thread is not allowed to own any latches on pages!
-It attempts to make 'max' blocks available in the free list. Note that
-it is a best effort attempt and it is not guaranteed that after a call
-to this function there will be 'max' blocks in the free list.
-@return number of blocks for which the write request was queued. */
-static
-ulint
-buf_flush_nvdimm_LRU_list_batch(
-/*=====================*/
-	buf_pool_t*	buf_pool,	/*!< in: buffer pool instance */
-	ulint		max)		/*!< in: desired number of
-					blocks in the free_list */
-{
-	buf_page_t*	bpage;
-	ulint		evict_count = 0;
-	ulint		count = 0;
-
-	ut_ad(buf_pool_mutex_own(buf_pool));
-
-	for (bpage = UT_LIST_GET_LAST(buf_pool->LRU);
-	     bpage != NULL && count + evict_count < max;
-	     bpage = buf_pool->lru_hp.get()) {
-
-		buf_page_t* prev = UT_LIST_GET_PREV(LRU, bpage);
-		buf_pool->lru_hp.set(prev);
-
-        //if (bpage->id.space() == 28)  continue;
-//        if (bpage->id.space() != 30 && bpage->id.space() != 32)  continue;
-
-		BPageMutex*	block_mutex = buf_page_get_mutex(bpage);
-
-		mutex_enter(block_mutex);
-
-		if (buf_flush_ready_for_replace(bpage)) {
-			/* block is ready for eviction i.e., it is
-			clean and is not IO-fixed or buffer fixed. */
-			mutex_exit(block_mutex);
-			if (buf_LRU_free_page(bpage, true)) {
-				++evict_count;
-			}
-		} else if (buf_flush_ready_for_flush(bpage, BUF_FLUSH_LRU)) {
-			/* Block is ready for flush. Dispatch an IO
-			request. The IO helper thread will put it on
-			free list in IO completion routine. */
-			mutex_exit(block_mutex);
-			buf_flush_page_and_try_neighbors(
-				bpage, BUF_FLUSH_LRU, max, &count);
-		} else {
-			/* Can't evict or dispatch this block. Go to
-			previous. */
-			ut_ad(buf_pool->lru_hp.is_hp(prev));
-			mutex_exit(block_mutex);
-		}
-
-		ut_ad(!mutex_own(block_mutex));
-		ut_ad(buf_pool_mutex_own(buf_pool));
-	}
-
-	buf_pool->lru_hp.set(NULL);
-
-	/* We keep track of all flushes happening as part of LRU
-	flush. When estimating the desired rate at which flush_list
-	should be flushed, we factor in this value. */
-	//buf_lru_flush_page_count += count;
-
-	ut_ad(buf_pool_mutex_own(buf_pool));
-
-	/*if (evict_count) {
-		MONITOR_INC_VALUE_CUMULATIVE(
-			MONITOR_LRU_BATCH_EVICT_TOTAL_PAGE,
-			MONITOR_LRU_BATCH_EVICT_COUNT,
-			MONITOR_LRU_BATCH_EVICT_PAGES,
-			evict_count);
-	}*/
-
-	return(count);
-}
-
-/*********************************************************************//**
-Puts the NVDIMM page_cleaner thread to sleep if it has finished work in less
-than a second
-@retval 0 wake up by event set,
-@retval OS_SYNC_TIME_EXCEEDED if timeout was exceeded
-@param next_loop_time	time when next loop iteration should start
-@param sig_count	zero or the value returned by previous call of
-			os_event_reset() */
-static
-ulint
-pc_sleep_nvdimm_cleaner_if_needed(
-/*===============*/
-	ulint		next_loop_time,
-	int64_t		sig_count)
-{
-	ulint	cur_time = ut_time_ms();
-
-	if (next_loop_time > cur_time) {
-		/* Get sleep interval in micro seconds. We use
-		ut_min() to avoid long sleep in case of wrap around. */
-		ulint	sleep_us;
-
-		sleep_us = ut_min(static_cast<ulint>(1000000),
-				  (next_loop_time - cur_time) * 1000);
-
-		return(os_event_wait_time_low(buf_flush_nvdimm_event,
-					      sleep_us, sig_count));
-	}
-
-	return(OS_SYNC_TIME_EXCEEDED);
-}
-
-/******************************************************************//**
-NVDIMM page_cleaner thread tasked with flushing dirty pages from the
-buffer pools.
-@return a dummy parameter */
-extern "C"
-os_thread_ret_t
-DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
-/*===============================================*/
-	void*	arg MY_ATTRIBUTE((unused)))
-			/*!< in: a dummy parameter required by
-			os_thread_create */
-{
-    my_thread_init();
-
-/*#ifdef UNIV_PFS_THREAD
-	pfs_register_thread(page_flush_nvdimm_thread_key);
-#endif*/ /* UNIV_PFS_THREAD */
-
-    ulint n_flushed = 0;
-    buf_pool_t *buf_pool = buf_pool_from_array(8);
-    ulint next_loop_time = ut_time_ms() + 1000;
-    ulint last_activity = srv_get_activity_count();
-
-    os_event_wait(buf_flush_nvdimm_event);
-
-    ulint ret_sleep = 0;
-    ulint warn_interval = 1;
-    ulint warn_count = 0;
-    int64_t sig_count = os_event_reset(buf_flush_nvdimm_event);
-
-    for (;;) {
-        //os_event_wait(buf_flush_nvdimm_event);
-
-        if (srv_check_activity(last_activity) || n_flushed == 0) {
-            ret_sleep = pc_sleep_nvdimm_cleaner_if_needed(next_loop_time, sig_count);
-        } else if (ut_time_ms() > next_loop_time) {
-            ret_sleep = OS_SYNC_TIME_EXCEEDED;
-        } else {
-            ret_sleep = 0;
-        }
-
-        sig_count = os_event_reset(buf_flush_nvdimm_event);
-
-        if (ret_sleep == OS_SYNC_TIME_EXCEEDED) {
-            ulint curr_time = ut_time_ms();
-
-            if (curr_time > next_loop_time + 3000) {
-                if (warn_count == 0) {
-                    ib::info()
-                        << "NVDIMM Page cleaner took "
-                        << 1000 + curr_time - next_loop_time; 
-                    if (warn_interval > 300) {
-                        warn_interval = 600;
-                    } else {
-                        warn_interval *= 2;
-                    }
-
-                    warn_count = warn_interval;
-                } else {
-                    --warn_count;
-                }
-            } else {
-                /* reset counter */
-                warn_interval = 1;
-                warn_count = 0;
-            }
-
-            next_loop_time = curr_time + 1000;
-        }
-
-        /* TODO: Need to fix for shutdown */
-        if (!page_cleaner->is_running) {
-            break;
-        }
-
-        if (srv_check_activity(last_activity)) {
-            /* Flush pages from end of LRU */
-            buf_pool_mutex_enter(buf_pool);
-            n_flushed = buf_flush_nvdimm_LRU_list_batch(buf_pool, 1024);
-            buf_pool_mutex_exit(buf_pool);
-            
-            buf_dblwr_flush_buffered_writes();
-        }
-//
-        //if (n_flushed) {
-        /*sig_count = *///os_event_reset(buf_flush_nvdimm_event);
-        //}
-    }
-
-    my_thread_end();
-    os_thread_exit();
-}
-#endif /* UNIV_NVDIMM_CACHE */
 
 /*******************************************************************//**
 This utility flushes dirty blocks from the end of the LRU list.
@@ -4148,3 +3942,322 @@ FlushObserver::flush()
 		}
 	}
 }
+
+#ifdef UNIV_NVDIMM_CACHE
+/*******************************************************************//**
+This utility flushes dirty blocks from the end of the LRU list.
+The calling thread is not allowed to own any latches on pages!
+It attempts to make 'max' blocks available in the free list. Note that
+it is a best effort attempt and it is not guaranteed that after a call
+to this function there will be 'max' blocks in the free list.
+@return number of blocks for which the write request was queued. */
+static
+ulint
+buf_flush_nvdimm_LRU_list_batch(
+/*=====================*/
+	buf_pool_t*	buf_pool,	/*!< in: buffer pool instance */
+	ulint		max)		/*!< in: desired number of
+					blocks in the free_list */
+{
+	buf_page_t*	bpage;
+	ulint		evict_count = 0;
+	ulint		count = 0;
+
+	ut_ad(buf_pool_mutex_own(buf_pool));
+
+	for (bpage = UT_LIST_GET_LAST(buf_pool->LRU);
+	     bpage != NULL && count + evict_count < max;
+	     bpage = buf_pool->lru_hp.get()) {
+
+		buf_page_t* prev = UT_LIST_GET_PREV(LRU, bpage);
+		buf_pool->lru_hp.set(prev);
+
+        //if (bpage->id.space() == 28)  continue;
+//        if (bpage->id.space() != 30 && bpage->id.space() != 32)  continue;
+
+		BPageMutex*	block_mutex = buf_page_get_mutex(bpage);
+
+		mutex_enter(block_mutex);
+
+		if (buf_flush_ready_for_replace(bpage)) {
+			/* block is ready for eviction i.e., it is
+			clean and is not IO-fixed or buffer fixed. */
+			mutex_exit(block_mutex);
+			if (buf_LRU_free_page(bpage, true)) {
+				++evict_count;
+			}
+		} else if (buf_flush_ready_for_flush(bpage, BUF_FLUSH_LRU)) {
+			/* Block is ready for flush. Dispatch an IO
+			request. The IO helper thread will put it on
+			free list in IO completion routine. */
+			mutex_exit(block_mutex);
+			buf_flush_page_and_try_neighbors(
+				bpage, BUF_FLUSH_LRU, max, &count);
+		} else {
+			/* Can't evict or dispatch this block. Go to
+			previous. */
+			ut_ad(buf_pool->lru_hp.is_hp(prev));
+			mutex_exit(block_mutex);
+		}
+
+		ut_ad(!mutex_own(block_mutex));
+		ut_ad(buf_pool_mutex_own(buf_pool));
+	}
+
+	buf_pool->lru_hp.set(NULL);
+
+	/* We keep track of all flushes happening as part of LRU
+	flush. When estimating the desired rate at which flush_list
+	should be flushed, we factor in this value. */
+	//buf_lru_flush_page_count += count;
+
+	ut_ad(buf_pool_mutex_own(buf_pool));
+
+	/*if (evict_count) {
+		MONITOR_INC_VALUE_CUMULATIVE(
+			MONITOR_LRU_BATCH_EVICT_TOTAL_PAGE,
+			MONITOR_LRU_BATCH_EVICT_COUNT,
+			MONITOR_LRU_BATCH_EVICT_PAGES,
+			evict_count);
+	}*/
+
+	return(count);
+}
+
+/** Do flushing batch of a given type.
+NOTE: The calling thread is not allowed to own any latches on pages!
+@param[in,out]	buf_pool	buffer pool instance
+@param[in]	type		flush type
+@param[in]	min_n		wished minimum mumber of blocks flushed
+(it is not guaranteed that the actual number is that big, though)
+@param[in]	lsn_limit	in the case BUF_FLUSH_LIST all blocks whose
+oldest_modification is smaller than this should be flushed (if their number
+does not exceed min_n), otherwise ignored
+@param[out]	n_processed	the number of pages which were processed is
+passed back to caller. Ignored if NULL
+@retval true	if a batch was queued successfully.
+@retval false	if another batch of same type was already running. */
+bool
+buf_flush_do_nvdimm_batch(
+	buf_pool_t*		buf_pool,
+	buf_flush_t		type,
+	ulint			min_n,
+	lsn_t			lsn_limit,
+	ulint*			n_processed)
+{
+	ut_ad(type == BUF_FLUSH_LRU);
+
+	if (n_processed != NULL) {
+		*n_processed = 0;
+	}
+
+	if (!buf_flush_start(buf_pool, type)) {
+            ib::info() << "fail.." << buf_pool->n_flush[BUF_FLUSH_LRU] << " " << buf_pool->init_flush[BUF_FLUSH_LRU]; 
+		return(false);
+	}
+    
+	buf_pool_mutex_enter(buf_pool);
+    ulint   page_count = buf_flush_nvdimm_LRU_list_batch(buf_pool, 1024);
+	buf_pool_mutex_exit(buf_pool);
+    
+	buf_flush_end(buf_pool, type);
+    
+	if (n_processed != NULL) {
+		*n_processed = page_count;
+	}
+
+	return(true);
+}
+
+/*********************************************************************//**
+Wait for any possible LRU flushes that are in progress to end. */
+void
+buf_flush_wait_nvdimm_LRU_batch_end(void)
+/*==============================*/
+{
+    for (ulint i = 0; i < srv_nvdimm_buf_pool_instances; i++) {
+		buf_pool_t*	buf_pool = &nvdimm_buf_pool_ptr[i];
+
+		buf_pool_mutex_enter(buf_pool);
+
+		if (buf_pool->n_flush[BUF_FLUSH_LRU] > 0
+		   || buf_pool->init_flush[BUF_FLUSH_LRU]) {
+
+			buf_pool_mutex_exit(buf_pool);
+
+            thd_wait_begin(NULL, THD_WAIT_DISKIO);
+            ib::info() << "begin " << buf_pool->n_flush[BUF_FLUSH_LRU] << " " << buf_pool->init_flush[BUF_FLUSH_LRU]; 
+            os_event_wait(buf_pool->no_flush[BUF_FLUSH_LRU]);
+            ib::info() << "end"; 
+            thd_wait_end(NULL);
+		} else {
+			buf_pool_mutex_exit(buf_pool);
+		}
+	}
+}
+
+/*********************************************************************//**
+Puts the NVDIMM page_cleaner thread to sleep if it has finished work in less
+than a second
+@retval 0 wake up by event set,
+@retval OS_SYNC_TIME_EXCEEDED if timeout was exceeded
+@param next_loop_time	time when next loop iteration should start
+@param sig_count	zero or the value returned by previous call of
+			os_event_reset() */
+static
+ulint
+pc_sleep_nvdimm_cleaner_if_needed(
+/*===============*/
+	ulint		next_loop_time,
+	int64_t		sig_count)
+{
+	ulint	cur_time = ut_time_ms();
+
+	if (next_loop_time > cur_time) {
+		/* Get sleep interval in micro seconds. We use
+		ut_min() to avoid long sleep in case of wrap around. */
+		ulint	sleep_us;
+
+		sleep_us = ut_min(static_cast<ulint>(1000000),
+				  (next_loop_time - cur_time) * 1000);
+
+		return(os_event_wait_time_low(buf_flush_nvdimm_event,
+					      sleep_us, sig_count));
+	}
+
+	return(OS_SYNC_TIME_EXCEEDED);
+}
+
+/******************************************************************//**
+NVDIMM page_cleaner thread tasked with flushing dirty pages from the
+buffer pools.
+@return a dummy parameter */
+extern "C"
+os_thread_ret_t
+DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
+/*===============================================*/
+	void*	arg MY_ATTRIBUTE((unused)))
+			/*!< in: a dummy parameter required by
+			os_thread_create */
+{
+    my_thread_init();
+
+/*#ifdef UNIV_PFS_THREAD
+	pfs_register_thread(page_flush_nvdimm_thread_key);
+#endif*/ /* UNIV_PFS_THREAD */
+
+    ulint n_flushed = 0;
+    buf_pool_t *buf_pool = buf_pool_from_array(8);
+    ulint next_loop_time = ut_time_ms() + 1000;
+    ulint last_activity = srv_get_activity_count();
+
+    os_event_wait(buf_flush_nvdimm_event);
+
+    ulint ret_sleep = 0;
+    ulint warn_interval = 1;
+    ulint warn_count = 0;
+    int64_t sig_count = os_event_reset(buf_flush_nvdimm_event);
+
+    buf_nvdimm_page_cleaner_is_active = true;
+    
+    while (srv_shutdown_state == SRV_SHUTDOWN_NONE) {
+        //os_event_wait(buf_flush_nvdimm_event);
+
+        if (srv_check_activity(last_activity) || n_flushed == 0) {
+            ret_sleep = pc_sleep_nvdimm_cleaner_if_needed(next_loop_time, sig_count);
+        } else if (ut_time_ms() > next_loop_time) {
+            ret_sleep = OS_SYNC_TIME_EXCEEDED;
+        } else {
+            ret_sleep = 0;
+        }
+
+        sig_count = os_event_reset(buf_flush_nvdimm_event);
+
+        if (ret_sleep == OS_SYNC_TIME_EXCEEDED) {
+            ulint curr_time = ut_time_ms();
+
+            if (curr_time > next_loop_time + 3000) {
+                if (warn_count == 0) {
+                    ib::info()
+                        << "NVDIMM Page cleaner took "
+                        << 1000 + curr_time - next_loop_time; 
+                    if (warn_interval > 300) {
+                        warn_interval = 600;
+                    } else {
+                        warn_interval *= 2;
+                    }
+
+                    warn_count = warn_interval;
+                } else {
+                    --warn_count;
+                }
+            } else {
+                /* reset counter */
+                warn_interval = 1;
+                warn_count = 0;
+            }
+
+            next_loop_time = curr_time + 1000;
+        }
+
+        /* TODO: Need to fix for shutdown */
+        if (!page_cleaner->is_running) {
+            break;
+        }
+
+        if (srv_check_activity(last_activity)) {
+            /* Flush pages from end of LRU */
+            buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
+            /*buf_pool_mutex_enter(buf_pool);
+            n_flushed = buf_flush_nvdimm_LRU_list_batch(buf_pool, 1024);
+            buf_pool_mutex_exit(buf_pool);
+            
+            buf_flush_end(buf_pool, BUF_FLUSH_LRU);    */
+        }
+//
+        //if (n_flushed) {
+        /*sig_count = *///os_event_reset(buf_flush_nvdimm_event);
+        //}
+    }
+
+    if (srv_fast_shutdown == 2
+            || srv_shutdown_state == SRV_SHUTDOWN_EXIT_THREADS) {
+        /* In very fast shutdown or when innodb failed to start, we
+           simulate a crash of the buffer pool. We are not required to do
+           any flushing. */
+        goto thread_exit;
+    }
+
+    n_flushed = 0;
+    do {
+        buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
+        
+        /* We sleep only if there are no pages to flush */
+		if (n_flushed == 0) {
+			os_thread_sleep(100000);
+		}
+    } while (srv_shutdown_state == SRV_SHUTDOWN_CLEANUP);
+
+    buf_flush_wait_nvdimm_LRU_batch_end();
+
+    n_flushed = 0;
+    do {
+        buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
+        
+        buf_flush_wait_nvdimm_LRU_batch_end();
+    } while (n_flushed > 0);
+
+    for (ulint i = 0; i < srv_nvdimm_buf_pool_instances; i++) {
+		buf_pool_t* buf_pool = &nvdimm_buf_pool_ptr[i];
+		ut_a(UT_LIST_GET_LEN(buf_pool->flush_list) == 0);
+	}
+    
+    ib::info() << "Completed to clean the NVDIMM buffer";
+    
+thread_exit:
+    buf_nvdimm_page_cleaner_is_active = false;
+    my_thread_end();
+    os_thread_exit();
+    OS_THREAD_DUMMY_RETURN;
+}
+#endif /* UNIV_NVDIMM_CACHE */

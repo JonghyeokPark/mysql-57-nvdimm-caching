@@ -2092,14 +2092,15 @@ buf_pool_free_instance(
 
 	while (--chunk >= chunks) {
 		buf_block_t*	block = chunk->blocks;
+    
+        if (buf_pool->instance_no == 8 && chunk == chunks) break;
 
 		for (ulint i = chunk->size; i--; block++) {
 			mutex_free(&block->mutex);
 			rw_lock_free(&block->lock);
-
 			ut_d(rw_lock_free(&block->debug_latch));
 		}
-
+        
 		buf_pool->allocator.deallocate_large(
 			chunk->mem, &chunk->mem_pfx);
 	}
@@ -2173,13 +2174,13 @@ buf_pool_free(
 /*==========*/
 	ulint	n_instances)	/*!< in: numbere of instances to free */
 {
-#ifdef UNIV_NVDIMM_CACHE
-    nvdimm_buf_pool_free(srv_nvdimm_buf_pool_instances);
-#endif /* UNIV_NVDIMM_CACHE */
-
 	for (ulint i = 0; i < n_instances; i++) {
 		buf_pool_free_instance(buf_pool_from_array(i));
 	}
+
+#ifdef UNIV_NVDIMM_CACHE
+    nvdimm_buf_pool_free(srv_nvdimm_buf_pool_instances);
+#endif /* UNIV_NVDIMM_CACHE */
 
 	UT_DELETE(buf_chunk_map_reg);
 	buf_chunk_map_reg = buf_chunk_map_ref = NULL;
@@ -2198,8 +2199,8 @@ nvdimm_buf_pool_free(
 	ulint	n_instances)	/*!< in: numbere of instances to free */
 {
     for (ulint i = 0; i < n_instances; i++) {
-		buf_pool_free_instance(&nvdimm_buf_pool_ptr[i]);
-	}
+    	buf_pool_free_instance(&nvdimm_buf_pool_ptr[i]);
+    }
 
 	ut_free(nvdimm_buf_pool_ptr);
 	nvdimm_buf_pool_ptr = NULL;
@@ -7293,7 +7294,7 @@ ibool
 buf_all_freed(void)
 /*===============*/
 {
-	for (ulint i = 0; i < srv_buf_pool_instances; i++) {
+    for (ulint i = 0; i < srv_buf_pool_instances; i++) {
 		buf_pool_t*	buf_pool;
 
 		buf_pool = buf_pool_from_array(i);
@@ -7302,6 +7303,16 @@ buf_all_freed(void)
 			return(FALSE);
 		}
 	}
+
+#ifdef UNIV_NVDIMM_CACHE
+	for (ulint i = 0; i < srv_nvdimm_buf_pool_instances; i++) {
+        buf_pool_t* buf_pool = &nvdimm_buf_pool_ptr[i];
+
+		if (!buf_all_freed_instance(buf_pool)) {
+			return(FALSE);
+		}
+	}
+#endif /* UNIV_NVDIMM_CACHE */
 
 	return(TRUE);
 }
