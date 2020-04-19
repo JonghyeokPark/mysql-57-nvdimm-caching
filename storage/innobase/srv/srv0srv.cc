@@ -251,6 +251,8 @@ ulint srv_nvdimm_buf_pool_size = ULINT_MAX;
 ulong srv_nvdimm_buf_pool_instances = 1;
 /** Wakeup the NVDIMM page cleaner when this % of free pages remaining */
 ulong srv_nvdimm_pc_threshold_pct = 2;
+/** NVDIMM-aware file resident directory */
+char* srv_nvdimm_home_dir = NULL;
 #endif /* UNIV_NVDIMM_CACHE */
 
 /** Requested size in bytes */
