@@ -7178,12 +7178,13 @@ buf_print_io(
 	if (srv_buf_pool_instances > 1) {
 #ifdef UNIV_NVDIMM_CACHE
         pool_info = (buf_pool_info_t*) ut_zalloc_nokey((
-			srv_buf_pool_instances + 2) * sizeof *pool_info);
+			srv_buf_pool_instances + 1 + srv_nvdimm_buf_pool_instances) * sizeof *pool_info);
+		pool_info_total = &pool_info[srv_buf_pool_instances + srv_nvdimm_buf_pool_instances];
 #else
         pool_info = (buf_pool_info_t*) ut_zalloc_nokey((
 			srv_buf_pool_instances + 1) * sizeof *pool_info);
-#endif /* UNIV_NVDIMM_CACHE */
 		pool_info_total = &pool_info[srv_buf_pool_instances];
+#endif /* UNIV_NVDIMM_CACHE */
 	} else {
 		ut_a(srv_buf_pool_instances == 1);
 
@@ -7193,7 +7194,7 @@ buf_print_io(
 	}
 
 #ifdef UNIV_NVDIMM_CACHE
-	for (i = 0; i < srv_buf_pool_instances + 1; i++) {
+	for (i = 0; i < srv_buf_pool_instances + srv_nvdimm_buf_pool_instances; i++) {
 #else
     for (i = 0; i < srv_buf_pool_instances; i++) {
 #endif /* UNIV_NVDIMM_CACHE */ 

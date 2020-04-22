@@ -1115,8 +1115,8 @@ buf_flush_write_block_low(
 
             IORequest	request(type);
 
-            /*if (bpage->cached_in_nvdimm) {
-                ib::info() << bpage->id.page_no()
+           /* if (bpage->cached_in_nvdimm) {
+                ib::info() << bpage->id.space() << " " << bpage->id.page_no()
                     << " is written from " << bpage->cached_in_nvdimm
                     << " flush-type: " << flush_type
                     << " with oldest: " << bpage->oldest_modification
@@ -1307,7 +1307,7 @@ buf_flush_page(
             lsn_t lsn_gap = bpage->oldest_modification - before_lsn;
 
             /* FIXME: Ad-hoc method */
-            if (200000000 < lsn_gap && lsn_gap < 400000000) {
+            if (2000000000 < lsn_gap && lsn_gap < 4000000000) {
                 bpage->moved_to_nvdimm = true;
                 srv_stats.nvdimm_pages_stored_st.inc();
             }
@@ -2288,6 +2288,13 @@ buf_flush_single_page_from_LRU(
 		ut_ad(buf_pool_mutex_own(buf_pool));
 
 		buf_page_t*	prev = UT_LIST_GET_PREV(LRU, bpage);
+       
+#ifdef UNIV_NVDIMM_CACHE
+        if (prev == NULL && buf_pool->instance_no == 8) {
+            ib::info() << "null error";
+            break;
+        }
+#endif /* UNIV_NVDIMM_CACHE */
 
 		buf_pool->single_scan_itr.set(prev);
 
@@ -4086,9 +4093,7 @@ buf_flush_wait_nvdimm_LRU_batch_end(void)
 			buf_pool_mutex_exit(buf_pool);
 
             thd_wait_begin(NULL, THD_WAIT_DISKIO);
-            ib::info() << "begin " << buf_pool->n_flush[BUF_FLUSH_LRU] << " " << buf_pool->init_flush[BUF_FLUSH_LRU]; 
             os_event_wait(buf_pool->no_flush[BUF_FLUSH_LRU]);
-            ib::info() << "end"; 
             thd_wait_end(NULL);
 		} else {
 			buf_pool_mutex_exit(buf_pool);
