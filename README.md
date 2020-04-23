@@ -10,17 +10,7 @@ Optimize MySQL/InnoDB using NVDIMM
 $ git clone https://github.com/meeeejin/mysql-57-nvdimm-caching.git
 ```
 
-2. Change the value of `BASE_DIR` in the `build.sh` file to the desired value:
-
-```bash
-$ vi build.sh
-#!/bin/bash
-
-BASE_DIR=/home/xxx/mysql-57-nvdimm-caching
-...
-```
-
-3. Run the script file:
+2. Run the script file:
 
 ```bash
 $ ./build.sh
@@ -67,5 +57,5 @@ innodb_nvdimm_pc_threshold_pct=5
 2. Run the MySQL server:
 
 ```bash
-$ ./bin/mysqld --defaults-file=my-nvdimm.cnf
+$ ./bld/bin/mysqld --defaults-file=my.cnf
 ``` 
