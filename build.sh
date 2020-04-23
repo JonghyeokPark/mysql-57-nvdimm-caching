@@ -1,6 +1,6 @@
 #!/bin/bash
 
-BASE_DIR=/home/mijin/mysql-5.7.24
+BASE_DIR=`pwd -P`
 BUILD_DIR=$BASE_DIR/bld
 
 # Make a directory for build
