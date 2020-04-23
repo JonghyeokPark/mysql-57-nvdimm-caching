@@ -41,6 +41,10 @@ Created 11/5/1995 Heikki Tuuri
 #include "srv0srv.h"
 #include <ostream>
 
+#ifdef UNIV_DYNAMIC_NVDIMM_CACHE
+#include "dynamic0nvdimm.h"
+#endif
+
 // Forward declaration
 struct fil_addr_t;
 

@@ -111,6 +111,10 @@ extern char* gb_pm_mmap;
 char  PMEM_FILE_PATH [PMEM_MMAP_MAX_FILE_NAME_LENGTH];
 #endif /* UNIV_NVDIMM_CACHE */
 
+#if defined(UNIV_NVDIMM_CACHE) && defined(UNIV_DYNAMIC_NVDIMM_CACHE)
+#include "dynamic0nvdimm.h"
+#endif /* UNIV_DYNAMIC_NVDIMM_CACHE */
+
 #ifdef HAVE_LZO1X
 #include <lzo/lzo1x.h>
 extern bool srv_lzo_disabled;
@@ -1497,6 +1501,7 @@ innobase_start_or_create_for_mysql(void)
     PMEMMMAP_ERROR_PRINT("gb_pm_mmap created failed  dir: %s\nsize: %zu\n", PMEM_FILE_PATH, pool_size);
     assert(gb_pm_mmap);
   }
+  PMEMMMAP_INFO_PRINT("pmem mtr log region finished!\n");
 #endif /* UNIV_NVDIMM_CACHE */
 
 
@@ -1897,6 +1902,10 @@ innobase_start_or_create_for_mysql(void)
 
 	fsp_init();
 	log_init();
+
+#ifdef UNIV_NVDIMM_CACHE
+  pm_mmap_mtrlogbuf_init(1024*1024*1024*8UL);
+#endif
 
 	recv_sys_create();
 	recv_sys_init(buf_pool_get_curr_size());
@@ -2729,6 +2738,23 @@ files_checked:
 
 	/* Create the buffer pool resize thread */
 	os_thread_create(buf_resize_thread, NULL, NULL);
+
+  // TODO(jhapark) : is this location correct?
+#if defined(UNIV_NVDIMM_CACHE) && defined(UNIV_DYNAMIC_NVDIMM_CACHE)
+  if (srv_use_dynamic_nvdimm_caching) {
+    // print out dynamic caching status 
+    NVDIMM_DEBUG_PRINT("[DYNAMIC_CACHING] Dynamic NVDIMM Caching enabled\n");
+    // print out dynamic caching tables server variable
+    NVDIMM_DEBUG_PRINT("[DYNAMIC_CACHING] table names: %s\n", srv_dynamic_nvdimm_tables);
+
+    // save the table spaces names for dynamic caching
+    save_dnc_tables(srv_dynamic_nvdimm_tables);
+    // save the table space ids for dynamic caching
+    save_dnc_space_ids();
+    // print out dynamic caching status
+    show_dnc_status();
+  }
+#endif
 
 	srv_was_started = TRUE;
 	return(DB_SUCCESS);

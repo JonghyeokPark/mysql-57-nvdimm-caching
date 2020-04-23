@@ -19,6 +19,7 @@ INCLUDE(innodb.cmake)
 
 SET(INNOBASE_SOURCES
   pmem/pmem0mmap.cc
+  pmem/dynamic0nvdimm.cc
 	api/api0api.cc
 	api/api0misc.cc
 	btr/btr0btr.cc

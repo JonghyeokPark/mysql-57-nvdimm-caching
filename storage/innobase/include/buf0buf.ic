@@ -39,6 +39,8 @@ Created 11/5/1995 Heikki Tuuri
 #include "fsp0types.h"
 #include "ut0new.h"
 
+#include "dynamic0nvdimm.h"
+
 /** A chunk of buffers. The buffer pool is allocated in chunks. */
 struct buf_chunk_t{
 	ulint		size;		/*!< size of frames[] and blocks[] */
@@ -1031,7 +1033,9 @@ buf_pool_get(
         return(&nvdimm_buf_pool_ptr[0]);
     } 
 #ifdef UNIV_NVDIMM_CACHE_OL
-    if (page_id.space() == 30 && buf_page_hash_get_low(&nvdimm_buf_pool_ptr[0], page_id)) {
+    //if (page_id.space() == 30 
+    if (page_id.space() == NC_OL
+        && buf_page_hash_get_low(&nvdimm_buf_pool_ptr[0], page_id)) {
         return (&nvdimm_buf_pool_ptr[0]);
     }
 #endif /* UNIV_NVDIMM_CACHE_OL */

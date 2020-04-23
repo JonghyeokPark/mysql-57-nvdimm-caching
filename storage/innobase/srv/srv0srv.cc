@@ -255,6 +255,13 @@ ulong srv_nvdimm_pc_threshold_pct = 2;
 char* srv_nvdimm_home_dir = NULL;
 #endif /* UNIV_NVDIMM_CACHE */
 
+#if defined(UNIV_NVDIMM_CACHE) && defined(UNIV_DYNAMIC_NVDIMM_CACHE)
+/* If true then enable dynamic nvdimm caching */
+my_bool srv_use_dynamic_nvdimm_caching = FALSE;
+/* Dynamic nvdimm caching tables string */
+char* srv_dynamic_nvdimm_tables = NULL;
+#endif /* UNIV_DYNAMIC_NVDIMM_CACHE */
+
 /** Requested size in bytes */
 ulint	srv_buf_pool_size	= ULINT_MAX;
 /** Minimum pool size in bytes */

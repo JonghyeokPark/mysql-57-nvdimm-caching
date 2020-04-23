@@ -505,11 +505,10 @@ struct mtr_nvm_write_log_t {
     // Get current LSN from the log_sys global object
     // protected by mutex. multiple NVDIMM caching page might
     // have same LSN. They can be distinguished by mtrlogbuf's LSN.
-    log_mutex_enter();
     lsn_t m_lsn = log_sys->lsn;
-    log_mutex_exit();
-
-		if (pm_mmap_mtrlogbuf_write(block->begin(), block->used(), m_lsn) <= 0) {
+    fprintf(stderr, "lsn: %lu\n", m_lsn);
+		
+    if (pm_mmap_mtrlogbuf_write(block->begin(), block->used(), m_lsn) <= 0) {
 			PMEMMMAP_ERROR_PRINT("pm_mmap_mlogbuf_write failed\n");
 		}
 		return(true);
@@ -725,8 +724,17 @@ void mtr_t::commit_nvm() {
   m_impl.m_state = MTR_STATE_COMMITTING;
   // jhpark: release the mtr structure 
   Command cmd(this);
-  cmd.release_all();
-  cmd.release_resources();
+
+//	if (m_impl.m_modifications
+//	    && (m_impl.m_n_log_recs > 0
+//		|| m_impl.m_log_mode == MTR_LOG_NO_REDO)) {
+
+    // JOGNQ: check which parts are problem
+//    cmd.execute_nvm();
+//  } else {
+    cmd.release_all();
+    cmd.release_resources();
+//  }
 }
 #endif /* UNIV_NVDIMM_CACHE */
 
@@ -896,7 +904,9 @@ mtr_t::Command::prepare_write_nvm()
 		space = NULL;
 	}
 
-	log_mutex_enter();
+  //fprintf(stderr, "[JONGQ] mtr log_mutex_enter!\n");
+	//log_mutex_enter();
+  //fprintf(stderr, "[JONGQ] mtr log_mutex_enter! --finished\n");
 
 	if (fil_names_write_if_was_clean(space, m_impl->m_mtr)) {
 		/* This mini-transaction was the first one to modify
@@ -1031,8 +1041,10 @@ mtr_t::Command::finish_write_nvm(
 
 	/* Open the database log for log_write_low */
   //m_start_lsn = log_reserve_and_open(len);
+  m_start_lsn = log_sys->lsn;
 	mtr_nvm_write_log_t	write_log;
 	m_impl->m_log.for_each_block(write_log);
+  m_end_lsn = log_sys->lsn; 
 	//m_end_lsn = log_close();
 }
 #endif /* UNIV_NVDIMM_CACHE */
@@ -1142,33 +1154,31 @@ mtr_t::Command::execute()
 void mtr_t::Command::execute_nvm() {
 	ut_ad(m_impl->m_log_mode != MTR_LOG_NONE);
 
-//	if (const ulint len = prepare_write()) {
-//		finish_write(len);
-//	}
-
-  // step1. get log 
-	const ulint len = prepare_write_nvm();
-
-  // step2. get log buffer
-
-  // step3. 
-
-	if (m_impl->m_made_dirty) {
-		log_flush_order_mutex_enter();
+	if (const ulint len = prepare_write_nvm()) {
+    fprintf(stderr, "pm_mtrlogbuf len : %lu\n", len);
+    finish_write_nvm(len);
 	}
+
+// TODO(jhpark): add flush_order mutex when nvdimm caching page is flushed.
+//	if (m_impl->m_made_dirty) {
+//		log_flush_order_mutex_enter();
+//	}
 
 	/* It is now safe to release the log mutex because the
 	flush_order mutex will ensure that we are the first one
 	to insert into the flush list. */
-	log_mutex_exit();
+  
+//  fprintf(stderr, "log_mutex_exit() called! m_end_lsn: %lu\n", m_end_lsn);
+//	log_mutex_exit();
+//  fprintf(stderr, "log_mutex_exit() called! -- finished\n");
 
 	m_impl->m_mtr->m_commit_lsn = m_end_lsn;
 
 	release_blocks();
 
-	if (m_impl->m_made_dirty) {
-		log_flush_order_mutex_exit();
-	}
+//	if (m_impl->m_made_dirty) {
+//		log_flush_order_mutex_exit();
+//	}
 
 	release_latches();
 	release_resources();

@@ -1115,13 +1115,14 @@ buf_flush_write_block_low(
 
             IORequest	request(type);
 
-            /*if (bpage->cached_in_nvdimm) {
-                ib::info() << bpage->id.page_no()
-                    << " is written from " << bpage->cached_in_nvdimm
-                    << " flush-type: " << flush_type
-                    << " with oldest: " << bpage->oldest_modification
-                    << " newest: " << bpage->newest_modification;
-            }*/
+            // jhpark: debugging
+            //if (bpage->cached_in_nvdimm) {
+            //    ib::info() << bpage->id.page_no()
+            //        << " is written from " << bpage->cached_in_nvdimm
+            //        << " flush-type: " << flush_type
+            //        << " with oldest: " << bpage->oldest_modification
+            //        << " newest: " << bpage->newest_modification;
+            //}
 
             fil_io(request,
                     sync, bpage->id, bpage->size, 0, bpage->size.physical(),
@@ -1283,7 +1284,7 @@ buf_flush_page(
 #ifdef UNIV_NVDIMM_CACHE
 #ifdef UNIV_NVDIMM_CACHE_OL
         /* Separate Order-Line leaf page from the other pages. */
-        if (bpage->id.space() == 30 /* Order-Line tablespace */
+        if (bpage->id.space() == NC_OL //30 /* Order-Line tablespace */
             && bpage->buf_fix_count == 0 /* Not fixed */
             && !bpage->cached_in_nvdimm /* Not cached in NVDIMM */) {
             
@@ -4055,10 +4056,10 @@ buf_flush_do_nvdimm_batch(
             ib::info() << "fail.." << buf_pool->n_flush[BUF_FLUSH_LRU] << " " << buf_pool->init_flush[BUF_FLUSH_LRU]; 
 		return(false);
 	}
-    
+   
 	buf_pool_mutex_enter(buf_pool);
     ulint   page_count = buf_flush_nvdimm_LRU_list_batch(buf_pool, 1024);
-	buf_pool_mutex_exit(buf_pool);
+  buf_pool_mutex_exit(buf_pool);
     
 	buf_flush_end(buf_pool, type);
     
