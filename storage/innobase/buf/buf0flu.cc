@@ -4150,6 +4150,8 @@ DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
 /*#ifdef UNIV_PFS_THREAD
 	pfs_register_thread(page_flush_nvdimm_thread_key);
 #endif*/ /* UNIV_PFS_THREAD */
+    
+    buf_nvdimm_page_cleaner_is_active = true;
 
     ulint n_flushed = 0;
     buf_pool_t *buf_pool = buf_pool_from_array(8);
@@ -4163,7 +4165,6 @@ DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
     ulint warn_count = 0;
     int64_t sig_count = os_event_reset(buf_flush_nvdimm_event);
 
-    buf_nvdimm_page_cleaner_is_active = true;
     
     while (srv_shutdown_state == SRV_SHUTDOWN_NONE) {
         //os_event_wait(buf_flush_nvdimm_event);

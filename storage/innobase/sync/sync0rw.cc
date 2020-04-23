@@ -312,6 +312,7 @@ rw_lock_free_func(
 
 	os_event_destroy(lock->event);
 
+    /* FIXME: mijin; */
 	os_event_destroy(lock->wait_ex_event);
 
 	UT_LIST_REMOVE(rw_lock_list, lock);

@@ -1955,6 +1955,13 @@ nvdimm_buf_pool_init_instance(
 
 		buf_pool->old_size = buf_pool->curr_size;
 		buf_pool->n_chunks_new = buf_pool->n_chunks;
+        
+        /* Number of locks protecting page_hash must be a
+		power of two */
+		srv_n_page_hash_locks = static_cast<ulong>(
+			 ut_2_power_up(srv_n_page_hash_locks));
+		ut_a(srv_n_page_hash_locks != 0);
+		ut_a(srv_n_page_hash_locks <= MAX_PAGE_HASH_LOCKS);
 
 		buf_pool->page_hash = ib_create(
 			2 * buf_pool->curr_size,
@@ -2092,8 +2099,10 @@ buf_pool_free_instance(
 
 	while (--chunk >= chunks) {
 		buf_block_t*	block = chunk->blocks;
-    
+   
+#ifdef UNIV_NVDIMM_CACHE
         if (buf_pool->instance_no == 8 && chunk == chunks) break;
+#endif /* UNIV_NVDIMM_CACHE */
 
 		for (ulint i = chunk->size; i--; block++) {
 			mutex_free(&block->mutex);

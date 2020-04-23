@@ -311,6 +311,9 @@ DECLARE_THREAD(io_handler_thread)(
 
 	while (srv_shutdown_state != SRV_SHUTDOWN_EXIT_THREADS
 	       || buf_page_cleaner_is_active
+#ifdef UNIV_NVDIMM_CACHE
+	       || buf_nvdimm_page_cleaner_is_active
+#endif /* UNIV_NVDIMM_CACHE */
 	       || !os_aio_all_slots_free()) {
 		fil_aio_wait(segment);
 	}
@@ -1659,6 +1662,9 @@ innobase_start_or_create_for_mysql(void)
 			    + srv_n_write_io_threads
 			    + srv_n_purge_threads
 			    + srv_n_page_cleaners
+#ifdef UNIV_NVDIMM_CACHE
+                + 1 /* a NVDIMM page cleaner */
+#endif /* UNIV_NVDIMM_CACHE */
 			    /* FTS Parallel Sort */
 			    + fts_sort_pll_degree * FTS_NUM_AUX_INDEX
 			      * max_connections;
@@ -1917,6 +1923,13 @@ innobase_start_or_create_for_mysql(void)
 	while (!buf_page_cleaner_is_active) {
 		os_thread_sleep(10000);
 	}
+
+#ifdef UNIV_NVDIMM_CACHE
+	/* Make sure page cleaner is active. */
+	while (!buf_nvdimm_page_cleaner_is_active) {
+		os_thread_sleep(10000);
+	}
+#endif /* UNIV_NVDIMM_CACHE */
 
 	srv_start_state_set(SRV_START_STATE_IO);
 
