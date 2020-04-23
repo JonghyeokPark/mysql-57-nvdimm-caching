@@ -1,6 +1,6 @@
 #!/bin/bash
 
-BASE_DIR=/home/mijin/mysql-5.7.24
+BASE_DIR=`pwd -P`
 BUILD_DIR=$BASE_DIR/bld
 
 # Make a directory for build
@@ -9,7 +9,7 @@ if [ ! -d "$BUILD_DIR" ]; then
     mkdir bld
 fi
 
-cd $BASE_DIR
+cd $BUILD_DIR
 
 # Build and install the source code
 if [ "$1" = "--origin" ]; then
@@ -31,7 +31,7 @@ fi
 
 echo "Start build using $BUILD_FLAGS"
 
-cmake -DWITH_DEBUG=0 -DCMAKE_C_FLAGS="$BUILD_FLAGS" -DCMAKE_CXX_FLAGS="$BUILD_FLAGS" -DDOWNLOAD_BOOST=ON -DWITH_BOOST=$BASE_DIR/boost -DCMAKE_INSTALL_PREFIX=$BUILD_DIR
+cmake .. -DWITH_DEBUG=0 -DCMAKE_C_FLAGS="$BUILD_FLAGS" -DCMAKE_CXX_FLAGS="$BUILD_FLAGS" -DDOWNLOAD_BOOST=ON -DWITH_BOOST=$BASE_DIR/boost -DCMAKE_INSTALL_PREFIX=$BUILD_DIR -DENABLED_LOCAL_INFILE=1 
 
 make -j8
 sudo make install
