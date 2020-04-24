@@ -1,6 +1,6 @@
 #!/bin/bash
 
-BASE_DIR=/home/mijin/mysql-5.7.24
+BASE_DIR=`pwd -P`
 BUILD_DIR=$BASE_DIR/bld
 
 # Make a directory for build
@@ -24,6 +24,9 @@ elif [ "$1" = "--nc-st" ]; then
 elif [ "$1" = "--nc-ol-st" ]; then
     # Cache New-Orders, Order-Line and Stock pages
     BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_NVDIMM_CACHE_NO -DUNIV_NVDIMM_CACHE_OL -DUNIV_NVDIMM_CACHE_ST"
+elif [ "$1" = "--mtr" ]; then
+    # mtr-logging
+    BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_NVDIMM_CACHE_NO -DUNIV_NVDIMM_CACHE_OL -DUNIV_LOG_HEADER"
 else
     # Cache New-Orders and Order-Line pages (default)
     BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_NVDIMM_CACHE_NO -DUNIV_NVDIMM_CACHE_OL"
