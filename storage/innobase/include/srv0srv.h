@@ -338,6 +338,8 @@ extern ulint srv_nvdimm_buf_pool_size;
 extern ulong srv_nvdimm_buf_pool_instances;
 /** Wakeup the NVDIMM page cleaner when this % of free pages remaining */
 extern ulong srv_nvdimm_pc_threshold_pct;
+/** NVDIMM-aware file resident directory */
+extern char* srv_nvdimm_home_dir;
 #endif /* UNIV_NVDIMM_CACHE */
 
 /** Requested size in bytes */
