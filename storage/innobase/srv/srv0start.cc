@@ -107,7 +107,7 @@ Created 2/16/1996 Heikki Tuuri
 #ifdef UNIV_NVDIMM_CACHE
 #include "buf0nvdimm.h"
 #include "pmem_mmap_obj.h" 
-extern char* gb_pm_mmap;
+extern unsigned char* gb_pm_mmap;
 char  PMEM_FILE_PATH [PMEM_MMAP_MAX_FILE_NAME_LENGTH];
 #endif /* UNIV_NVDIMM_CACHE */
 
@@ -1501,6 +1501,11 @@ innobase_start_or_create_for_mysql(void)
     assert(gb_pm_mmap);
   }
   PMEMMMAP_INFO_PRINT("pmem mtr log region finished!\n");
+
+	// for debugging : chagne the mtr log region size
+	// original : 1024*1024*1024*8UL (8GB)
+	// debugging : 1024*1024*1024*1UL (1MB)
+	pm_mmap_mtrlogbuf_init(1024*1024*1UL);
 #endif /* UNIV_NVDIMM_CACHE */
 
 #ifdef HAVE_LZO1X
@@ -1904,9 +1909,9 @@ innobase_start_or_create_for_mysql(void)
 	fsp_init();
 	log_init();
 
-#ifdef UNIV_NVDIMM_CACHE
-	pm_mmap_mtrlogbuf_init(1024*1024*1024*8UL);
-#endif
+//#ifdef UNIV_NVDIMM_CACHE
+//	pm_mmap_mtrlogbuf_init(1024*1024*1024*8UL);
+//#endif
 
 	recv_sys_create();
 	recv_sys_init(buf_pool_get_curr_size());

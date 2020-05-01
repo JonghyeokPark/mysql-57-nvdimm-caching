@@ -10,6 +10,7 @@
 #include <assert.h>
 #include <unistd.h>
 
+#include <pthread.h>
 #include "log0log.h"
 
 // (jhpark): this header file for UNIV_NVDIMM_CACHE
@@ -82,6 +83,7 @@ typedef struct __pmem_mmap_mtrlog_fileheader PMEM_MMAP_MTRLOGFILE_HDR;
 #define PMEM_MMAP_MTRLOG_HDR_SIZE sizeof(PMEM_MMAP_MTRLOG_HDR)
 #define PMEM_MMAP_LOGFILE_HEADER_SZ sizeof(PMEM_MMAP_MTRLOGFILE_HDR)
 
+
 /* PMEM_MMAP mtrlog file header */
 
 // TOOD(jhpark) remove unncessary part after fixing recovery algorithm
@@ -97,15 +99,20 @@ typedef struct __pmem_mmap_mtrlog_fileheader PMEM_MMAP_MTRLOGFILE_HDR;
 //const uint32_t PMEM_MMAP_LOGFILE_HEADER_SZ = sizeof(__pmem_mmap_mtrlog_buf);
 //const uint32_t PMEM_MTRLOG_BLOCK_SZ = 256
 
-#define PMEM_MMAP_MTR_FIL_HDR_LSN 0
-#define PMEM_MMAP_MTR_FIL_HDR_CKPT_LSN 8
-#define PMEM_MMAP_MTR_FIL_HDR_SIZE 16
+#define PMEM_MMAP_MTR_FIL_HDR_SIZE 0
+#define PMEM_MMAP_MTR_FIL_HDR_LSN 8
+#define PMEM_MMAP_MTR_FIL_HDR_CKPT_LSN 16
+#define PMEM_MMAP_MTR_FIL_HDR_CKPT_OFFSET 24
+#define PMEM_MMAP_MTR_FIL_HDR_SIZE 32
 
 /////////////////////////////////////////////////////////
 
+extern PMEM_MMAP_MTRLOG_BUF* mmap_mtrlogbuf;
+
+
 // wrapper function (see pemm_obj.h)
 // mmap persistent memroy region on dax file system
-char* pm_mmap_create(const char* path, const uint64_t pool_size);
+unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size);
 // unmmap persistent memory 
 void pm_mmap_free(const uint64_t pool_size);
 
@@ -113,14 +120,17 @@ void pm_mmap_free(const uint64_t pool_size);
 /* mtr log */
 // data structure in pmem_obj
 struct __pmem_mmap_mtrlog_buf {
-  LogSysMutex mutex;    // mutex protecting writing to mtr log region
+  pthread_mutex_t mtrMutex; // mutex protecting writing to mtr log region
   bool need_recv;       // recovery flag
   
   lsn_t  mtr_sys_lsn;   // global lsn for mtr_lsn (monotically increased)
   lsn_t last_ckpt_lsn;  // checkpoint_lsn (oldest page LSN in NVDIMM caching
                         // flsuher list
+	lsn_t next_ckpt_lsn; 	// next checkpoint_lsn 
+
 	size_t size;          // total size of mtr log region
 	size_t cur_offset;    // current offset of mtr log region
+	size_t prev_offset; 	// prev_offset
 
 };
 
@@ -132,9 +142,10 @@ struct __pmem_mmap_mtrlog_fileheader {
 };
 
 struct __pmem_mmap_mtrlog_hdr {
-	unsigned long int len;    // length of mtr log payload
-	unsigned long int lsn;      // lsn from global log_sys
-  unsigned long int mtr_lsn;  // mtr log lsn
+	unsigned long int len;    		 // length of mtr log payload
+	unsigned long int lsn;      	 // lsn from global log_sys
+  unsigned long int mtr_lsn;  	 // mtr log lsn
+	unsigned long int prev_offset; // prev mtr log header offset  
 };
 
 // logging? 
@@ -143,6 +154,9 @@ int pm_mmap_mtrlogbuf_init(const size_t size);
 void pm_mmap_mtrlogbuf_mem_free();
 void pm_mmap_write_logfile_header_size(size_t size);
 void pm_mmap_write_logfile_header_lsn(lsn_t lsn);
+void pm_mmap_write_logfile_header_ckpt_info(uint64_t offset, lsn_t lsn);
+uint64_t pm_mmap_log_checkpoint(uint64_t offset);
+
 ssize_t pm_mmap_mtrlogbuf_write(const uint8_t* buf, 
                                 unsigned long int n, unsigned long int lsn);
 

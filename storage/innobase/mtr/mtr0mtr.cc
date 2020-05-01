@@ -41,7 +41,8 @@ Created 11/26/1995 Heikki Tuuri
 
 #ifdef UNIV_NVDIMM_CACHE
 #include "pmem_mmap_obj.h"
-extern char* gb_pm_mmap;
+extern unsigned char* gb_pm_mmap;
+extern PMEM_MMAP_MTRLOG_BUF* mmap_mtrlogbuf;
 #endif /* UNIV_NVDIMM_CACHE */
 
 /** Iterate over a memo block in reverse. */
@@ -506,7 +507,6 @@ struct mtr_nvm_write_log_t {
     // protected by mutex. multiple NVDIMM caching page might
     // have same LSN. They can be distinguished by mtrlogbuf's LSN.
     lsn_t m_lsn = log_sys->lsn;
-    fprintf(stderr, "lsn: %lu\n", m_lsn);
 		
     if (pm_mmap_mtrlogbuf_write(block->begin(), block->used(), m_lsn) <= 0) {
 			PMEMMMAP_ERROR_PRINT("pm_mmap_mlogbuf_write failed\n");
@@ -889,12 +889,6 @@ mtr_t::Command::prepare_write_nvm()
 	ulint	n_recs	= m_impl->m_n_log_recs;
 	ut_ad(len > 0);
 	ut_ad(n_recs > 0);
-
-// TODO(jhpark): mtr log also introduce the log_buffer_extend
-//	if (len > log_sys->buf_size / 2) {
-//		log_buffer_extend((len + 1) * 2);
-//	}
-
 	ut_ad(m_impl->m_n_log_recs == n_recs);
 
 	fil_space_t*	space = m_impl->m_user_space;
@@ -902,10 +896,6 @@ mtr_t::Command::prepare_write_nvm()
 		/* Omit MLOG_FILE_NAME for predefined tablespaces. */
 		space = NULL;
 	}
-
-  //fprintf(stderr, "[JONGQ] mtr log_mutex_enter!\n");
-	//log_mutex_enter();
-  //fprintf(stderr, "[JONGQ] mtr log_mutex_enter! --finished\n");
 
 	if (fil_names_write_if_was_clean(space, m_impl->m_mtr)) {
 		/* This mini-transaction was the first one to modify
@@ -1039,12 +1029,10 @@ mtr_t::Command::finish_write_nvm(
 	ut_ad(len > 0);
 
 	/* Open the database log for log_write_low */
-  //m_start_lsn = log_reserve_and_open(len);
   m_start_lsn = log_sys->lsn;
 	mtr_nvm_write_log_t	write_log;
 	m_impl->m_log.for_each_block(write_log);
   m_end_lsn = log_sys->lsn; 
-	//m_end_lsn = log_close();
 }
 #endif /* UNIV_NVDIMM_CACHE */
 
@@ -1154,33 +1142,33 @@ void mtr_t::Command::execute_nvm() {
 	ut_ad(m_impl->m_log_mode != MTR_LOG_NONE);
 
 	if (const ulint len = prepare_write_nvm()) {
-    fprintf(stderr, "pm_mtrlogbuf len : %lu\n", len);
     finish_write_nvm(len);
 	}
+
+	m_impl->m_mtr->m_commit_lsn = m_end_lsn;
+	release_blocks();
+	release_latches();
+	release_resources();
 
 // TODO(jhpark): add flush_order mutex when nvdimm caching page is flushed.
 //	if (m_impl->m_made_dirty) {
 //		log_flush_order_mutex_enter();
 //	}
-
-	/* It is now safe to release the log mutex because the
-	flush_order mutex will ensure that we are the first one
-	to insert into the flush list. */
-  
+//	/* It is now safe to release the log mutex because the
+//	flush_order mutex will ensure that we are the first one
+//	to insert into the flush list. */
+//  
 //  fprintf(stderr, "log_mutex_exit() called! m_end_lsn: %lu\n", m_end_lsn);
 //	log_mutex_exit();
 //  fprintf(stderr, "log_mutex_exit() called! -- finished\n");
-
-	m_impl->m_mtr->m_commit_lsn = m_end_lsn;
-
-	release_blocks();
-
+//	m_impl->m_mtr->m_commit_lsn = m_end_lsn;
+//	release_blocks();
 //	if (m_impl->m_made_dirty) {
 //		log_flush_order_mutex_exit();
 //	}
+//	release_latches();
+//	release_resources();
 
-	release_latches();
-	release_resources();
 }
 #endif /* UNIV_NVDIMM_CACHE */
 
