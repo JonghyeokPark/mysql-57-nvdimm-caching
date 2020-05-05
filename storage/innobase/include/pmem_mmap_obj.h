@@ -99,7 +99,7 @@ typedef struct __pmem_mmap_mtrlog_fileheader PMEM_MMAP_MTRLOGFILE_HDR;
 //const uint32_t PMEM_MMAP_LOGFILE_HEADER_SZ = sizeof(__pmem_mmap_mtrlog_buf);
 //const uint32_t PMEM_MTRLOG_BLOCK_SZ = 256
 
-#define PMEM_MMAP_MTR_FIL_HDR_SIZE 0
+#define PMEM_MMAP_MTR_FIL_HDR_SIZE_OFFSET 0
 #define PMEM_MMAP_MTR_FIL_HDR_LSN 8
 #define PMEM_MMAP_MTR_FIL_HDR_CKPT_LSN 16
 #define PMEM_MMAP_MTR_FIL_HDR_CKPT_OFFSET 24
@@ -126,7 +126,8 @@ struct __pmem_mmap_mtrlog_buf {
   lsn_t  mtr_sys_lsn;   // global lsn for mtr_lsn (monotically increased)
   lsn_t last_ckpt_lsn;  // checkpoint_lsn (oldest page LSN in NVDIMM caching
                         // flsuher list
-	lsn_t next_ckpt_lsn; 	// next checkpoint_lsn 
+	
+	size_t ckpt_offset; 	// we can remove mtr log up to this offset 
 
 	size_t size;          // total size of mtr log region
 	size_t cur_offset;    // current offset of mtr log region
@@ -136,22 +137,25 @@ struct __pmem_mmap_mtrlog_buf {
 
 // mtr log file header
 struct __pmem_mmap_mtrlog_fileheader {
-  lsn_t mtr_sys_lsn;
-  lsn_t max_ckpt_lsn;
-  uint64_t size; 
+  size_t size;
+	size_t flushed_lsn;
+	size_t ckpt_lsn;
+	size_t ckpt_offset; 
 };
 
 struct __pmem_mmap_mtrlog_hdr {
+	bool need_recv;								 // true if need recovery
 	unsigned long int len;    		 // length of mtr log payload
 	unsigned long int lsn;      	 // lsn from global log_sys
   unsigned long int mtr_lsn;  	 // mtr log lsn
-	unsigned long int prev_offset; // prev mtr log header offset  
+	unsigned long int prev_offset; // prev mtr log header offset
 };
 
 // logging? 
 
 int pm_mmap_mtrlogbuf_init(const size_t size);
 void pm_mmap_mtrlogbuf_mem_free();
+void pm_mmap_read_logfile_header(PMEM_MMAP_MTRLOGFILE_HDR* mtrlog_fil_hdr);
 void pm_mmap_write_logfile_header_size(size_t size);
 void pm_mmap_write_logfile_header_lsn(lsn_t lsn);
 void pm_mmap_write_logfile_header_ckpt_info(uint64_t offset, lsn_t lsn);
@@ -159,5 +163,10 @@ uint64_t pm_mmap_log_checkpoint(uint64_t offset);
 
 ssize_t pm_mmap_mtrlogbuf_write(const uint8_t* buf, 
                                 unsigned long int n, unsigned long int lsn);
+
+bool pm_mmap_mtrlogbuf_identify(size_t offset, ulint space, ulint page_no);
+void pm_mmap_mtrlogbuf_unset_recv_flag(size_t offset);
+void pm_mmap_mtrlogbuf_commit(ulint space, ulint page_no);
+void pm_mmap_mtrlogbuf_commit_v1(ulint space, ulint page_no);
 
 #endif  /* __PMEMMAPOBJ_H__ */

@@ -500,6 +500,7 @@ struct mtr_write_log_t {
 struct mtr_nvm_write_log_t {
 	/** Append a block to the NVDIMM mtr log buffer. 
 		@return whether the appending should continue */
+  // original
 	bool operator()(const mtr_buf_t::block_t* block) const
 	{
     // TODO(jhpark) : add more description.
