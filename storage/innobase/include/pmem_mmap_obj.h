@@ -123,9 +123,9 @@ struct __pmem_mmap_mtrlog_buf {
   pthread_mutex_t mtrMutex; // mutex protecting writing to mtr log region
   bool need_recv;       // recovery flag
   
-  lsn_t  mtr_sys_lsn;   // global lsn for mtr_lsn (monotically increased)
+  lsn_t  mtr_sys_lsn;   // global lsn for mtr_lsn (monotically increased) (stale)
   lsn_t last_ckpt_lsn;  // checkpoint_lsn (oldest page LSN in NVDIMM caching
-                        // flsuher list
+                        // flsuher list (stale)
 	
 	size_t ckpt_offset; 	// we can remove mtr log up to this offset 
 
@@ -149,6 +149,9 @@ struct __pmem_mmap_mtrlog_hdr {
 	unsigned long int lsn;      	 // lsn from global log_sys
   unsigned long int mtr_lsn;  	 // mtr log lsn
 	unsigned long int prev_offset; // prev mtr log header offset
+	
+	unsigned long int space;			 // undo page space id
+	unsigned long int page_no;		 // undo page page_no
 };
 
 // logging? 
@@ -159,7 +162,9 @@ void pm_mmap_read_logfile_header(PMEM_MMAP_MTRLOGFILE_HDR* mtrlog_fil_hdr);
 void pm_mmap_write_logfile_header_size(size_t size);
 void pm_mmap_write_logfile_header_lsn(lsn_t lsn);
 void pm_mmap_write_logfile_header_ckpt_info(uint64_t offset, lsn_t lsn);
-uint64_t pm_mmap_log_checkpoint(uint64_t offset);
+uint64_t pm_mmap_log_checkpoint(uint64_t cur_offset);
+void pm_mmap_log_commit(ulint cur_space, ulint cur_page, uint64_t cur_offset);
+
 
 ssize_t pm_mmap_mtrlogbuf_write(const uint8_t* buf, 
                                 unsigned long int n, unsigned long int lsn);
