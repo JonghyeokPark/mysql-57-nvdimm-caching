@@ -1115,7 +1115,7 @@ buf_flush_write_block_low(
 
             IORequest	request(type);
 
-           /* if (bpage->cached_in_nvdimm) {
+            /*if (bpage->cached_in_nvdimm) {
                 ib::info() << bpage->id.space() << " " << bpage->id.page_no()
                     << " is written from " << bpage->cached_in_nvdimm
                     << " flush-type: " << flush_type
@@ -1260,6 +1260,43 @@ buf_flush_page(
 
 		++buf_pool->n_flush[flush_type];
 
+#ifdef UNIV_NVDIMM_CACHE
+#ifdef UNIV_NVDIMM_CACHE_OL
+        /* Separate Order-Line leaf page from the other pages. */
+        if (bpage->id.space() == 30 /* Order-Line tablespace */
+            && bpage->buf_fix_count == 0 /* Not fixed */
+            && !bpage->cached_in_nvdimm /* Not cached in NVDIMM */) {
+            
+            const byte *frame =
+                bpage->zip.data != NULL ? bpage->zip.data : ((buf_block_t *)bpage)->frame;
+
+            const ulint page_type = fil_page_get_type(frame);
+
+            if ((page_type == FIL_PAGE_INDEX || page_type == FIL_PAGE_RTREE) /* Index page */
+                && page_is_leaf(frame) /* Leaf page */) {
+                ib::info() << bpage->id.space() << " " << bpage->id.page_no() << " " << bpage->flush_type;
+                bpage->moved_to_nvdimm = true;
+                srv_stats.nvdimm_pages_stored_ol.inc();
+            }
+        }
+#endif /* UNIV_NVDIMM_CACHE_OL */
+#ifdef UNIV_NVDIMM_CACHE_ST
+        if (bpage->id.space() == 32 /* Stock tablespace */
+                   && bpage->buf_fix_count == 0 /* Not fixed */
+                   && !bpage->cached_in_nvdimm /* Not cached in NVDIMM */) {
+            lsn_t before_lsn = mach_read_from_8(reinterpret_cast<const buf_block_t *>(bpage)->frame + FIL_PAGE_LSN);
+            lsn_t lsn_gap = bpage->oldest_modification - before_lsn;
+
+            /* FIXME: Ad-hoc method */
+            if (0 < lsn_gap && lsn_gap < 500000000) {
+                ib::info() << bpage->id.space() << " " << bpage->id.page_no() << " " << bpage->flush_type << " " << lsn_gap;
+                bpage->moved_to_nvdimm = true;
+                srv_stats.nvdimm_pages_stored_st.inc();
+            }
+        }
+#endif /* UNIV_NVDIMM_CACHE_ST */
+#endif /* UNIV_NVDIMM_CACHE */
+
 		mutex_exit(block_mutex);
 
 		buf_pool_mutex_exit(buf_pool);
@@ -1279,41 +1316,6 @@ buf_flush_page(
 
 			rw_lock_sx_lock_gen(rw_lock, BUF_IO_WRITE);
 		}
-
-#ifdef UNIV_NVDIMM_CACHE
-#ifdef UNIV_NVDIMM_CACHE_OL
-        /* Separate Order-Line leaf page from the other pages. */
-        if (bpage->id.space() == 30 /* Order-Line tablespace */
-            && bpage->buf_fix_count == 0 /* Not fixed */
-            && !bpage->cached_in_nvdimm /* Not cached in NVDIMM */) {
-            
-            const byte *frame =
-                bpage->zip.data != NULL ? bpage->zip.data : ((buf_block_t *)bpage)->frame;
-
-            const ulint page_type = fil_page_get_type(frame);
-
-            if ((page_type == FIL_PAGE_INDEX || page_type == FIL_PAGE_RTREE) /* Index page */
-                && page_is_leaf(frame) /* Leaf page */) {
-                bpage->moved_to_nvdimm = true;
-                srv_stats.nvdimm_pages_stored_ol.inc();
-            }
-        }
-#endif /* UNIV_NVDIMM_CACHE_OL */
-#ifdef UNIV_NVDIMM_CACHE_ST
-        if (bpage->id.space() == 32 /* Stock tablespace */
-                   && bpage->buf_fix_count == 0 /* Not fixed */
-                   && !bpage->cached_in_nvdimm /* Not cached in NVDIMM */) {
-            lsn_t before_lsn = mach_read_from_8(reinterpret_cast<const buf_block_t *>(bpage)->frame + FIL_PAGE_LSN);
-            lsn_t lsn_gap = bpage->oldest_modification - before_lsn;
-
-            /* FIXME: Ad-hoc method */
-            if (2000000000 < lsn_gap && lsn_gap < 4000000000) {
-                bpage->moved_to_nvdimm = true;
-                srv_stats.nvdimm_pages_stored_st.inc();
-            }
-        }
-#endif /* UNIV_NVDIMM_CACHE_ST */
-#endif /* UNIV_NVDIMM_CACHE */
 
 		/* If there is an observer that want to know if the asynchronous
 		flushing was sent then notify it.
@@ -2038,6 +2040,7 @@ buf_flush_end(
 	buf_flush_t	flush_type)	/*!< in: BUF_FLUSH_LRU
 					or BUF_FLUSH_LIST */
 {
+
 	buf_pool_mutex_enter(buf_pool);
 
 	buf_pool->init_flush[flush_type] = FALSE;
@@ -2288,10 +2291,10 @@ buf_flush_single_page_from_LRU(
 		ut_ad(buf_pool_mutex_own(buf_pool));
 
 		buf_page_t*	prev = UT_LIST_GET_PREV(LRU, bpage);
-       
+      
 #ifdef UNIV_NVDIMM_CACHE
-        if (prev == NULL && buf_pool->instance_no == 8) {
-            ib::info() << "null error";
+        if (prev == NULL/* && buf_pool->instance_no == 8*/) {
+            ib::info() << "null error in " << buf_pool->instance_no;
             break;
         }
 #endif /* UNIV_NVDIMM_CACHE */
@@ -3302,6 +3305,7 @@ DECLARE_THREAD(buf_flush_page_cleaner_coordinator)(
 
 			ret_sleep = pc_sleep_if_needed(
 				next_loop_time, sig_count);
+            
 
 			if (srv_shutdown_state != SRV_SHUTDOWN_NONE) {
 				break;
@@ -4147,14 +4151,14 @@ DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
 {
     my_thread_init();
 
-/*#ifdef UNIV_PFS_THREAD
+#ifdef UNIV_PFS_THREAD
 	pfs_register_thread(page_flush_nvdimm_thread_key);
-#endif*/ /* UNIV_PFS_THREAD */
+#endif /* UNIV_PFS_THREAD */
     
     buf_nvdimm_page_cleaner_is_active = true;
 
     ulint n_flushed = 0;
-    buf_pool_t *buf_pool = buf_pool_from_array(8);
+    //buf_pool_t *buf_pool = buf_pool_from_array(8);
     ulint next_loop_time = ut_time_ms() + 1000;
     ulint last_activity = srv_get_activity_count();
 
@@ -4165,10 +4169,7 @@ DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
     ulint warn_count = 0;
     int64_t sig_count = os_event_reset(buf_flush_nvdimm_event);
 
-    
     while (srv_shutdown_state == SRV_SHUTDOWN_NONE) {
-        //os_event_wait(buf_flush_nvdimm_event);
-
         if (srv_check_activity(last_activity) || n_flushed == 0) {
             ret_sleep = pc_sleep_nvdimm_cleaner_if_needed(next_loop_time, sig_count);
         } else if (ut_time_ms() > next_loop_time) {
@@ -4212,18 +4213,12 @@ DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
         }
 
         if (srv_check_activity(last_activity)) {
-            /* Flush pages from end of LRU */
-            buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
-            /*buf_pool_mutex_enter(buf_pool);
-            n_flushed = buf_flush_nvdimm_LRU_list_batch(buf_pool, 1024);
-            buf_pool_mutex_exit(buf_pool);
-            
-            buf_flush_end(buf_pool, BUF_FLUSH_LRU);    */
+            for (ulint i = 0; i < srv_nvdimm_buf_pool_instances; i++) {
+                buf_pool_t* buf_pool = &nvdimm_buf_pool_ptr[i];
+                /* Flush pages from end of LRU */
+                buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
+            }
         }
-//
-        //if (n_flushed) {
-        /*sig_count = *///os_event_reset(buf_flush_nvdimm_event);
-        //}
     }
 
     if (srv_fast_shutdown == 2
@@ -4236,8 +4231,11 @@ DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
 
     n_flushed = 0;
     do {
-        buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
-        
+        for (ulint i = 0; i < srv_nvdimm_buf_pool_instances; i++) {
+            buf_pool_t* buf_pool = &nvdimm_buf_pool_ptr[i];
+            buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
+        }
+         
         /* We sleep only if there are no pages to flush */
 		if (n_flushed == 0) {
 			os_thread_sleep(100000);
@@ -4248,7 +4246,10 @@ DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
 
     n_flushed = 0;
     do {
-        buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
+        for (ulint i = 0; i < srv_nvdimm_buf_pool_instances; i++) {
+            buf_pool_t* buf_pool = &nvdimm_buf_pool_ptr[i];
+            buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
+        }
         
         buf_flush_wait_nvdimm_LRU_batch_end();
     } while (n_flushed > 0);

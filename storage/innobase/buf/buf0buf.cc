@@ -2101,7 +2101,7 @@ buf_pool_free_instance(
 		buf_block_t*	block = chunk->blocks;
    
 #ifdef UNIV_NVDIMM_CACHE
-        if (buf_pool->instance_no == 8 && chunk == chunks) break;
+        if (buf_pool->instance_no >= 8 && chunk == chunks) break;
 #endif /* UNIV_NVDIMM_CACHE */
 
 		for (ulint i = chunk->size; i--; block++) {
@@ -5356,7 +5356,11 @@ buf_page_init_for_read(
     
 #ifdef UNIV_NVDIMM_CACHE
     if (mode == BUF_MOVE_TO_NVDIMM) {
-        buf_pool = &nvdimm_buf_pool_ptr[0];
+        if (page_id.space() == 32) { /* Stock */
+            buf_pool = &nvdimm_buf_pool_ptr[1];
+        } else { 
+            buf_pool = &nvdimm_buf_pool_ptr[0];
+        }
     } else {
         buf_pool = buf_pool_get(page_id);
     }
@@ -6110,7 +6114,7 @@ corrupt:
 		}
 
 #ifdef UNIV_NVDIMM_CACHE
-        if (buf_pool->instance_no == 8) {
+        if (buf_pool->instance_no >= 8) {
             bpage->cached_in_nvdimm = true;
 
 #ifdef UNIV_NVDIMM_CACHE_OL
@@ -7209,7 +7213,15 @@ buf_print_io(
 #endif /* UNIV_NVDIMM_CACHE */ 
 		buf_pool_t*	buf_pool;
 
-		buf_pool = buf_pool_from_array(i);
+#ifdef UNIV_NVDIMM_CACHE
+        if (i >= srv_buf_pool_instances) {
+            buf_pool = &nvdimm_buf_pool_ptr[i - srv_buf_pool_instances];        
+        } else {
+            buf_pool = buf_pool_from_array(i);
+        }
+#else
+        buf_pool = buf_pool_from_array(i);
+#endif /* UNIV_NVDIMM_CACHE */ 
 
 		/* Fetch individual buffer pool info and calculate
 		aggregated stats along the way */

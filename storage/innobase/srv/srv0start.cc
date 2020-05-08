@@ -1858,18 +1858,18 @@ innobase_start_or_create_for_mysql(void)
             unit = 'M';
         }
 
-        NVDIMM_DEBUG_PRINT("Initializing NVDIMM buffer pool, total size = %lf%c, instances = %lu\n",
-                size, unit, srv_nvdimm_buf_pool_instances);
+        ib::info() << "Initializing NVDIMM buffer pool, total size = "
+            << size << unit << ", instances = " << srv_nvdimm_buf_pool_instances;
 
         err = nvdimm_buf_pool_init(srv_nvdimm_buf_pool_size, srv_nvdimm_buf_pool_instances);
 
         if (err != DB_SUCCESS) {
-            NVDIMM_DEBUG_PRINT("Cannot allocate memory for the NVDIMM buffer pool\n");
+            ib::info() << "Cannot allocate memory for the NVDIMM buffer pool";
 
             return (srv_init_abort(DB_ERROR));
         }
 
-        NVDIMM_DEBUG_PRINT("Completed initialization of buffer pool\n");
+        ib::info() << "Completed initialization of NVDIMM buffer pool";
     }
 #endif /* UNIV_NVDIMM_CACHE */
 
