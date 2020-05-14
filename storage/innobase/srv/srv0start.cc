@@ -1504,8 +1504,12 @@ innobase_start_or_create_for_mysql(void)
 
 	// for debugging : chagne the mtr log region size
 	// original : 1024*1024*1024*8UL (8GB)
-	// debugging : 1024*1024*1024*1UL (1MB)
+	// debugging : 1024*1024*1UL (512MB)
 	pm_mmap_mtrlogbuf_init(1024*1024*1UL);
+	
+	// buffer retion initialization (2GB)
+	pm_mmap_buf_init(1024*1024*1024*2UL);
+
 #endif /* UNIV_NVDIMM_CACHE */
 
 #ifdef HAVE_LZO1X
@@ -2823,6 +2827,8 @@ innobase_shutdown_for_mysql(void)
 // TODO(jhpark): change this location after the shutdown issue resolved.
 #ifdef UNIV_NVDIMM_CACHE
   uint64_t srv_pmem_pool_size = 8 * 1024 * 1024 * 1024UL;
+	// Free NC buffer region
+	pm_mmap_buf_free();
   pm_mmap_free(srv_pmem_pool_size);
 #endif /* UNIV_NVDIM_CACHE */
 

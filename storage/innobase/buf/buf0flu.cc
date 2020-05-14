@@ -1100,6 +1100,7 @@ buf_flush_write_block_low(
         /* Set the oldest LSN of the NVDIMM page to the previous newest LSN. */
         buf_flush_note_modification((buf_block_t *)nvdimm_page, bpage->newest_modification, bpage->newest_modification, nvdimm_page->flush_observer);
 
+				// NVDIMM-porting
         /* Remove the target page from the original buffer pool. */
         buf_page_io_complete(nvdimm_page);
         buf_page_io_complete(bpage, true);

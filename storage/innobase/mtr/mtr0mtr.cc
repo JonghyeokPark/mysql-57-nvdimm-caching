@@ -725,11 +725,9 @@ void mtr_t::commit_nvm() {
   m_impl.m_state = MTR_STATE_COMMITTING;
   // jhpark: release the mtr structure 
   Command cmd(this);
-  
   if (m_impl.m_modifications
 	    && (m_impl.m_n_log_recs > 0
 		|| m_impl.m_log_mode == MTR_LOG_NO_REDO)) {
-    // JOGNQ: check which parts are problem
     cmd.execute_nvm();
   } else {
     cmd.release_all();

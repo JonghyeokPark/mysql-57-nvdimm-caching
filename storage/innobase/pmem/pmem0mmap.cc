@@ -131,7 +131,7 @@ int pm_mmap_mtrlogbuf_init(const size_t size) {
   mmap_mtrlogbuf->size = size;
   mmap_mtrlogbuf->cur_offset = PMEM_MMAP_MTR_FIL_HDR_SIZE;
 	mmap_mtrlogbuf->prev_offset = PMEM_MMAP_MTR_FIL_HDR_SIZE;
-	mmap_mtrlogbuf->mtr_sys_lsn = 0;
+	//mmap_mtrlogbuf->mtr_sys_lsn = 0;
 	mmap_mtrlogbuf->ckpt_offset = PMEM_MMAP_MTR_FIL_HDR_SIZE;
   PMEMMMAP_INFO_PRINT("MTR LOG BUFFER structure initialization finished!\n"); 
   return 0;
@@ -154,7 +154,7 @@ void pm_mmap_write_logfile_header_size(uint64_t size) {
 }
 
 // write oldeset_lsn of NVDIMM-caching page when NVDIMM-caching page is flushed 
-void pm_mmap_write_logfile_header_lsn(lsn_t lsn) {
+void pm_mmap_write_logfile_header_lsn(uint64_t lsn) {
 	byte hdr_lsn[8];
 	mach_write_to_8(hdr_lsn, (uint64_t)lsn);
 	memcpy(gb_pm_mmap + PMEM_MMAP_MTR_FIL_HDR_LSN, hdr_lsn, 8);
@@ -162,7 +162,7 @@ void pm_mmap_write_logfile_header_lsn(lsn_t lsn) {
 }
 
 // write checkpoint info 
-void pm_mmap_write_logfile_header_ckpt_info(uint64_t offset, lsn_t lsn) {
+void pm_mmap_write_logfile_header_ckpt_info(uint64_t offset, uint64_t lsn) {
 	byte ckpt_offset[8], ckpt_lsn[8];
 	mach_write_to_8(ckpt_offset, offset);
 	mach_write_to_8(ckpt_lsn, (uint64_t)lsn);
@@ -269,7 +269,7 @@ ssize_t pm_mmap_mtrlogbuf_write(
 	// checkopint occurred
   if (offset + n > limit) {
 		// debug
-		PMEMMMAP_INFO_PRINT("[WRNING] mmap_mtrlogbuf is FULL!\n");
+		//PMEMMMAP_INFO_PRINT("[WRNING] mmap_mtrlogbuf is FULL!\n");
 		ut_ad(offset < mmap_mtrlogbuf->size);
 
 		offset = pm_mmap_log_checkpoint(offset);
@@ -283,8 +283,8 @@ ssize_t pm_mmap_mtrlogbuf_write(
   // lsn from log_sys
   mmap_mtr_hdr->lsn = lsn;
   // lsn from mtr_log_sys
-  mmap_mtr_hdr->mtr_lsn = mmap_mtrlogbuf->mtr_sys_lsn+1;
-	mmap_mtrlogbuf->mtr_sys_lsn++;
+  //mmap_mtr_hdr->mtr_lsn = mmap_mtrlogbuf->mtr_sys_lsn+1;
+	//mmap_mtrlogbuf->mtr_sys_lsn++;
 	// prev hdr offset
 	mmap_mtr_hdr->prev_offset = mmap_mtrlogbuf->prev_offset;
 	// set recv_flag
@@ -380,11 +380,12 @@ ssize_t pm_mmap_mtrlogbuf_write(
 }
 
 // commit mtr log 
-void pm_mmap_mtrlogbuf_commit(ulint space, ulint page_no) {
+void pm_mmap_mtrlogbuf_commit(unsigned char* rec, unsigned long cur_rec_size ,ulint space, ulint page_no) {
 	// TODO(jhaprk): Keep page modification finish log for recovery	
 	// For current mtr logging version, we jsut ignore this function
-
-	return;
+	//return;
+	flush_cache(rec, cur_rec_size);
+	//fprintf(stderr,"[JONGQ] flush_cach called after page modification rec_size:%lu \n", cur_rec_size);
 
 /*
 	if (mmap_mtrlogbuf == NULL) return;

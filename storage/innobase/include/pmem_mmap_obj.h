@@ -11,7 +11,8 @@
 #include <unistd.h>
 
 #include <pthread.h>
-#include "log0log.h"
+//#include "ut0new.h"
+//#include "log0log.h"
 
 // (jhpark): this header file for UNIV_NVDIMM_CACHE
 //					 use persistent memroy with mmap on dax-enabled file system
@@ -80,6 +81,10 @@ typedef struct __pmem_mmap_mtrlog_hdr PMEM_MMAP_MTRLOG_HDR;
 struct __pmem_mmap_mtrlog_fileheader;
 typedef struct __pmem_mmap_mtrlog_fileheader PMEM_MMAP_MTRLOGFILE_HDR;
 
+// buffer
+struct __pmem_mmap_buf_sys;
+typedef struct __pmem_mmap_buf_sys PMEM_MMAP_BUF_SYS;
+
 #define PMEM_MMAP_MTRLOG_HDR_SIZE sizeof(PMEM_MMAP_MTRLOG_HDR)
 #define PMEM_MMAP_LOGFILE_HEADER_SZ sizeof(PMEM_MMAP_MTRLOGFILE_HDR)
 
@@ -109,6 +114,8 @@ typedef struct __pmem_mmap_mtrlog_fileheader PMEM_MMAP_MTRLOGFILE_HDR;
 
 extern PMEM_MMAP_MTRLOG_BUF* mmap_mtrlogbuf;
 
+// buffer
+extern PMEM_MMAP_BUF_SYS* mmap_buf_sys;
 
 // wrapper function (see pemm_obj.h)
 // mmap persistent memroy region on dax file system
@@ -123,8 +130,8 @@ struct __pmem_mmap_mtrlog_buf {
   pthread_mutex_t mtrMutex; // mutex protecting writing to mtr log region
   bool need_recv;       // recovery flag
   
-  lsn_t  mtr_sys_lsn;   // global lsn for mtr_lsn (monotically increased) (stale)
-  lsn_t last_ckpt_lsn;  // checkpoint_lsn (oldest page LSN in NVDIMM caching
+//  ib_uint64_t  mtr_sys_lsn;   // global lsn for mtr_lsn (monotically increased) (stale)
+//  ib_uint64_t last_ckpt_lsn;  // checkpoint_lsn (oldest page LSN in NVDIMM caching
                         // flsuher list (stale)
 	
 	size_t ckpt_offset; 	// we can remove mtr log up to this offset 
@@ -133,6 +140,13 @@ struct __pmem_mmap_mtrlog_buf {
 	size_t cur_offset;    // current offset of mtr log region
 	size_t prev_offset; 	// prev_offset
 
+};
+
+struct __pmem_mmap_buf_sys {
+	pthread_mutex_t bufMutex;	// mutex protecting writing NC-page to NVDIMM
+	size_t size;							// total size of NVDIMM caching page region
+	unsigned long n_pages;						// total number of pages on NC buffer region 
+	unsigned long cur_offset;					// current offset
 };
 
 // mtr log file header
@@ -160,18 +174,23 @@ int pm_mmap_mtrlogbuf_init(const size_t size);
 void pm_mmap_mtrlogbuf_mem_free();
 void pm_mmap_read_logfile_header(PMEM_MMAP_MTRLOGFILE_HDR* mtrlog_fil_hdr);
 void pm_mmap_write_logfile_header_size(size_t size);
-void pm_mmap_write_logfile_header_lsn(lsn_t lsn);
-void pm_mmap_write_logfile_header_ckpt_info(uint64_t offset, lsn_t lsn);
+void pm_mmap_write_logfile_header_lsn(uint64_t lsn);
+void pm_mmap_write_logfile_header_ckpt_info(uint64_t offset, uint64_t lsn);
 uint64_t pm_mmap_log_checkpoint(uint64_t cur_offset);
-void pm_mmap_log_commit(ulint cur_space, ulint cur_page, uint64_t cur_offset);
+void pm_mmap_log_commit(unsigned long cur_space, unsigned long cur_page, uint64_t cur_offset);
 
 
 ssize_t pm_mmap_mtrlogbuf_write(const uint8_t* buf, 
                                 unsigned long int n, unsigned long int lsn);
 
-bool pm_mmap_mtrlogbuf_identify(size_t offset, ulint space, ulint page_no);
+bool pm_mmap_mtrlogbuf_identify(size_t offset, unsigned long space, unsigned long page_no);
 void pm_mmap_mtrlogbuf_unset_recv_flag(size_t offset);
-void pm_mmap_mtrlogbuf_commit(ulint space, ulint page_no);
-void pm_mmap_mtrlogbuf_commit_v1(ulint space, ulint page_no);
+void pm_mmap_mtrlogbuf_commit(unsigned char* rec, unsigned long cur_rec_size, unsigned long space, unsigned long page_no);
+void pm_mmap_mtrlogbuf_commit_v1(unsigned long space, unsigned long page_no);
 
+// buffer
+void pm_mmap_buf_init(const uint64_t size);
+void pm_mmap_buf_free(void);
+void pm_mmap_buf_write(unsigned long len, void* buf);
+//unsigned char* pm_mmap_buf_chunk_alloc(unsigned long mem_size, ut_new_pfx_t* pfx);
 #endif  /* __PMEMMAPOBJ_H__ */
