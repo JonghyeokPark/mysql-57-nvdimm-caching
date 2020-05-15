@@ -61,6 +61,10 @@ Created 11/11/1995 Heikki Tuuri
 static const int buf_flush_page_cleaner_priority = -20;
 #endif /* UNIV_LINUX */
 
+#ifdef UNIV_NVDIMM_CACHE
+#include "pmem_mmap_obj.h"
+#endif /* UNIV_NVDIMM_CACHE */
+
 /** Sleep time in microseconds for loop waiting for the oldest
 modification lsn */
 static const ulint buf_flush_wait_flushed_sleep_time = 10000;
@@ -1096,6 +1100,7 @@ buf_flush_write_block_low(
         /* Set the oldest LSN of the NVDIMM page to the previous newest LSN. */
         buf_flush_note_modification((buf_block_t *)nvdimm_page, bpage->newest_modification, bpage->newest_modification, nvdimm_page->flush_observer);
 
+				// NVDIMM-porting
         /* Remove the target page from the original buffer pool. */
         buf_page_io_complete(nvdimm_page);
         buf_page_io_complete(bpage, true);
@@ -1125,7 +1130,11 @@ buf_flush_write_block_low(
 
             fil_io(request,
                     sync, bpage->id, bpage->size, 0, bpage->size.physical(),
-                    frame, bpage);  
+                    frame, bpage); 
+
+						// jhpark: write oldest_modification_lsn of current NVDIMM-caching page
+						pm_mmap_write_logfile_header_lsn(bpage->oldest_modification);
+  
         } else if (flush_type == BUF_FLUSH_SINGLE_PAGE) {
             buf_dblwr_write_single_page(bpage, sync);
         } else {

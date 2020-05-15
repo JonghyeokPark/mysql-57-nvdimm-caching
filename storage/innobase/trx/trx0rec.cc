@@ -2074,16 +2074,20 @@ trx_undo_report_row_operation(
 			/* Success */
 			undo->withdraw_clock = buf_withdraw_clock;
 			
-            // FIXME(jhpark): for NVDIMM resident pages, we don't need to flush mtr log to WAL log buffer
-            //                                  just release the mtr structure.
+     // FIXME(jhpark): for NVDIMM resident pages, we don't need to flush mtr log to WAL log buffer
+     //                just release the mtr structure.
 #ifdef UNIV_NVDIMM_CACHE
-            if (is_nvm_page) {
-                mtr_commit_nvm(&mtr);
-            } else {
-                mtr_commit(&mtr);
-            }
+     if (is_nvm_page) {
+				//ulint space = index->space;
+				//ulint page = index->page;
+				//fprintf(stderr, "[mtr-commit] space : %lu page : %lu\n", space, page);
+				//mtr_commit_nvm(&mtr, space, page);
+				mtr_commit_nvm(&mtr);
+		 } else {
+      	mtr_commit(&mtr);
+     }
 #else
-            mtr_commit(&mtr);
+     mtr_commit(&mtr);
 #endif /* UNIV_NVDIMM_CACHE */
             
 			undo->empty = FALSE;

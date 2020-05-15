@@ -20,10 +20,11 @@ The above command will compile and build the source code with the default option
 
 | Option     | Description |
 | :--------- | :---------- |
-| --origin   | No caching (Vanilla version)                        |
-| --nc-ol    | Caching New-Orders and Order-Line pages (`default`) |
-| --nc-st    | Caching New-Orders and Stock pages                  |
-| --nc-ol-st | Caching New-Orders, Order-Line and Stock pages      |
+| --origin   | No caching (Vanilla version)                        										 |
+| --nc-ol    | Caching New-Orders and Order-Line pages (`default`) 										 |
+| --nc-st    | Caching New-Orders and Stock pages                  										 |
+| --nc-ol-st | Caching New-Orders, Order-Line and Stock pages      										 |
+| --mtr 		 | Caching New-Orders, Order-Line and Stock pages with mtr logging enabled |
 
 If you want the vanilla version, you can run the script as follows:
 
@@ -41,6 +42,7 @@ $ ./build.sh --origin
 | innodb_nvdimm_buffer_pool_size      | The size in bytes of the NVDIMM cache. The default value is 2GB. |
 | innodb_nvdimm_buffer_pool_instances | The number of regions that the NVDIMM cache is divided into. The default value is 1. |
 | innodb_nvdimm_pc_threshold_pct      | Wakeup the NVDIMM page cleaner when this % of free pages remaining. The default value is 5. |
+| innodb_nvdimm_home_dir				      | NVDIMM-aware files resident directory |
 
 For example:
 
@@ -51,6 +53,7 @@ innodb_use_nvdimm_buffer=true
 innodb_nvdimm_buffer_pool_size=2G
 innodb_nvdimm_buffer_pool_instances=1
 innodb_nvdimm_pc_threshold_pct=5
+innodb_nvdimm_home_dir=/mnt/pmem
 ...
 ```
 

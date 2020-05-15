@@ -137,6 +137,12 @@ InnoDB:
 #include "os0thread.h" /* os_thread_sleep() */
 #include "ut0ut.h" /* ut_strcmp_functor, ut_basename_noext() */
 
+#ifdef UNIV_NVDIMM_CACHE
+#include "pmem_mmap_obj.h"
+extern unsigned char* gb_pm_buf;
+extern PMEM_MMAP_BUF_SYS* mmap_buf_sys;
+#endif
+
 #define	OUT_OF_MEMORY_MSG \
 	"Check if you should increase the swap file or ulimits of your" \
 	" operating system. Note that on most 32-bit computers the process" \
@@ -634,6 +640,64 @@ public:
 
 		os_mem_free_large(ptr, pfx->m_size);
 	}
+
+/////////////////////////////////////////////////////////
+// NVDIMM-porting
+#ifdef UNIV_NVDIMM_CACHE
+  pointer
+  allocate_large_nvm(
+  	size_type	n_elements,
+		ut_new_pfx_t*	pfx)
+	{
+		if (n_elements == 0 || n_elements > max_size()) {
+			return(NULL);
+		}
+
+		ulint	n_bytes = n_elements * sizeof(T);
+    size_t offset =  mmap_buf_sys->cur_offset;
+		pointer	ptr = reinterpret_cast<pointer>(
+      gb_pm_buf + offset
+		//	os_mem_alloc_large(&n_bytes)
+    );
+
+#ifdef UNIV_PFS_MEMORY
+		if (ptr != NULL) {
+			allocate_trace(n_bytes, NULL, pfx);
+		}
+#else
+		pfx->m_size = n_bytes;
+#endif /* UNIV_PFS_MEMORY */
+
+    mmap_buf_sys->cur_offset += n_bytes;
+		//fprintf(stderr, "[JONGQ] large_nvm allocation offset:%lu cur_offset:%lu\n", 
+		//								offset, mmap_buf_sys->cur_offset);
+
+		return(ptr);
+	}
+
+	/** Free a memory allocated by allocate_large_nvm() and trace the
+	deallocation.
+	@param[in,out]	ptr	pointer to memory to free
+	@param[in]	pfx	descriptor of the memory, as returned by
+	allocate_large(). */
+	void
+	deallocate_large_nvm(
+		pointer			ptr,
+		const ut_new_pfx_t*	pfx)
+	{
+#ifdef UNIV_PFS_MEMORY
+		deallocate_trace(pfx);
+#endif /* UNIV_PFS_MEMORY */
+
+		fprintf(stderr, "[JONGQ] deallocation free! ptr: %p size: %lu\n",ptr, pfx->m_size);
+		mmap_buf_sys->cur_offset -= pfx->m_size;
+		//os_mem_free_large(ptr, pfx->m_size);
+	}
+
+
+
+#endif
+/////////////////////////////////////////////////////////////////////////
 
 #ifdef UNIV_PFS_MEMORY
 

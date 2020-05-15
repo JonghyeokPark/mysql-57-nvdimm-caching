@@ -71,6 +71,10 @@ Created 10/16/1994 Heikki Tuuri
 #include "zlib.h"
 #include "srv0start.h"
 
+#ifdef UNIV_NVDIMM_CACHE
+#include "pmem_mmap_obj.h"
+#endif
+
 /** Buffered B-tree operation types, introduced as part of delete buffering. */
 enum btr_op_t {
 	BTR_NO_OP = 0,			/*!< Not buffered */
@@ -3925,6 +3929,12 @@ btr_cur_update_in_place(
 
     if (nvm_bpage->cached_in_nvdimm) {
         // skip generating REDO logs for NVM-resident pages
+				// write NC page on NVDIMM
+				//pm_mmap_buf_write(nvm_bpage->size.physical(), (void*) ((buf_block_t*) nvm_bpage)->frame);
+				
+				// persist records
+				ulint cur_rec_size = rec_offs_size(offsets); 
+				pm_mmap_mtrlogbuf_commit(rec, cur_rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
     } else {
         btr_cur_update_in_place_log(flags, rec, index, update,
                         trx_id, roll_ptr, mtr);
@@ -4926,7 +4936,12 @@ btr_cur_del_mark_set_clust_rec(
 
 #ifdef UNIV_NVDIMM_CACHE
     if (is_nvm_page) {
-        // skip generating REDO logs for nvm-page
+    	// skip generating REDO logs for nvm-page
+			// Instead, write commit log in mtr log
+			// TODO(jhpark): flush only modified region not whole records 
+			// persist records
+			ulint cur_rec_size = rec_offs_size(offsets); 
+			pm_mmap_mtrlogbuf_commit(rec, cur_rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
     } else {
         btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
 					    roll_ptr, mtr);

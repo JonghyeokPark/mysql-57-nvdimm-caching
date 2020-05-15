@@ -106,6 +106,9 @@ Created 2/16/1996 Heikki Tuuri
 
 #ifdef UNIV_NVDIMM_CACHE
 #include "buf0nvdimm.h"
+#include "pmem_mmap_obj.h" 
+extern unsigned char* gb_pm_mmap;
+char  PMEM_FILE_PATH [PMEM_MMAP_MAX_FILE_NAME_LENGTH];
 #endif /* UNIV_NVDIMM_CACHE */
 
 #ifdef HAVE_LZO1X
@@ -1488,6 +1491,27 @@ innobase_start_or_create_for_mysql(void)
 		srv_use_doublewrite_buf = FALSE;
 	}
 
+#ifdef UNIV_NVDIMM_CACHE
+  sprintf(PMEM_FILE_PATH, "%s/%s", srv_nvdimm_home_dir, NVDIMM_MMAP_FILE_NAME);
+  size_t srv_pmem_pool_size = 8 * 1024;
+  uint64_t pool_size = srv_pmem_pool_size * 1024 * 1024UL;
+  gb_pm_mmap = pm_mmap_create(PMEM_FILE_PATH, pool_size);
+  if (!gb_pm_mmap) {
+    PMEMMMAP_ERROR_PRINT("gb_pm_mmap created failed  dir: %s\nsize: %zu\n", PMEM_FILE_PATH, pool_size);
+    assert(gb_pm_mmap);
+  }
+  PMEMMMAP_INFO_PRINT("pmem mtr log region finished!\n");
+
+	// for debugging : chagne the mtr log region size
+	// original : 1024*1024*1024*8UL (8GB)
+	// debugging : 1024*1024*1UL (512MB)
+	pm_mmap_mtrlogbuf_init(1024*1024*1UL);
+	
+	// buffer retion initialization (2GB)
+	pm_mmap_buf_init(1024*1024*1024*2UL);
+
+#endif /* UNIV_NVDIMM_CACHE */
+
 #ifdef HAVE_LZO1X
 	if (lzo_init() != LZO_E_OK) {
 		ib::warn() << "lzo_init() failed, support disabled";
@@ -1888,6 +1912,10 @@ innobase_start_or_create_for_mysql(void)
 
 	fsp_init();
 	log_init();
+
+//#ifdef UNIV_NVDIMM_CACHE
+//	pm_mmap_mtrlogbuf_init(1024*1024*1024*8UL);
+//#endif
 
 	recv_sys_create();
 	recv_sys_init(buf_pool_get_curr_size());
@@ -2795,6 +2823,14 @@ innobase_shutdown_for_mysql(void)
 			<< srv_conc_get_active_threads() << " queries still"
 			" inside InnoDB at shutdown";
 	}
+
+// TODO(jhpark): change this location after the shutdown issue resolved.
+#ifdef UNIV_NVDIMM_CACHE
+  uint64_t srv_pmem_pool_size = 8 * 1024 * 1024 * 1024UL;
+	// Free NC buffer region
+	pm_mmap_buf_free();
+  pm_mmap_free(srv_pmem_pool_size);
+#endif /* UNIV_NVDIM_CACHE */
 
 	/* 2. Make all threads created by InnoDB to exit */
 	srv_shutdown_all_bg_threads();

@@ -81,6 +81,9 @@ ulint nvdimm_pc_threshold;
 
 /** The NVDIMM buffer pools of the database */
 buf_pool_t *nvdimm_buf_pool_ptr;
+
+// NVDIMM-porting
+#include "pmem_mmap_obj.h"
 #endif /* UNIV_NVDIMM_CACHE */
 
 #ifdef HAVE_LIBNUMA
@@ -1588,6 +1591,113 @@ buf_chunk_init(
 	return(chunk);
 }
 
+// NVDIMM-porting
+#ifdef UNIV_NVDIMM_CACHE
+/********************************************************************//**
+Allocates a chunk of buffer frames.
+@return chunk, or NULL on failure */
+static
+buf_chunk_t*
+buf_chunk_nvm_init(
+/*===========*/
+	buf_pool_t*	buf_pool,	/*!< in: buffer pool instance */
+	buf_chunk_t*	chunk,		/*!< out: chunk of buffers */
+	ulint		mem_size)	/*!< in: requested size in bytes */
+{
+	buf_block_t*	block;
+	byte*		frame;
+	ulint		i;
+
+	/* Round down to a multiple of page size,
+	although it already should be. */
+	mem_size = ut_2pow_round(mem_size, UNIV_PAGE_SIZE);
+	/* Reserve space for the block descriptors. */
+	mem_size += ut_2pow_round((mem_size / UNIV_PAGE_SIZE) * (sizeof *block)
+				  + (UNIV_PAGE_SIZE - 1), UNIV_PAGE_SIZE);
+
+	DBUG_EXECUTE_IF("ib_buf_chunk_init_fails", return(NULL););
+
+	// NVDIMM-porting
+	chunk->mem = buf_pool->allocator.allocate_large_nvm(mem_size,
+							&chunk->mem_pfx);
+	//chunk->mem = pm_mmap_buf_chunk_alloc(mem_size, &chunk->mem_pfx);
+
+	if (UNIV_UNLIKELY(chunk->mem == NULL)) {
+		return(NULL);
+	}
+
+#ifdef HAVE_LIBNUMA
+	if (srv_numa_interleave) {
+		int	st = mbind(chunk->mem, chunk->mem_size(),
+				   MPOL_INTERLEAVE,
+				   numa_all_nodes_ptr->maskp,
+				   numa_all_nodes_ptr->size,
+				   MPOL_MF_MOVE);
+		if (st != 0) {
+			ib::warn() << "Failed to set NUMA memory policy of"
+				" buffer pool page frames to MPOL_INTERLEAVE"
+				" (error: " << strerror(errno) << ").";
+		}
+	}
+#endif /* HAVE_LIBNUMA */
+
+
+	/* Allocate the block descriptors from
+	the start of the memory block. */
+	chunk->blocks = (buf_block_t*) chunk->mem;
+
+	/* Align a pointer to the first frame.  Note that when
+	os_large_page_size is smaller than UNIV_PAGE_SIZE,
+	we may allocate one fewer block than requested.  When
+	it is bigger, we may allocate more blocks than requested. */
+
+	frame = (byte*) ut_align(chunk->mem, UNIV_PAGE_SIZE);
+	chunk->size = chunk->mem_pfx.m_size / UNIV_PAGE_SIZE
+		- (frame != chunk->mem);
+
+	/* Subtract the space needed for block descriptors. */
+	{
+		ulint	size = chunk->size;
+
+		while (frame < (byte*) (chunk->blocks + size)) {
+			frame += UNIV_PAGE_SIZE;
+			size--;
+		}
+
+		chunk->size = size;
+	}
+
+	/* Init block structs and assign frames for them. Then we
+	assign the frames to the first blocks (we already mapped the
+	memory above). */
+
+	block = chunk->blocks;
+
+	for (i = chunk->size; i--; ) {
+
+		buf_block_init(buf_pool, block, frame);
+		UNIV_MEM_INVALID(block->frame, UNIV_PAGE_SIZE);
+
+		/* Add the block to the free list */
+		UT_LIST_ADD_LAST(buf_pool->free, &block->page);
+
+		ut_d(block->page.in_free_list = TRUE);
+		ut_ad(buf_pool_from_block(block) == buf_pool);
+
+		block++;
+		frame += UNIV_PAGE_SIZE;
+	}
+
+	buf_pool_register_chunk(chunk);
+
+#ifdef PFS_GROUP_BUFFER_SYNC
+	pfs_register_buffer_block(chunk);
+#endif /* PFS_GROUP_BUFFER_SYNC */
+	return(chunk);
+}
+
+#endif
+
 #ifdef UNIV_DEBUG
 /*********************************************************************//**
 Finds a block in the given buffer chunk that points to a
@@ -1922,7 +2032,9 @@ nvdimm_buf_pool_init_instance(
 		chunk = buf_pool->chunks;
 
 		do {
-			if (!buf_chunk_init(buf_pool, chunk, chunk_size)) {
+			//if (!buf_chunk_init(buf_pool, chunk, chunk_size)) {
+			// NVDIMM-porting
+				if(!buf_chunk_nvm_init(buf_pool, chunk, chunk_size)) {
 				while (--chunk >= buf_pool->chunks) {
 					buf_block_t*	block = chunk->blocks;
 
@@ -1933,8 +2045,8 @@ nvdimm_buf_pool_init_instance(
 						ut_d(rw_lock_free(
 							&block->debug_latch));
 					}
-
-					buf_pool->allocator.deallocate_large(
+			
+					buf_pool->allocator.deallocate_large_nvm(
 						chunk->mem, &chunk->mem_pfx);
 				}
 				ut_free(buf_pool->chunks);
@@ -2032,7 +2144,6 @@ nvdimm_buf_pool_init(
 	ut_ad(n_instances == srv_buf_pool_instances);
 
 	NUMA_MEMPOLICY_INTERLEAVE_IN_SCOPE;
-
 	nvdimm_buf_pool_ptr = (buf_pool_t*) ut_zalloc_nokey(
 		n_instances * sizeof *nvdimm_buf_pool_ptr);
 
@@ -2047,9 +2158,8 @@ nvdimm_buf_pool_init(
 			return(DB_ERROR);
 		}
 	}
-    
-    nvdimm_buf_LRU_old_ratio_update(100 * 3/ 8, FALSE);
-
+	
+	nvdimm_buf_LRU_old_ratio_update(100 * 3/ 8, FALSE);
 	return(DB_SUCCESS);
 }
 #endif /* UNIV_NVDIMM_CACHE */
@@ -2101,7 +2211,7 @@ buf_pool_free_instance(
 		buf_block_t*	block = chunk->blocks;
    
 #ifdef UNIV_NVDIMM_CACHE
-        if (buf_pool->instance_no == 8 && chunk == chunks) break;
+    if (buf_pool->instance_no == 8 && chunk == chunks) break;
 #endif /* UNIV_NVDIMM_CACHE */
 
 		for (ulint i = chunk->size; i--; block++) {

@@ -41,6 +41,11 @@ Created 10/4/1994 Heikki Tuuri
 
 #include <algorithm>
 
+#ifdef UNIV_NVDIMM_CACHE
+#include "pmem_mmap_obj.h"
+#endif
+
+
 #ifdef PAGE_CUR_ADAPT
 # ifdef UNIV_SEARCH_PERF_STAT
 static ulint	page_cur_short_succ	= 0;
@@ -1537,7 +1542,8 @@ use_heap:
         buf_page_t* nvm_bpage = &nvm_block->page;
 
         if (nvm_bpage->cached_in_nvdimm) {
-            // skip generating REDO log for nvm-page
+          // skip generating REDO log for nvm-page
+					pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, space_id, page_no);
         } else {
         page_cur_insert_rec_write_log(insert_rec, rec_size,
 					        current_rec, index, mtr);
@@ -1943,6 +1949,7 @@ page_cur_insert_rec_zip(
 
                     if (nvm_bpage->cached_in_nvdimm) {
                         // skip generating REDO log for nvm-page
+                        pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
                     } else {
                         page_cur_insert_rec_write_log(
                             insert_rec, rec_size,
@@ -2230,7 +2237,9 @@ use_heap:
         buf_page_t* nvm_bpage = &nvm_block->page;
 
         if (nvm_bpage->cached_in_nvdimm) {
-            // skip generating REDO logs for nvm-page
+          // skip generating REDO logs for nvm-page
+					// persist records
+          pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
         } else {
             page_cur_insert_rec_write_log(insert_rec, rec_size,
                               cursor->rec, index, mtr);
@@ -2468,6 +2477,7 @@ page_copy_rec_list_end_to_created_page(
 
         if (nvm_bpage->cached_in_nvdimm) {
             // skip generating REDO logs for nvm-page
+						pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
         } else {
             page_cur_insert_rec_write_log(insert_rec, rec_size, prev_rec,
                               index, mtr);

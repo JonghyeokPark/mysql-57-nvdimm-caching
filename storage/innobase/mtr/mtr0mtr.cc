@@ -39,6 +39,12 @@ Created 11/26/1995 Heikki Tuuri
 #include "mtr0mtr.ic"
 #endif /* UNIV_NONINL */
 
+#ifdef UNIV_NVDIMM_CACHE
+#include "pmem_mmap_obj.h"
+extern unsigned char* gb_pm_mmap;
+extern PMEM_MMAP_MTRLOG_BUF* mmap_mtrlogbuf;
+#endif /* UNIV_NVDIMM_CACHE */
+
 /** Iterate over a memo block in reverse. */
 template <typename Functor>
 struct Iterate {
@@ -428,10 +434,25 @@ public:
 	@param[in]	len	number of bytes to write */
 	void finish_write(ulint len);
 
+#ifdef UNIV_NVDIMM_CACHE
+  /** Write the mtr log (undo + redo of undo) record,and release the resorces */
+  void execute_nvm();
+
+  /** Append the redo log records to the NVDIMM mtr log buffer.
+	@param[in]	len	number of bytes to write */
+	void finish_write_nvm(ulint len);
+#endif
+
 private:
 	/** Prepare to write the mini-transaction log to the redo log buffer.
 	@return number of bytes to write in finish_write() */
 	ulint prepare_write();
+
+#ifdef UNIV_NVDIMM_CACHE
+	/** Prepare to write the mini-transaction log to the NVDIMM mtr log buffer.
+	@return number of bytes to write in finish_write() */
+	ulint prepare_write_nvm();
+#endif /* UNIV_NVDIMM_CACHE */
 
 	/** true if it is a sync mini-transaction. */
 	bool			m_sync;
@@ -474,6 +495,27 @@ struct mtr_write_log_t {
 		return(true);
 	}
 };
+
+#ifdef UNIV_NVDIMM_CACHE
+struct mtr_nvm_write_log_t {
+	/** Append a block to the NVDIMM mtr log buffer. 
+		@return whether the appending should continue */
+  // original
+	bool operator()(const mtr_buf_t::block_t* block) const
+	{
+    // TODO(jhpark) : add more description.
+    // Get current LSN from the log_sys global object
+    // protected by mutex. multiple NVDIMM caching page might
+    // have same LSN. They can be distinguished by mtrlogbuf's LSN.
+    lsn_t m_lsn = log_sys->lsn;
+		
+    if (pm_mmap_mtrlogbuf_write(block->begin(), block->used(), m_lsn) <= 0) {
+			PMEMMMAP_ERROR_PRINT("pm_mmap_mlogbuf_write failed\n");
+		}
+		return(true);
+	}
+};
+#endif /* UNIV_NVDIMM_CACHE */
 
 /** Append records to the system-wide redo log buffer.
 @param[in]	log	redo log records */
@@ -677,14 +719,20 @@ mtr_t::is_named_space(ulint space) const
 #ifdef UNIV_NVDIMM_CACHE
 /** Commit a mini-transaction for NVDIMM resident page. */
 void mtr_t::commit_nvm() {
-    ut_ad(is_active());
-    ut_ad(!is_inside_ibuf());
-    ut_ad(m_impl.m_magic_n == MTR_MAGIC_N);
-    m_impl.m_state = MTR_STATE_COMMITTING;
-    // jhpark: release the mtr structure 
-    Command cmd(this);
+	ut_ad(is_active());
+  ut_ad(!is_inside_ibuf());
+  ut_ad(m_impl.m_magic_n == MTR_MAGIC_N);
+  m_impl.m_state = MTR_STATE_COMMITTING;
+  // jhpark: release the mtr structure 
+  Command cmd(this);
+  if (m_impl.m_modifications
+	    && (m_impl.m_n_log_recs > 0
+		|| m_impl.m_log_mode == MTR_LOG_NO_REDO)) {
+    cmd.execute_nvm();
+  } else {
     cmd.release_all();
     cmd.release_resources();
+  }
 }
 #endif /* UNIV_NVDIMM_CACHE */
 
@@ -816,6 +864,79 @@ mtr_t::release_page(const void* ptr, mtr_memo_type_t type)
 	ut_ad(0);
 }
 
+#ifdef UNIV_NVDIMM_CACHE
+/** Prepare to write the mini-transaction log to the NVDIMM mtr log buffer.
+@return number of bytes to write in finish_write() */
+ulint
+mtr_t::Command::prepare_write_nvm()
+{
+	switch (m_impl->m_log_mode) {
+	case MTR_LOG_SHORT_INSERTS:
+		ut_ad(0);
+		/* fall through (write no redo log) */
+	case MTR_LOG_NO_REDO:
+	case MTR_LOG_NONE:
+		ut_ad(m_impl->m_log.size() == 0);
+		log_mutex_enter();
+		m_end_lsn = m_start_lsn = log_sys->lsn;
+		return(0);
+	case MTR_LOG_ALL:
+		break;
+	}
+
+	ulint	len	= m_impl->m_log.size();
+	ulint	n_recs	= m_impl->m_n_log_recs;
+	ut_ad(len > 0);
+	ut_ad(n_recs > 0);
+	ut_ad(m_impl->m_n_log_recs == n_recs);
+
+	fil_space_t*	space = m_impl->m_user_space;
+	if (space != NULL && is_system_or_undo_tablespace(space->id)) {
+		/* Omit MLOG_FILE_NAME for predefined tablespaces. */
+		space = NULL;
+	}
+
+	if (fil_names_write_if_was_clean(space, m_impl->m_mtr)) {
+		/* This mini-transaction was the first one to modify
+		this tablespace since the latest checkpoint, so
+		some MLOG_FILE_NAME records were appended to m_log. */
+		ut_ad(m_impl->m_n_log_recs > n_recs);
+		mlog_catenate_ulint(
+			&m_impl->m_log, MLOG_MULTI_REC_END, MLOG_1BYTE);
+		len = m_impl->m_log.size();
+	} else {
+		/* This was not the first time of dirtying a
+		tablespace since the latest checkpoint. */
+
+		ut_ad(n_recs == m_impl->m_n_log_recs);
+
+		if (n_recs <= 1) {
+			ut_ad(n_recs == 1);
+
+			/* Flag the single log record as the
+			only record in this mini-transaction. */
+			*m_impl->m_log.front()->begin()
+				|= MLOG_SINGLE_REC_FLAG;
+		} else {
+			/* Because this mini-transaction comprises
+			multiple log records, append MLOG_MULTI_REC_END
+			at the end. */
+
+			mlog_catenate_ulint(
+				&m_impl->m_log, MLOG_MULTI_REC_END,
+				MLOG_1BYTE);
+			len++;
+		}
+	}
+
+// TODO(jhaprk): add checkpoint for mtr-logging 
+// check and attempt a checkpoint if exceeding capacity
+//	log_margin_checkpoint_age(len);
+
+	return(len);
+}
+#endif /* UNIV_NVDIMM_CACHE */
+
 /** Prepare to write the mini-transaction log to the redo log buffer.
 @return number of bytes to write in finish_write() */
 ulint
@@ -893,6 +1014,26 @@ mtr_t::Command::prepare_write()
 
 	return(len);
 }
+
+#ifdef UNIV_NVDIMM_CACHE
+/** Append the redo log records to the redo log buffer
+@param[in] len	number of bytes to write */
+void
+mtr_t::Command::finish_write_nvm(
+	ulint	len)
+{
+	ut_ad(m_impl->m_log_mode == MTR_LOG_ALL);
+	ut_ad(log_mutex_own());
+	ut_ad(m_impl->m_log.size() == len);
+	ut_ad(len > 0);
+
+	/* Open the database log for log_write_low */
+  m_start_lsn = log_sys->lsn;
+	mtr_nvm_write_log_t	write_log;
+	m_impl->m_log.for_each_block(write_log);
+  m_end_lsn = log_sys->lsn; 
+}
+#endif /* UNIV_NVDIMM_CACHE */
 
 /** Append the redo log records to the redo log buffer
 @param[in] len	number of bytes to write */
@@ -994,6 +1135,41 @@ mtr_t::Command::execute()
 
 	release_resources();
 }
+
+#ifdef UNIV_NVDIMM_CACHE
+void mtr_t::Command::execute_nvm() {
+	ut_ad(m_impl->m_log_mode != MTR_LOG_NONE);
+
+	if (const ulint len = prepare_write_nvm()) {
+    finish_write_nvm(len);
+	}
+
+	m_impl->m_mtr->m_commit_lsn = m_end_lsn;
+	release_blocks();
+	release_latches();
+	release_resources();
+
+// TODO(jhpark): add flush_order mutex when nvdimm caching page is flushed.
+//	if (m_impl->m_made_dirty) {
+//		log_flush_order_mutex_enter();
+//	}
+//	/* It is now safe to release the log mutex because the
+//	flush_order mutex will ensure that we are the first one
+//	to insert into the flush list. */
+//  
+//  fprintf(stderr, "log_mutex_exit() called! m_end_lsn: %lu\n", m_end_lsn);
+//	log_mutex_exit();
+//  fprintf(stderr, "log_mutex_exit() called! -- finished\n");
+//	m_impl->m_mtr->m_commit_lsn = m_end_lsn;
+//	release_blocks();
+//	if (m_impl->m_made_dirty) {
+//		log_flush_order_mutex_exit();
+//	}
+//	release_latches();
+//	release_resources();
+
+}
+#endif /* UNIV_NVDIMM_CACHE */
 
 /** Release the free extents that was reserved using
 fsp_reserve_free_extents().  This is equivalent to calling
