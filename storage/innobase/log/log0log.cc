@@ -2219,6 +2219,17 @@ loop:
 			count = 0;
 		}
 	}
+
+    count = 0;
+	while (buf_nvdimm_stock_page_cleaner_is_active) {
+		++count;
+		os_thread_sleep(100000);
+		if (srv_print_verbose_log && count > 600) {
+			ib::info() << "Waiting for NVDIMM page_cleaner to"
+				" finish flushing of buffer pool";
+			count = 0;
+		}
+	}
 #endif /* UNIV_NVDIMM_CACHE */
     
 	log_mutex_enter();

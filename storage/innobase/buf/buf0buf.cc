@@ -80,7 +80,7 @@ my_bool  srv_numa_interleave = FALSE;
 ulint nvdimm_pc_threshold;
 
 /** The NVDIMM buffer pools of the database */
-buf_pool_t *nvdimm_buf_pool_ptr;
+buf_pool_t* nvdimm_buf_pool_ptr;
 #endif /* UNIV_NVDIMM_CACHE */
 
 #ifdef HAVE_LIBNUMA
@@ -5313,10 +5313,12 @@ buf_page_init(
 	HASH_INSERT(buf_page_t, hash, buf_pool->page_hash,
 		    page_id.fold(), &block->page);
 
+#ifdef UNIV_NVDIMM_CACHE
 #ifdef UNIV_NVDIMM_CACHE_NO
     if (page_id.space() == 28 /* New-Orders table */) {
         srv_stats.nvdimm_pages_stored_no.inc();
     }
+#endif /* UNIV_NVDIMM_CACHE_NO */
 #endif /* UNIV_NVDIMM_CACHE */
 
 	if (page_size.is_compressed()) {
@@ -5358,8 +5360,13 @@ buf_page_init_for_read(
     if (mode == BUF_MOVE_TO_NVDIMM) {
         if (page_id.space() == 32) { /* Stock */
             buf_pool = &nvdimm_buf_pool_ptr[1];
-        } else { 
+            ib::info() << page_id.space() << " " << page_id.page_no() << " in init_for_read in " << buf_pool->instance_no << " total = " << UT_LIST_GET_LEN(buf_pool->free);
+        } else if (page_id.space() == 30) { 
             buf_pool = &nvdimm_buf_pool_ptr[0];
+            ib::info() << page_id.space() << " " << page_id.page_no() << " in init_for_read in " << buf_pool->instance_no << " total = " << UT_LIST_GET_LEN(buf_pool->free);
+        } else {
+            ut_error;
+            //buf_pool = buf_pool_get(page_id);
         }
     } else {
         buf_pool = buf_pool_get(page_id);
@@ -5394,7 +5401,13 @@ buf_page_init_for_read(
 		block = NULL;
 	} else {
 		block = buf_LRU_get_free_block(buf_pool);
-		ut_ad(block);
+	    if (block) {
+            ib::info() << page_id.space() << " " << page_id.page_no()
+                << " is ready for read in " << buf_pool->instance_no
+                << " total = " << UT_LIST_GET_LEN(buf_pool->free);
+        }
+        
+        ut_ad(block);
 		ut_ad(buf_pool_from_block(block) == buf_pool);
 	}
 
@@ -6132,13 +6145,12 @@ corrupt:
                 srv_stats.nvdimm_pages_read_no.inc();
             }
 #endif /* UNIV_NVDIMM_CACHE_NO */
-
-/*
+            
             ulint remains = UT_LIST_GET_LEN(buf_pool->free);
-
             if (remains < nvdimm_pc_threshold) {
-                os_event_set(buf_flush_nvdimm_event);
-            }*/
+                if (buf_pool->instance_no == 8) os_event_set(buf_flush_nvdimm_event);
+                else    os_event_set(buf_flush_nvdimm_stock_event);
+            }
         }
 #endif /* UNIV_NVDIMM_CACHE */
 		

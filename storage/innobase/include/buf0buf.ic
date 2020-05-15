@@ -80,12 +80,10 @@ buf_pool_index(
 
 #ifdef UNIV_NVDIMM_CACHE
     if (i >= srv_buf_pool_instances) {
-        return(8);
-    } else {
-        ut_ad(i < MAX_BUFFER_POOLS);
-        ut_ad(i < srv_buf_pool_instances);
-        return(i);
-    }
+        i = buf_pool - nvdimm_buf_pool_ptr + srv_buf_pool_instances;
+    } 
+
+    return(i);
 #else
     ut_ad(i < MAX_BUFFER_POOLS);
     ut_ad(i < srv_buf_pool_instances);
@@ -106,15 +104,13 @@ buf_pool_from_bpage(
 	i = bpage->buf_pool_index;
 
 #ifdef UNIV_NVDIMM_CACHE
-    if (i >= srv_buf_pool_instances) {
-        if (bpage->id.space() == 32) { /* Stock */
-            return(&nvdimm_buf_pool_ptr[1]);
-        } else {
-            return(&nvdimm_buf_pool_ptr[0]);
-        }
-    } else {
+    if (i < srv_buf_pool_instances) {
         ut_ad(i < srv_buf_pool_instances);
         return(&buf_pool_ptr[i]);
+    } else if (i == srv_buf_pool_instances) { /* Order-Line and New-Orders */
+        return(&nvdimm_buf_pool_ptr[0]);
+    } else { /* Stock */
+        return(&nvdimm_buf_pool_ptr[1]);
     }
 #else
     ut_ad(i < srv_buf_pool_instances);
@@ -1040,7 +1036,7 @@ buf_pool_get(
     }
 #endif /* UNIV_NVDIMM_CACHE_OL */
 #ifdef UNIV_NVDIMM_CACHE_ST
-    if (page_id.space() == 32 && buf_page_hash_get_low(&nvdimm_buf_pool_ptr[0], page_id)) {
+    if (page_id.space() == 32 && buf_page_hash_get_low(&nvdimm_buf_pool_ptr[1], page_id)) {
         return(&nvdimm_buf_pool_ptr[1]);
     }
 #endif /* UNIV_NVDIMM_CACHE_ST */
