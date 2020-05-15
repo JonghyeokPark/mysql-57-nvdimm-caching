@@ -8,3 +8,4 @@ storage/innobase/tags
 *.swp
 bld/
 boost/
+my-nc-only.cnf

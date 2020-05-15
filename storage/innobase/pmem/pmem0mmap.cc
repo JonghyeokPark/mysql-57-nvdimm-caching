@@ -236,6 +236,7 @@ uint64_t pm_mmap_log_checkpoint(uint64_t cur_offset) {
 
 	// debug	
 	//fprintf(stderr, "[mtr-checkpoint] ckpt_offset: %lu, len: %lu\n", finish_offset, (cur_offset - finish_offset));
+
 	//PMEM_MMAP_MTRLOG_HDR tmp_hdr;
 	//memcpy(&tmp_hdr, gb_pm_mmap + mmap_mtrlogbuf->ckpt_offset, PMEM_MMAP_MTRLOG_HDR_SIZE);
 	//fprintf(stderr, "[mtr-checkpoint] after checkpoint need_recv: %lu len: %lu lsn: %lu\n"

@@ -689,7 +689,7 @@ public:
 		deallocate_trace(pfx);
 #endif /* UNIV_PFS_MEMORY */
 
-		//fprintf(stderr, "[JONGQ] deallocation free! ptr: %p size: %lu\n",ptr, pfx->m_size);
+		fprintf(stderr, "[JONGQ] deallocation free! ptr: %p size: %lu\n",ptr, pfx->m_size);
 		mmap_buf_sys->cur_offset -= pfx->m_size;
 		//os_mem_free_large(ptr, pfx->m_size);
 	}
