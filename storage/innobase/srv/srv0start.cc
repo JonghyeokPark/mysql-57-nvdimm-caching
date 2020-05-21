@@ -1505,8 +1505,7 @@ innobase_start_or_create_for_mysql(void)
 	// for debugging : chagne the mtr log region size
 	// original : 1024*1024*1024*8UL (8GB)
 	// debugging : 1024*1024*1UL (512MB)
-	pm_mmap_mtrlogbuf_init(1024*1024*1UL);
-	
+	pm_mmap_mtrlogbuf_init(1024*1024*1024*1UL);	
 	// buffer retion initialization (2GB)
 	pm_mmap_buf_init(1024*1024*1024*2UL);
 

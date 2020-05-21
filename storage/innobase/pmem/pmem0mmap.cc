@@ -131,7 +131,6 @@ int pm_mmap_mtrlogbuf_init(const size_t size) {
   mmap_mtrlogbuf->size = size;
   mmap_mtrlogbuf->cur_offset = PMEM_MMAP_MTR_FIL_HDR_SIZE;
 	mmap_mtrlogbuf->prev_offset = PMEM_MMAP_MTR_FIL_HDR_SIZE;
-	//mmap_mtrlogbuf->mtr_sys_lsn = 0;
 	mmap_mtrlogbuf->ckpt_offset = PMEM_MMAP_MTR_FIL_HDR_SIZE;
   PMEMMMAP_INFO_PRINT("MTR LOG BUFFER structure initialization finished!\n"); 
   return 0;
@@ -174,50 +173,57 @@ void pm_mmap_write_logfile_header_ckpt_info(uint64_t offset, uint64_t lsn) {
 // (eager) checkpoint mtr log return ckpt_offset
 void pm_mmap_log_commit(ulint cur_space, ulint cur_page, ulint cur_offset) {
 	
-	PMEM_MMAP_MTRLOG_HDR tmp_mmap_hdr;
 	size_t offset = mmap_mtrlogbuf->ckpt_offset;
 	bool ckpt_flag = true;
 
 	while (true) {
+
 		if (offset >= cur_offset) {
 			break;
 		}
 
-		memset(&tmp_mmap_hdr, 0, sizeof(PMEM_MMAP_MTRLOG_HDR));
-		memcpy(&tmp_mmap_hdr, gb_pm_mmap + offset, PMEM_MMAP_MTRLOG_HDR_SIZE);	
-		ut_ad(tmp_mmap_hdr == NULL);	
-		//fprintf(stderr, "[mtr-commit] offset: %lu len: %lu cur_offset: %lu cur_space: %lu cur_page: %lu\n", 
-		//								offset, tmp_mmap_hdr.len, cur_offset, cur_space, cur_page);
+		PMEM_MMAP_MTRLOG_HDR *tmp_mmap_hdr = (PMEM_MMAP_MTRLOG_HDR *) malloc(PMEM_MMAP_MTRLOG_HDR_SIZE);
+		memset(tmp_mmap_hdr, 0, sizeof(PMEM_MMAP_MTRLOG_HDR));
+		memcpy(tmp_mmap_hdr, gb_pm_mmap + offset, PMEM_MMAP_MTRLOG_HDR_SIZE);
+		ut_ad(tmp_mmap_hdr == NULL);
 
 		// (jhpark): At this point, call checkpoint and then call commit
 		// no need to commit
-		if (tmp_mmap_hdr.len == 0) {
+		if (tmp_mmap_hdr->len == 0) {
+		//	fprintf(stderr, "[mtr-commit] no need to commit!!! offset: %lu len: %lu cur_offset: %lu cur_space: %lu cur_page: %lu\n", 
+    //                offset, tmp_mmap_hdr->len, cur_offset, cur_space, cur_page); 
 			break;
-		}		
-
-		if (tmp_mmap_hdr.need_recv == false) {
+		}	
+	
+		if(tmp_mmap_hdr->need_recv == false) {
 			mmap_mtrlogbuf->ckpt_offset = offset;
-			offset += PMEM_MMAP_MTRLOG_HDR_SIZE + tmp_mmap_hdr.len;
+			offset += PMEM_MMAP_MTRLOG_HDR_SIZE + tmp_mmap_hdr->len;
 			continue;
 		}
 
-		if (cur_space == tmp_mmap_hdr.space &&
-				cur_page == tmp_mmap_hdr.page_no) {
+		if (cur_space == tmp_mmap_hdr->space &&
+				cur_page == tmp_mmap_hdr->page_no) {
+
 			// 1. unset recovery flag
 			bool val = false;
 			memcpy(gb_pm_mmap + offset, &val, (size_t)offsetof(PMEM_MMAP_MTRLOG_HDR, len));
 			// 2. keep ckpt_offset (continuous)
-			offset += PMEM_MMAP_MTRLOG_HDR_SIZE + tmp_mmap_hdr.len;
+			offset += PMEM_MMAP_MTRLOG_HDR_SIZE + tmp_mmap_hdr->len;
+
 			if (ckpt_flag) {
 				mmap_mtrlogbuf->ckpt_offset = offset;
 			}
-			//fprintf(stderr, "[mtr-commit] YES ckpt_offset: %lu space: %lu page_no: %lu\n"
-			//				,mmap_mtrlogbuf->ckpt_offset,tmp_mmap_hdr.space, tmp_mmap_hdr.page_no);
+//			fprintf(stderr, "[mtr-commit] YES ckpt_offset: %lu space: %lu page_no: %lu\n"
+//							,mmap_mtrlogbuf->ckpt_offset,tmp_mmap_hdr->space, tmp_mmap_hdr->page_no);
 		} else {
-			//fprintf(stderr, "[mtr-commit] NO space: %lu page_no: %lu\n",tmp_mmap_hdr.space, tmp_mmap_hdr.page_no);
-			offset += PMEM_MMAP_MTRLOG_HDR_SIZE + tmp_mmap_hdr.len;
+//			fprintf(stderr, "[mtr-commit] NO space: %lu page_no: %lu\n"
+//							,tmp_mmap_hdr->space, tmp_mmap_hdr->page_no);
+			
+			offset += PMEM_MMAP_MTRLOG_HDR_SIZE + tmp_mmap_hdr->len;
 			ckpt_flag = false;
 		}
+		// free tmp_mmap_hdr
+		free(tmp_mmap_hdr);
 	}
 }
 
@@ -324,7 +330,6 @@ ssize_t pm_mmap_mtrlogbuf_write(
 		ulint page_off = mach_read_from_2(ptr);
 		ptr += 2;
 		ulint state = mach_parse_compressed(&ptr, end_ptr);
-		//fprintf(stderr, "mtr page_offset: %lu state : %lu\n", page_off, state);
 		
 		// At this point, we can remove mtr log for this undo page
 		if (state >= TRX_UNDO_CACHED) {
@@ -336,7 +341,6 @@ ssize_t pm_mmap_mtrlogbuf_write(
 			pm_mmap_log_commit(cur_space, cur_page, offset+n);
 		} 
 	} else {
-
 		//fprintf(stderr, "[mtr-write] not commit cur_space: %lu cur_page: %lu cur_offset: %lu\n"
 		//				 ,cur_space, cur_page, org_offset);
 	}
