@@ -20298,7 +20298,7 @@ static MYSQL_SYSVAR_ULONG(nvdimm_buffer_pool_size, srv_nvdimm_buf_pool_size,
   PLUGIN_VAR_OPCMDARG | PLUGIN_VAR_READONLY,
   "The size of the memory buffer InnoDB uses to "
   "cache data on NVDIMM", NULL, NULL,
-  1024 * 1024 * 1024L, 1024 * 1024 * 1024L,
+  1024 * 1024 * 1024L, 1024 * 1024L,
   UINT_MAX32, 0);
 
 static MYSQL_SYSVAR_ULONG(nvdimm_buffer_pool_instances, srv_nvdimm_buf_pool_instances,

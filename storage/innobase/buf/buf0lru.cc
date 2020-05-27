@@ -1187,9 +1187,6 @@ buf_LRU_get_free_only(
         }
         ut_a(!buf_page_in_file(&block->page));
 		UT_LIST_REMOVE(buf_pool->free, &block->page);
-        if (buf_pool->instance_no >= 8) {
-            ib::info() << buf_pool->instance_no << " deletion " << UT_LIST_GET_LEN(buf_pool->free);
-        }
 
 		if (buf_pool->curr_size >= buf_pool->old_size
 		    || UT_LIST_GET_LEN(buf_pool->withdraw)
@@ -1208,10 +1205,6 @@ buf_LRU_get_free_only(
 
 			buf_page_mutex_exit(block);
 			break;
-		} else {
-            if (buf_pool->instance_no >= 8) {
-                ib::info() << buf_pool->instance_no << " withdrawn " << UT_LIST_GET_LEN(buf_pool->free);
-            }   
         }
 
 		/* This should be withdrawn */
@@ -1447,7 +1440,7 @@ loop:
 	involved (particularly in case of compressed pages). We
 	can do that in a separate patch sometime in future. */
 
-    if (buf_pool->instance_no < 8) {
+    //if (buf_pool->instance_no < 8) {
         if (!buf_flush_single_page_from_LRU(buf_pool)) {
             MONITOR_INC(MONITOR_LRU_SINGLE_FLUSH_FAILURE_COUNT);
             ++flush_failures;
@@ -1456,7 +1449,7 @@ loop:
         srv_stats.buf_pool_wait_free.add(n_iterations, 1);
 
         n_iterations++;
-    }
+    //}
 
 	goto loop;
 }
@@ -2197,9 +2190,6 @@ buf_LRU_block_free_non_file_page(
 		ut_d(block->in_withdraw_list = TRUE);
 	} else {
         UT_LIST_ADD_FIRST(buf_pool->free, &block->page);
-        if (buf_pool->instance_no >= 8) {
-            ib::info() << buf_pool->instance_no << " insertion total = " << UT_LIST_GET_LEN(buf_pool->free);
-		}
         ut_d(block->page.in_free_list = TRUE);
 	}
 
@@ -2558,13 +2548,18 @@ nvdimm_buf_LRU_old_ratio_update(
 			during the initialization of InnoDB */
 {
 	uint	new_ratio = 0;
+    buf_pool_t* buf_pool;
 
-	for (ulint i = 0; i < srv_buf_pool_instances; i++) {
-		buf_pool_t* buf_pool = &nvdimm_buf_pool_ptr[i];
-
-		new_ratio = buf_LRU_old_ratio_update_instance(
+    /* FIXME: fixed buf_pool index*/
+    buf_pool = &nvdimm_buf_pool_ptr[0];
+	new_ratio = buf_LRU_old_ratio_update_instance(
 			buf_pool, old_pct, adjust);
-	}
+
+#ifdef UNIV_NVDIMM_CACHE_ST 
+    buf_pool = &nvdimm_buf_pool_ptr[1];
+	new_ratio = buf_LRU_old_ratio_update_instance(
+			buf_pool, 100 * 5 / 8, adjust);
+#endif /* UNIV_NVDIMM_CACHE_ST */
 
 	return(new_ratio);
 }

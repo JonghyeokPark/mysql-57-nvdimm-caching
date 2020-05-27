@@ -2047,10 +2047,10 @@ nvdimm_buf_pool_init(
 			return(DB_ERROR);
 		}
 	}
-    
-    nvdimm_buf_LRU_old_ratio_update(100 * 3/ 8, FALSE);
-
-	return(DB_SUCCESS);
+   
+    nvdimm_buf_LRU_old_ratio_update(95, FALSE);
+	
+    return(DB_SUCCESS);
 }
 #endif /* UNIV_NVDIMM_CACHE */
 
@@ -5360,13 +5360,10 @@ buf_page_init_for_read(
     if (mode == BUF_MOVE_TO_NVDIMM) {
         if (page_id.space() == 32) { /* Stock */
             buf_pool = &nvdimm_buf_pool_ptr[1];
-            ib::info() << page_id.space() << " " << page_id.page_no() << " in init_for_read in " << buf_pool->instance_no << " total = " << UT_LIST_GET_LEN(buf_pool->free);
         } else if (page_id.space() == 30) { 
             buf_pool = &nvdimm_buf_pool_ptr[0];
-            ib::info() << page_id.space() << " " << page_id.page_no() << " in init_for_read in " << buf_pool->instance_no << " total = " << UT_LIST_GET_LEN(buf_pool->free);
         } else {
             ut_error;
-            //buf_pool = buf_pool_get(page_id);
         }
     } else {
         buf_pool = buf_pool_get(page_id);
@@ -5401,11 +5398,6 @@ buf_page_init_for_read(
 		block = NULL;
 	} else {
 		block = buf_LRU_get_free_block(buf_pool);
-	    if (block) {
-            ib::info() << page_id.space() << " " << page_id.page_no()
-                << " is ready for read in " << buf_pool->instance_no
-                << " total = " << UT_LIST_GET_LEN(buf_pool->free);
-        }
         
         ut_ad(block);
 		ut_ad(buf_pool_from_block(block) == buf_pool);
@@ -6145,12 +6137,16 @@ corrupt:
                 srv_stats.nvdimm_pages_read_no.inc();
             }
 #endif /* UNIV_NVDIMM_CACHE_NO */
+           
+            /*ulint remains = UT_LIST_GET_LEN(buf_pool->free);
             
-            ulint remains = UT_LIST_GET_LEN(buf_pool->free);
-            if (remains < nvdimm_pc_threshold) {
-                if (buf_pool->instance_no == 8) os_event_set(buf_flush_nvdimm_event);
-                else    os_event_set(buf_flush_nvdimm_stock_event);
-            }
+            if (buf_pool->instance_no == 8
+                && remains < nvdimm_pc_threshold) {
+                os_event_set(buf_flush_nvdimm_event);
+            } else if (buf_pool->instance_no == 9
+                       && remains < nvdimm_pc_threshold * 4) {
+                os_event_set(buf_flush_nvdimm_stock_event);
+            }*/
         }
 #endif /* UNIV_NVDIMM_CACHE */
 		
@@ -6188,6 +6184,7 @@ corrupt:
                 srv_stats.nvdimm_pages_written_no.inc();
             }
 #endif /* UNIV_NVDIMM_CACHE_NO */
+            bpage->cached_in_nvdimm = false;
         }
 #endif /* UNIV_NVDIMM_CACHE */
 
