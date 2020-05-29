@@ -1415,9 +1415,12 @@ loop:
             os_event_set(buf_flush_event);
         } else if (buf_pool->instance_no == srv_buf_pool_instances) {
             os_event_set(buf_flush_nvdimm_event);
-        } else {
+        } 
+#ifdef UNIV_NVDIMM_CACHE_ST
+        else {
             os_event_set(buf_flush_nvdimm_stock_event);
         }
+#endif /* UNIV_NVDIMM_CACHE_ST */
 #else
         os_event_set(buf_flush_event);
 #endif /* UNIV_NVDIMM_CACHE */

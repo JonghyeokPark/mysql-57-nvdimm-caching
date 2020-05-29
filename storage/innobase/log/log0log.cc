@@ -2220,6 +2220,7 @@ loop:
 		}
 	}
 
+#ifdef UNIV_NVDIMM_CACHE_ST
     count = 0;
 	while (buf_nvdimm_stock_page_cleaner_is_active) {
 		++count;
@@ -2230,6 +2231,7 @@ loop:
 			count = 0;
 		}
 	}
+#endif /* UNIV_NVDIMM_CACHE_ST */
 #endif /* UNIV_NVDIMM_CACHE */
     
 	log_mutex_enter();

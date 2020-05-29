@@ -1019,7 +1019,9 @@ srv_init(void)
 		buf_flush_event = os_event_create("buf_flush_event");
 #ifdef UNIV_NVDIMM_CACHE
         buf_flush_nvdimm_event = os_event_create("buf_flush_nvdimm_event");
+#ifdef UNIV_NVDIMM_CACHE_ST
         buf_flush_nvdimm_stock_event = os_event_create("buf_flush_nvdimm_stock_event");
+#endif /* UNIV_NVDIMM_CACHE_ST */
 #endif /* UNIV_NVDIMM_CACHE */
 
 		UT_LIST_INIT(srv_sys->tasks, &que_thr_t::queue);
@@ -1076,7 +1078,9 @@ srv_free(void)
 		os_event_destroy(buf_flush_event);
 #ifdef UNIV_NVDIMM_CACHE
         os_event_destroy(buf_flush_nvdimm_event);
+#ifdef UNIV_NVDIMM_CACHE_ST
         os_event_destroy(buf_flush_nvdimm_stock_event);
+#endif /* UNIV_NVDIMM_CACHE_ST */
 #endif /* UNIV_NVDIMM_CACHE */
 	}
 

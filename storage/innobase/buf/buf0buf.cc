@@ -1574,7 +1574,7 @@ buf_chunk_init(
 		UT_LIST_ADD_LAST(buf_pool->free, &block->page);
 
 		ut_d(block->page.in_free_list = TRUE);
-		ut_ad(buf_pool_from_block(block) == buf_pool);
+	    ut_ad(buf_pool_from_block(block) == buf_pool);
 
 		block++;
 		frame += UNIV_PAGE_SIZE;
@@ -2048,7 +2048,7 @@ nvdimm_buf_pool_init(
 		}
 	}
    
-    nvdimm_buf_LRU_old_ratio_update(95, FALSE);
+    nvdimm_buf_LRU_old_ratio_update(100 * 3 / 8, FALSE);
 	
     return(DB_SUCCESS);
 }
@@ -5358,11 +5358,15 @@ buf_page_init_for_read(
     
 #ifdef UNIV_NVDIMM_CACHE
     if (mode == BUF_MOVE_TO_NVDIMM) {
-        if (page_id.space() == 32) { /* Stock */
-            buf_pool = &nvdimm_buf_pool_ptr[1];
-        } else if (page_id.space() == 30) { 
+        if (page_id.space() == 30) {
             buf_pool = &nvdimm_buf_pool_ptr[0];
-        } else {
+        }         
+#ifdef UNIV_NVDIMM_CACHE_ST
+        else if (page_id.space() == 32) { /* Stock */
+            buf_pool = &nvdimm_buf_pool_ptr[1];
+        }
+#endif /* UNIV_NVDIMM_CACHE_ST */
+        else {
             ut_error;
         }
     } else {
@@ -6143,8 +6147,9 @@ corrupt:
             if (buf_pool->instance_no == 8
                 && remains < nvdimm_pc_threshold) {
                 os_event_set(buf_flush_nvdimm_event);
-            } else if (buf_pool->instance_no == 9
-                       && remains < nvdimm_pc_threshold * 4) {
+            } else
+            if (buf_pool->instance_no == 9
+                       && remains < nvdimm_pc_threshold * 2) {
                 os_event_set(buf_flush_nvdimm_stock_event);
             }*/
         }

@@ -91,11 +91,13 @@ mysql_pfs_key_t page_cleaner_thread_key;
 
 #ifdef UNIV_NVDIMM_CACHE
 mysql_pfs_key_t page_flush_nvdimm_thread_key;
-mysql_pfs_key_t page_flush_nvdimm_stock_thread_key;
 os_event_t buf_flush_nvdimm_event;
-os_event_t buf_flush_nvdimm_stock_event;
 bool buf_nvdimm_page_cleaner_is_active = false;
+#ifdef UNIV_NVDIMM_CACHE_ST
+mysql_pfs_key_t page_flush_nvdimm_stock_thread_key;
+os_event_t buf_flush_nvdimm_stock_event;
 bool buf_nvdimm_stock_page_cleaner_is_active = false;
+#endif /* UNIV_NVDIMM_CACHE_ST */
 #endif /* UNIV_NVDIMM_CACHE */
 
 /** Event to synchronise with the flushing. */
@@ -1021,7 +1023,6 @@ buf_flush_write_block_low(
 	ut_ad(!buf_pool_mutex_own(buf_pool));
 #endif /* UNIV_DEBUG */
 
-	buf_pool_t*	buf_pool = buf_pool_from_bpage(bpage);
 	DBUG_PRINT("ib_buf", ("flush %s %u page " UINT32PF ":" UINT32PF,
 			      sync ? "sync" : "async", (unsigned) flush_type,
 			      bpage->id.space(), bpage->id.page_no()));
@@ -1108,10 +1109,10 @@ buf_flush_write_block_low(
         buf_page_io_complete(bpage, true);
         
         buf_pool_t*	buf_pool = buf_pool_from_bpage(nvdimm_page);
-        /*ib::info() << nvdimm_page->id.space() << " "
+        ib::info() << nvdimm_page->id.space() << " "
                 << nvdimm_page->id.page_no() << " is moved to "
                 << nvdimm_page->buf_pool_index << " ?= " << buf_pool->instance_no << " and " << bpage->buf_pool_index
-                << " total = " << UT_LIST_GET_LEN(buf_pool->free);*/
+                << " total = " << UT_LIST_GET_LEN(buf_pool->free);
     } else {
         if (!srv_use_doublewrite_buf
             || buf_dblwr == NULL
@@ -1126,13 +1127,11 @@ buf_flush_write_block_low(
 
             IORequest	request(type);
             
-            /*if (bpage->cached_in_nvdimm) {
-                ib::info() << bpage->id.space() << " " << bpage->id.page_no()
-                    << " is written from " << bpage->cached_in_nvdimm
-                    << " flush-type: " << flush_type
-                    << " with oldest: " << bpage->oldest_modification
-                    << " newest: " << bpage->newest_modification;
-            }*/
+            /*ib::info() << bpage->id.space() << " " << bpage->id.page_no()
+                << " is batch written from " << bpage->cached_in_nvdimm
+                << " flush-type: " << flush_type
+                << " with oldest: " << bpage->oldest_modification
+                << " newest: " << bpage->newest_modification;*/
 
             fil_io(request,
                     sync, bpage->id, bpage->size, 0, bpage->size.physical(),
@@ -1300,7 +1299,8 @@ buf_flush_page(
             lsn_t lsn_gap = bpage->oldest_modification - before_lsn;
 
             /* FIXME: Ad-hoc method */
-            if (250000000 < lsn_gap && lsn_gap < 500000000) {
+            if (250000000 < lsn_gap && lsn_gap < 750000000) {
+            //if (0 < lsn_gap && lsn_gap < 500000000) {
                 //ib::info() << "stock in " << bpage->id.space()
                 //    << " " << bpage->id.page_no() << " " << bpage->flush_type << " " << lsn_gap;
                 bpage->moved_to_nvdimm = true;
@@ -1317,15 +1317,29 @@ buf_flush_page(
 		    && is_uncompressed
 		    && !rw_lock_sx_lock_nowait(rw_lock, BUF_IO_WRITE)) {
 
-			if (!fsp_is_system_temporary(bpage->id.space())) {
-				/* avoiding deadlock possibility involves
-				doublewrite buffer, should flush it, because
-				it might hold the another block->lock. */
-				buf_dblwr_flush_buffered_writes();
-			} else {
-				buf_dblwr_sync_datafiles();
-			}
-
+/*#ifdef UNIV_NVDIMM_CACHE
+            if (!bpage->moved_to_nvdimm) {
+                if (!fsp_is_system_temporary(bpage->id.space())) {
+  */                  /* avoiding deadlock possibility involves
+                    doublewrite buffer, should flush it, because
+                    it might hold the another block->lock. */
+    /*                buf_dblwr_flush_buffered_writes();
+                } else {
+                    buf_dblwr_sync_datafiles();
+                }
+            } else {
+                buf_dblwr_sync_datafiles();
+            }
+#else*/
+            if (!fsp_is_system_temporary(bpage->id.space())) {
+                /* avoiding deadlock possibility involves
+                doublewrite buffer, should flush it, because
+                it might hold the another block->lock. */
+                buf_dblwr_flush_buffered_writes();
+            } else {
+                buf_dblwr_sync_datafiles();
+            }    
+//#endif /* UNIV_NVDIMM_CACHE */
 			rw_lock_sx_lock_gen(rw_lock, BUF_IO_WRITE);
 		}
 		
@@ -4168,7 +4182,7 @@ DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
     buf_nvdimm_page_cleaner_is_active = true;
 
     ulint n_flushed = 0;
-    ulint next_loop_time = ut_time_ms() + 500;
+    ulint next_loop_time = ut_time_ms() + 1000;
     ulint last_activity = srv_get_activity_count();
 
     os_event_wait(buf_flush_nvdimm_event);
@@ -4195,11 +4209,11 @@ DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
         if (ret_sleep == OS_SYNC_TIME_EXCEEDED) {
             ulint curr_time = ut_time_ms();
 
-            if (curr_time > next_loop_time + 1500) {
+            if (curr_time > next_loop_time + 3000) {
                 if (warn_count == 0) {
                     ib::info()
                         << "NVDIMM Page cleaner took "
-                        << 500 + curr_time - next_loop_time; 
+                        << 1000 + curr_time - next_loop_time; 
                     if (warn_interval > 300) {
                         warn_interval = 600;
                     } else {
@@ -4216,7 +4230,7 @@ DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
                 warn_count = 0;
             }
 
-            next_loop_time = curr_time + 500;
+            next_loop_time = curr_time + 1000;
         }
 
         /* TODO: Need to fix for shutdown */
@@ -4268,6 +4282,7 @@ thread_exit:
     OS_THREAD_DUMMY_RETURN;
 }
 
+#ifdef UNIV_NVDIMM_CACHE_ST
 /******************************************************************//**
 NVDIMM page_cleaner thread tasked with flushing dirty STOCK pages
 from the buffer pools.
@@ -4387,4 +4402,5 @@ thread_exit:
     os_thread_exit();
     OS_THREAD_DUMMY_RETURN;
 }
+#endif /* UNIV_NVDIMM_CACHE_ST */
 #endif /* UNIV_NVDIMM_CACHE */
