@@ -1103,17 +1103,22 @@ buf_flush_write_block_low(
 
         /* Set the oldest LSN of the NVDIMM page to the previous newest LSN. */
         buf_flush_note_modification((buf_block_t *)nvdimm_page, bpage->newest_modification, bpage->newest_modification, nvdimm_page->flush_observer);
-
+        
+        ib::info() << bpage->id.space() << " " << bpage->id.page_no()
+            <<  " before io_complete " << bpage->buf_pool_index
+            << " with " << bpage->flush_type;
+        
         /* Remove the target page from the original buffer pool. */
-        buf_page_io_complete(nvdimm_page);
         buf_page_io_complete(bpage, true);
+        buf_page_io_complete(nvdimm_page);
         
         buf_pool_t*	buf_pool = buf_pool_from_bpage(nvdimm_page);
         ib::info() << nvdimm_page->id.space() << " "
                 << nvdimm_page->id.page_no() << " is moved to "
-                << nvdimm_page->buf_pool_index << " ?= " << buf_pool->instance_no << " and " << bpage->buf_pool_index
-                << " total = " << UT_LIST_GET_LEN(buf_pool->free);
+                << nvdimm_page->buf_pool_index << " from " << bpage->buf_pool_index;
     } else {
+        bpage->moved_to_nvdimm = false;
+
         if (!srv_use_doublewrite_buf
             || buf_dblwr == NULL
             || srv_read_only_mode
@@ -1148,9 +1153,15 @@ buf_flush_write_block_low(
            and we flush the changes to disk only for the tablespace we
            are working on. */
         if (sync) {
-            ut_ad(flush_type == BUF_FLUSH_SINGLE_PAGE);
-            fil_flush(bpage->id.space());
-
+            if (!bpage->cached_in_nvdimm) {
+                ut_ad(flush_type == BUF_FLUSH_SINGLE_PAGE);
+                fil_flush(bpage->id.space());
+            }
+            
+            /*ib::info() << bpage->id.space() << " "
+                << bpage->id.page_no() << " is spf "
+                << bpage->buf_pool_index << " cached? " << bpage->cached_in_nvdimm;
+*/
             /* true means we want to evict this page from the
                LRU list as well. */
             buf_page_io_complete(bpage, true);
@@ -1285,7 +1296,7 @@ buf_flush_page(
 
             if ((page_type == FIL_PAGE_INDEX || page_type == FIL_PAGE_RTREE) /* Index page */
                 && page_is_leaf(frame) /* Leaf page */) {
-                //ib::info() << bpage->id.space() << " " << bpage->id.page_no() << " " << bpage->flush_type;
+                ib::info() << bpage->id.space() << " " << bpage->id.page_no() << " ready to move nvdimm.. " << bpage->flush_type;
                 bpage->moved_to_nvdimm = true;
                 srv_stats.nvdimm_pages_stored_ol.inc();
             }
@@ -1316,21 +1327,6 @@ buf_flush_page(
         if (flush_type == BUF_FLUSH_LIST
 		    && is_uncompressed
 		    && !rw_lock_sx_lock_nowait(rw_lock, BUF_IO_WRITE)) {
-
-/*#ifdef UNIV_NVDIMM_CACHE
-            if (!bpage->moved_to_nvdimm) {
-                if (!fsp_is_system_temporary(bpage->id.space())) {
-  */                  /* avoiding deadlock possibility involves
-                    doublewrite buffer, should flush it, because
-                    it might hold the another block->lock. */
-    /*                buf_dblwr_flush_buffered_writes();
-                } else {
-                    buf_dblwr_sync_datafiles();
-                }
-            } else {
-                buf_dblwr_sync_datafiles();
-            }
-#else*/
             if (!fsp_is_system_temporary(bpage->id.space())) {
                 /* avoiding deadlock possibility involves
                 doublewrite buffer, should flush it, because
@@ -1339,7 +1335,6 @@ buf_flush_page(
             } else {
                 buf_dblwr_sync_datafiles();
             }    
-//#endif /* UNIV_NVDIMM_CACHE */
 			rw_lock_sx_lock_gen(rw_lock, BUF_IO_WRITE);
 		}
 		
@@ -1362,7 +1357,6 @@ buf_flush_page(
 		buffer pool or removed from flush_list or LRU_list. */
 
 		buf_flush_write_block_low(bpage, flush_type, sync);
-	
     }
 
 	return(flush);
@@ -2310,6 +2304,7 @@ buf_flush_single_page_from_LRU(
 
 	buf_pool_mutex_enter(buf_pool);
 
+    ib::info() << "start spf " << buf_pool->instance_no;
 	for (bpage = buf_pool->single_scan_itr.start(), scanned = 0,
 	     freed = false;
 	     bpage != NULL;
@@ -2320,8 +2315,8 @@ buf_flush_single_page_from_LRU(
 		buf_page_t*	prev = UT_LIST_GET_PREV(LRU, bpage);
       
 #ifdef UNIV_NVDIMM_CACHE
-        if (prev == NULL/* && buf_pool->instance_no == 8*/) {
-            ib::info() << "null error in " << buf_pool->instance_no;
+        if (!prev/* && buf_pool->instance_no == 8*/) {
+            ib::info() << UT_LIST_GET_LEN(buf_pool->LRU) << " error in " << buf_pool->instance_no;
             break;
         }
 #endif /* UNIV_NVDIMM_CACHE */
@@ -2370,6 +2365,8 @@ buf_flush_single_page_from_LRU(
         
         ut_ad(!mutex_own(block_mutex));
 	}
+    ib::info() << "finish spf " << buf_pool->instance_no << " scanned = " 
+        << scanned << " free? " << freed;
 
 	if (!freed) {
 		/* Can't find a single flushable page. */

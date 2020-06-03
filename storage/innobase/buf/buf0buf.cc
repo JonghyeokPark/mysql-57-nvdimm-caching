@@ -2048,6 +2048,7 @@ nvdimm_buf_pool_init(
 		}
 	}
    
+    //nvdimm_buf_LRU_old_ratio_update(95, FALSE);
     nvdimm_buf_LRU_old_ratio_update(100 * 3 / 8, FALSE);
 	
     return(DB_SUCCESS);
@@ -6168,7 +6169,15 @@ corrupt:
 		if (uncompressed) {
 			rw_lock_sx_unlock_gen(&((buf_block_t*) bpage)->lock,
 					      BUF_IO_WRITE);
-		}
+
+            if (bpage->id.space() == 30) {
+                ib::info() << bpage->id.space() << " " << bpage->id.page_no()
+                    <<  " is unlocked from " << bpage->buf_pool_index
+                    << " with " << bpage->flush_type
+                    << " cached? " << bpage->cached_in_nvdimm
+                    << " moved? " << bpage->moved_to_nvdimm;
+            }
+        }
 
 		buf_pool->stat.n_pages_written++;
 
@@ -6189,7 +6198,6 @@ corrupt:
                 srv_stats.nvdimm_pages_written_no.inc();
             }
 #endif /* UNIV_NVDIMM_CACHE_NO */
-            bpage->cached_in_nvdimm = false;
         }
 #endif /* UNIV_NVDIMM_CACHE */
 
@@ -6212,6 +6220,7 @@ corrupt:
 			buf_LRU_free_page(bpage, true);
 #ifdef NVDIMM_CACHE
             bpage->moved_to_nvdimm = false;
+            bpage->cached_in_nvdimm = false;
 #endif /* NVDIMM_CACHE */
 		} else {
 			mutex_exit(buf_page_get_mutex(bpage));

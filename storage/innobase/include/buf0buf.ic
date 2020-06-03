@@ -111,7 +111,7 @@ buf_pool_from_bpage(
         return(&nvdimm_buf_pool_ptr[0]);
     }    
 #ifdef UNIV_NVDIMM_CACHE_ST
-    if { /* Stock */
+    else { /* Stock */
         return(&nvdimm_buf_pool_ptr[1]);
     }
 #endif /* UNIV_NVDIMM_CACHE_ST */

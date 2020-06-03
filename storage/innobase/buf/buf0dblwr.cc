@@ -727,9 +727,10 @@ buf_dblwr_update(
 	if (!srv_use_doublewrite_buf
 	    || buf_dblwr == NULL
 	    || fsp_is_system_temporary(bpage->id.space())
-//#ifdef UNIV_NVDIMM_CACHE
- //       || bpage->cached_in_nvdimm
-//#endif /* UNIV_NVDIMM_CACHE */       
+#ifdef UNIV_NVDIMM_CACHE
+        || bpage->cached_in_nvdimm
+        || bpage->moved_to_nvdimm
+#endif /* UNIV_NVDIMM_CACHE */       
        ) {
 		return;
 	}
@@ -764,32 +765,6 @@ buf_dblwr_update(
 		break;
 	case BUF_FLUSH_SINGLE_PAGE:
 		{
-#ifdef UNIV_NVDIMM_CACHE
-            if (!bpage->moved_to_nvdimm && !bpage->cached_in_nvdimm) {
-                const ulint size = 2 * TRX_SYS_DOUBLEWRITE_BLOCK_SIZE;
-                ulint i;
-                mutex_enter(&buf_dblwr->mutex);
-                for (i = srv_doublewrite_batch_size; i < size; ++i) {
-                    if (buf_dblwr->buf_block_arr[i] == bpage) {
-                        buf_dblwr->s_reserved--;
-                        buf_dblwr->buf_block_arr[i] = NULL;
-                        buf_dblwr->in_use[i] = false;
-                        break;
-                    }
-                }
-
-                /* The block we are looking for must exist as a
-                   reserved block. */
-                if (i >= size) {
-                    ib::info() << bpage->id.space() << " " 
-                        << bpage->id.page_no() << " in " << bpage->buf_pool_index
-                        << " cached? " << bpage->cached_in_nvdimm
-                        << " moved? " << bpage->moved_to_nvdimm
-                        << " " << i << " ? " << size << " " << srv_doublewrite_batch_size;
-                }
-                ut_a(i < size);
-            }
-#else
             const ulint size = 2 * TRX_SYS_DOUBLEWRITE_BLOCK_SIZE;
             ulint i;
             mutex_enter(&buf_dblwr->mutex);
@@ -805,7 +780,6 @@ buf_dblwr_update(
             /* The block we are looking for must exist as a
                reserved block. */
             ut_a(i < size);
-#endif /* UNIV_NVDIMM_CACHE */
 		}
 		os_event_set(buf_dblwr->s_event);
 		mutex_exit(&buf_dblwr->mutex);
@@ -924,13 +898,6 @@ buf_dblwr_write_block_to_datafile(
 	bool			sync)	/*!< in: true if sync IO
 					is requested */
 {
-    
-    if (!buf_page_in_file(bpage)) {
-    ib::info() << bpage->id.space() << " " 
-        << bpage->id.page_no() << " in " << bpage->buf_pool_index
-        << " " << sync << " " << buf_page_get_state(bpage);
-    }
-         
     ut_a(buf_page_in_file(bpage));
 
 	ulint	type = IORequest::WRITE;
@@ -1185,11 +1152,6 @@ try_again:
 	ut_ad(!buf_dblwr->batch_running);
 	ut_ad(buf_dblwr->first_free == buf_dblwr->b_reserved);
 	ut_ad(buf_dblwr->b_reserved <= srv_doublewrite_batch_size);
-
-    ib::info() << bpage->id.space() << " " << bpage->id.page_no()
-        << " in " << bpage->buf_pool_index
-        << " with " << bpage->flush_type
-        << " dwb total = " << buf_dblwr->first_free;
 
 	if (buf_dblwr->first_free == srv_doublewrite_batch_size) {
 		mutex_exit(&(buf_dblwr->mutex));
