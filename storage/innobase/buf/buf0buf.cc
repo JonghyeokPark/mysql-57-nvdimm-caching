@@ -78,7 +78,10 @@ my_bool  srv_numa_interleave = FALSE;
 #ifdef UNIV_NVDIMM_CACHE
 #include "buf0nvdimm.h"
 ulint nvdimm_pc_threshold;
-
+//bool wakeup_nvdimm_cleaner = FALSE;
+/*#ifdef UNIV_NVDIMM_CACHE_ST
+bool wakeup_nvdimm_stock_cleaner = FALSE;
+#endif*/ /* UNIV_NVDIMM_CACHE_ST */
 /** The NVDIMM buffer pools of the database */
 buf_pool_t* nvdimm_buf_pool_ptr;
 #endif /* UNIV_NVDIMM_CACHE */
@@ -6143,16 +6146,23 @@ corrupt:
             }
 #endif /* UNIV_NVDIMM_CACHE_NO */
            
-            /*ulint remains = UT_LIST_GET_LEN(buf_pool->free);
+        /*    ulint remains = UT_LIST_GET_LEN(buf_pool->free);
             
-            if (buf_pool->instance_no == 8
+            if (!wakeup_nvdimm_cleaner
+                && buf_pool->instance_no == 8
                 && remains < nvdimm_pc_threshold) {
                 os_event_set(buf_flush_nvdimm_event);
-            } else
-            if (buf_pool->instance_no == 9
-                       && remains < nvdimm_pc_threshold * 2) {
+                wakeup_nvdimm_cleaner = TRUE;
+            }
+*/
+/*#ifdef UNIV_NVDIMM_CACHE_ST
+            if (!wakeup_nvdimm_stock_cleaner
+                && buf_pool->instance_no == 9
+                && remains < nvdimm_pc_threshold * 2) {
                 os_event_set(buf_flush_nvdimm_stock_event);
-            }*/
+                wakeup_nvdimm_stock_cleaner = TRUE;
+            }
+#endif*/ /* UNIV_NVDIMM_CACHE_ST */
         }
 #endif /* UNIV_NVDIMM_CACHE */
 		

@@ -2561,7 +2561,7 @@ nvdimm_buf_LRU_old_ratio_update(
 #ifdef UNIV_NVDIMM_CACHE_ST 
     buf_pool = &nvdimm_buf_pool_ptr[1];
 	new_ratio = buf_LRU_old_ratio_update_instance(
-			buf_pool, 100 * 5 / 8, adjust);
+			buf_pool, 100 * 3 / 8, adjust);
 #endif /* UNIV_NVDIMM_CACHE_ST */
 
 	return(new_ratio);

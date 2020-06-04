@@ -1115,6 +1115,14 @@ buf_flush_write_block_low(
     } else {
         bpage->moved_to_nvdimm = false;
 
+        ib::info() << bpage->id.space() << " " << bpage->id.page_no()
+                << " is batch written. cached? " << bpage->cached_in_nvdimm
+                << " moved? " << bpage->moved_to_nvdimm
+                << " flush-type: " << flush_type
+                << " buf-fix: " << bpage->buf_fix_count
+                << " with oldest: " << bpage->oldest_modification
+                << " newest: " << bpage->newest_modification;
+
         if (!srv_use_doublewrite_buf
             || buf_dblwr == NULL
             || srv_read_only_mode
@@ -1128,12 +1136,6 @@ buf_flush_write_block_low(
 
             IORequest	request(type);
             
-            /*ib::info() << bpage->id.space() << " " << bpage->id.page_no()
-                << " is batch written from " << bpage->cached_in_nvdimm
-                << " flush-type: " << flush_type
-                << " with oldest: " << bpage->oldest_modification
-                << " newest: " << bpage->newest_modification;*/
-
             fil_io(request,
                     sync, bpage->id, bpage->size, 0, bpage->size.physical(),
                     frame, bpage);  
@@ -1186,8 +1188,8 @@ buf_flush_write_block_low(
 		ut_ad(!sync);
 		buf_dblwr_add_to_batch(bpage);
 	}
-
-	/* When doing single page flushing the IO is done synchronously
+    
+    /* When doing single page flushing the IO is done synchronously
 	and we flush the changes to disk only for the tablespace we
 	are working on. */
 	if (sync) {
@@ -1306,7 +1308,7 @@ buf_flush_page(
             lsn_t lsn_gap = bpage->oldest_modification - before_lsn;
 
             /* FIXME: Ad-hoc method */
-            if (250000000 < lsn_gap && lsn_gap < 750000000) {
+            if (0 < lsn_gap && lsn_gap < 10000000000) {
             //if (0 < lsn_gap && lsn_gap < 500000000) {
                 //ib::info() << "stock in " << bpage->id.space()
                 //    << " " << bpage->id.page_no() << " " << bpage->flush_type << " " << lsn_gap;
@@ -1352,6 +1354,18 @@ buf_flush_page(
 		oldest_modification != 0.  Thus, it cannot be relocated in the
 		buffer pool or removed from flush_list or LRU_list. */
 
+        if (bpage->id.space() == 32) {
+            lsn_t before_lsn = mach_read_from_8(reinterpret_cast<const buf_block_t *>(bpage)->frame + FIL_PAGE_LSN);
+            lsn_t lsn_gap = bpage->oldest_modification - before_lsn;
+
+            ib::info() << bpage->id.space() << " " << bpage->id.page_no()
+                << " is written with flush-type: " << flush_type
+                << " with oldest: " << bpage->oldest_modification
+                << " newest: " << bpage->newest_modification
+                << " lsn-gap: " << lsn_gap
+                << " fix-count: " << bpage->buf_fix_count
+                << " moved? " << bpage->moved_to_nvdimm;
+        }
 		buf_flush_write_block_low(bpage, flush_type, sync);
     }
 
