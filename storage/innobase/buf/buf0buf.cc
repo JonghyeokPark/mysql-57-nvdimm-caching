@@ -6169,14 +6169,6 @@ corrupt:
 		if (uncompressed) {
 			rw_lock_sx_unlock_gen(&((buf_block_t*) bpage)->lock,
 					      BUF_IO_WRITE);
-
-            if (bpage->id.space() == 30) {
-                ib::info() << bpage->id.space() << " " << bpage->id.page_no()
-                    <<  " is unlocked from " << bpage->buf_pool_index
-                    << " with " << bpage->flush_type
-                    << " cached? " << bpage->cached_in_nvdimm
-                    << " moved? " << bpage->moved_to_nvdimm;
-            }
         }
 
 		buf_pool->stat.n_pages_written++;

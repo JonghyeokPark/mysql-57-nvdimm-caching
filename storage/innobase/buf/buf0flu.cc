@@ -1104,18 +1104,14 @@ buf_flush_write_block_low(
         /* Set the oldest LSN of the NVDIMM page to the previous newest LSN. */
         buf_flush_note_modification((buf_block_t *)nvdimm_page, bpage->newest_modification, bpage->newest_modification, nvdimm_page->flush_observer);
         
-        ib::info() << bpage->id.space() << " " << bpage->id.page_no()
-            <<  " before io_complete " << bpage->buf_pool_index
-            << " with " << bpage->flush_type;
-        
         /* Remove the target page from the original buffer pool. */
         buf_page_io_complete(bpage, true);
         buf_page_io_complete(nvdimm_page);
         
-        buf_pool_t*	buf_pool = buf_pool_from_bpage(nvdimm_page);
+        /*buf_pool_t*	buf_pool = buf_pool_from_bpage(nvdimm_page);
         ib::info() << nvdimm_page->id.space() << " "
                 << nvdimm_page->id.page_no() << " is moved to "
-                << nvdimm_page->buf_pool_index << " from " << bpage->buf_pool_index;
+                << nvdimm_page->buf_pool_index << " from " << bpage->buf_pool_index;*/
     } else {
         bpage->moved_to_nvdimm = false;
 
@@ -1296,7 +1292,7 @@ buf_flush_page(
 
             if ((page_type == FIL_PAGE_INDEX || page_type == FIL_PAGE_RTREE) /* Index page */
                 && page_is_leaf(frame) /* Leaf page */) {
-                ib::info() << bpage->id.space() << " " << bpage->id.page_no() << " ready to move nvdimm.. " << bpage->flush_type;
+               /* ib::info() << bpage->id.space() << " " << bpage->id.page_no() << " ready to move nvdimm.. " << bpage->flush_type;*/
                 bpage->moved_to_nvdimm = true;
                 srv_stats.nvdimm_pages_stored_ol.inc();
             }
@@ -2304,7 +2300,6 @@ buf_flush_single_page_from_LRU(
 
 	buf_pool_mutex_enter(buf_pool);
 
-    ib::info() << "start spf " << buf_pool->instance_no;
 	for (bpage = buf_pool->single_scan_itr.start(), scanned = 0,
 	     freed = false;
 	     bpage != NULL;
@@ -2365,8 +2360,6 @@ buf_flush_single_page_from_LRU(
         
         ut_ad(!mutex_own(block_mutex));
 	}
-    ib::info() << "finish spf " << buf_pool->instance_no << " scanned = " 
-        << scanned << " free? " << freed;
 
 	if (!freed) {
 		/* Can't find a single flushable page. */
