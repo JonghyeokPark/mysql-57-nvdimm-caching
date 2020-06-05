@@ -1115,14 +1115,14 @@ buf_flush_write_block_low(
     } else {
         bpage->moved_to_nvdimm = false;
 
-        ib::info() << bpage->id.space() << " " << bpage->id.page_no()
+        /*ib::info() << bpage->id.space() << " " << bpage->id.page_no()
                 << " is batch written. cached? " << bpage->cached_in_nvdimm
                 << " moved? " << bpage->moved_to_nvdimm
                 << " flush-type: " << flush_type
                 << " buf-fix: " << bpage->buf_fix_count
                 << " with oldest: " << bpage->oldest_modification
                 << " newest: " << bpage->newest_modification;
-
+*/
         if (!srv_use_doublewrite_buf
             || buf_dblwr == NULL
             || srv_read_only_mode
@@ -1354,7 +1354,7 @@ buf_flush_page(
 		oldest_modification != 0.  Thus, it cannot be relocated in the
 		buffer pool or removed from flush_list or LRU_list. */
 
-        if (bpage->id.space() == 32) {
+        /*if (bpage->id.space() == 32) {
             lsn_t before_lsn = mach_read_from_8(reinterpret_cast<const buf_block_t *>(bpage)->frame + FIL_PAGE_LSN);
             lsn_t lsn_gap = bpage->oldest_modification - before_lsn;
 
@@ -1365,7 +1365,7 @@ buf_flush_page(
                 << " lsn-gap: " << lsn_gap
                 << " fix-count: " << bpage->buf_fix_count
                 << " moved? " << bpage->moved_to_nvdimm;
-        }
+        }*/
 		buf_flush_write_block_low(bpage, flush_type, sync);
     }
 
