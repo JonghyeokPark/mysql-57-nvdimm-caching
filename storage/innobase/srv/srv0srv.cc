@@ -1495,18 +1495,24 @@ srv_export_innodb_status(void)
     export_vars.innodb_nvdimm_pages_stored_st = srv_stats.nvdimm_pages_stored_st;
 
     export_vars.innodb_nvdimm_pages_stored_ol = srv_stats.nvdimm_pages_stored_ol;
+    
+    export_vars.innodb_nvdimm_pages_stored_od = srv_stats.nvdimm_pages_stored_od;
 
     export_vars.innodb_nvdimm_pages_stored_no = srv_stats.nvdimm_pages_stored_no;
 
     export_vars.innodb_nvdimm_pages_read_st = srv_stats.nvdimm_pages_read_st;
 
     export_vars.innodb_nvdimm_pages_read_ol = srv_stats.nvdimm_pages_read_ol;
+    
+    export_vars.innodb_nvdimm_pages_read_od = srv_stats.nvdimm_pages_read_od;
 
     export_vars.innodb_nvdimm_pages_read_no = srv_stats.nvdimm_pages_read_no;
 
     export_vars.innodb_nvdimm_pages_written_st = srv_stats.nvdimm_pages_written_st;
 
     export_vars.innodb_nvdimm_pages_written_ol = srv_stats.nvdimm_pages_written_ol;
+    
+    export_vars.innodb_nvdimm_pages_written_od = srv_stats.nvdimm_pages_written_od;
 
     export_vars.innodb_nvdimm_pages_written_no = srv_stats.nvdimm_pages_written_no;
 #endif /* UNIV_NVDIMM_CACHE */

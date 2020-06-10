@@ -2051,8 +2051,8 @@ nvdimm_buf_pool_init(
 		}
 	}
    
-    //nvdimm_buf_LRU_old_ratio_update(95, FALSE);
     nvdimm_buf_LRU_old_ratio_update(100 * 3 / 8, FALSE);
+    //nvdimm_buf_LRU_old_ratio_update(100 * 3 / 8, FALSE);
 	
     return(DB_SUCCESS);
 }
@@ -5362,7 +5362,7 @@ buf_page_init_for_read(
     
 #ifdef UNIV_NVDIMM_CACHE
     if (mode == BUF_MOVE_TO_NVDIMM) {
-        if (page_id.space() == 30) {
+        if (page_id.space() == 30 || page_id.space() == 29) {
             buf_pool = &nvdimm_buf_pool_ptr[0];
         }         
 #ifdef UNIV_NVDIMM_CACHE_ST
@@ -6133,6 +6133,8 @@ corrupt:
 #ifdef UNIV_NVDIMM_CACHE_OL
             if (bpage->id.space() == 30) {
                 srv_stats.nvdimm_pages_read_ol.inc();
+            } else if (bpage->id.space() == 29) {
+                srv_stats.nvdimm_pages_read_od.inc();    
             } 
 #endif /* UNIV_NVDIMM_CACHE_OL */
 #ifdef UNIV_NVDIMM_CACHE_ST
@@ -6188,6 +6190,8 @@ corrupt:
 #ifdef UNIV_NVDIMM_CACHE_OL
             if (bpage->id.space() == 30) {
                 srv_stats.nvdimm_pages_written_ol.inc();
+            } else if (bpage->id.space() == 29) {
+                srv_stats.nvdimm_pages_written_od.inc();
             }
 #endif /* UNIV_NVDIMM_CACHE_OL */
 #ifdef UNIV_NVDIMM_CACHE_ST
@@ -7168,9 +7172,12 @@ buf_print_nvdimm_instance(
         "\n"
         "Order-Line      " ULINTPF
         "\n"
+        "Orders          " ULINTPF
+        "\n"
         "Stock           " ULINTPF "\n",
         (ulint)srv_stats.nvdimm_pages_stored_no,
         (ulint)srv_stats.nvdimm_pages_stored_ol,
+        (ulint)srv_stats.nvdimm_pages_stored_od,
         (ulint)srv_stats.nvdimm_pages_stored_st);
 
     fprintf(file,
@@ -7179,9 +7186,12 @@ buf_print_nvdimm_instance(
         "\n"
         "Order-Line      " ULINTPF
         "\n"
+        "Orders          " ULINTPF
+        "\n"
         "Stock           " ULINTPF "\n",
         (ulint)srv_stats.nvdimm_pages_read_no,
         (ulint)srv_stats.nvdimm_pages_read_ol,
+        (ulint)srv_stats.nvdimm_pages_read_od,
         (ulint)srv_stats.nvdimm_pages_read_st);
 
     fprintf(file,
@@ -7190,9 +7200,12 @@ buf_print_nvdimm_instance(
         "\n"
         "Order-Line      " ULINTPF
         "\n"
+        "Orders          " ULINTPF
+        "\n"
         "Stock           " ULINTPF "\n",
         (ulint)srv_stats.nvdimm_pages_written_no,
         (ulint)srv_stats.nvdimm_pages_written_ol,
+        (ulint)srv_stats.nvdimm_pages_written_od,
         (ulint)srv_stats.nvdimm_pages_written_st);
 
     fprintf(file, "Total number of page gets performed = " ULINTPF "\n", pool_info->n_page_gets);
