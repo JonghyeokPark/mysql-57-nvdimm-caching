@@ -1292,7 +1292,6 @@ buf_flush_page(
 		++buf_pool->n_flush[flush_type];
 
 #ifdef UNIV_NVDIMM_CACHE
-#ifdef UNIV_NVDIMM_CACHE_OL
         /* Separate Order-Line leaf page from the other pages. */
         if (bpage->id.space() == 30 /* Order-Line tablespace */
             && bpage->buf_fix_count == 0 /* Not fixed */
@@ -1307,11 +1306,10 @@ buf_flush_page(
                 && page_is_leaf(frame) /* Leaf page */) {
                 //ib::info() << bpage->id.space() << " " << bpage->id.page_no() << " ol " << bpage->flush_type;
                 bpage->moved_to_nvdimm = true;
-                srv_stats.nvdimm_pages_stored_ol.inc();
             }
         }
-
-         /* Separate Orders leaf page from the other pages. */
+#ifdef UNIV_NVDIMM_CACHE_OD
+        /* Separate Orders leaf page from the other pages. */
         if (bpage->id.space() == 29 /* Order-Line tablespace */
             && bpage->buf_fix_count == 0 /* Not fixed */
             && !bpage->cached_in_nvdimm) { /* Not cached in NVDIMM */
@@ -1325,10 +1323,9 @@ buf_flush_page(
                 && page_is_leaf(frame) /* Leaf page */) {
                 //ib::info() << bpage->id.space() << " " << bpage->id.page_no() << " od " << bpage->flush_type;
                 bpage->moved_to_nvdimm = true;
-                srv_stats.nvdimm_pages_stored_od.inc();
             }
         }
-#endif /* UNIV_NVDIMM_CACHE_OL */
+#endif /* UNIV_NVDIMM_CACHE_OD */
 #ifdef UNIV_NVDIMM_CACHE_ST
         if (bpage->id.space() == 32 /* Stock tablespace */
                    && bpage->buf_fix_count == 0 /* Not fixed */
@@ -1342,7 +1339,6 @@ buf_flush_page(
                 //ib::info() << bpage->id.space() << " " << bpage->id.page_no() 
                    // << " st " << bpage->flush_type << " " << lsn_gap;
                 bpage->moved_to_nvdimm = true;
-                srv_stats.nvdimm_pages_stored_st.inc();
             }
         }
 #endif /* UNIV_NVDIMM_CACHE_ST */

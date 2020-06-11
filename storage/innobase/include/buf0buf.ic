@@ -1033,14 +1033,17 @@ buf_pool_get(
     if (buf_block_will_be_moved_to_nvdimm(page_id)) {
         return(&nvdimm_buf_pool_ptr[0]);
     } 
-#ifdef UNIV_NVDIMM_CACHE_OL
-    if ((page_id.space() == 30 || page_id.space() == 29)
+
+    if ((page_id.space() == 30
+#ifdef UNIV_NVDIMM_CACHE_OD
+        || page_id.space() == 29
+#endif /* UNIV_NVDIMM_CACHE_OD */        
+        )
         && buf_page_hash_get_low(&nvdimm_buf_pool_ptr[0], page_id)) {
         return(&nvdimm_buf_pool_ptr[0]);
     }
-#endif /* UNIV_NVDIMM_CACHE_OL */
 #ifdef UNIV_NVDIMM_CACHE_ST
-    if (page_id.space() == 32
+    else if (page_id.space() == 32
         && buf_page_hash_get_low(&nvdimm_buf_pool_ptr[1], page_id)) {
         return(&nvdimm_buf_pool_ptr[1]);
     }

@@ -4457,6 +4457,27 @@ loop:
 		goto loop;
 	} else {
 		fix_block = block;
+
+#ifdef UNIV_NVDIMM_CACHE
+        /* Buffer Hit */
+        if (buf_pool->instance_no >= 8) {
+            if (page_id.space() == 30) {
+                srv_stats.nvdimm_pages_read_ol.inc();
+            } else if (page_id.space() == 28) {
+                srv_stats.nvdimm_pages_read_no.inc();
+            }
+#ifdef UNIV_NVDIMM_CACHE_OD
+            else if (page_id.space() == 29) {
+                srv_stats.nvdimm_pages_read_od.inc();
+            }
+#endif /* UNIV_NVDIMM_CACHE_OD */
+#ifdef UNIV_NVDIMM_CACHE_ST
+            else if (page_id.space() == 32) {
+                srv_stats.nvdimm_pages_read_st.inc();
+            }
+#endif /* UNIV_NVDIMM_CACHE_ST */
+        }
+#endif /* UNIV_NVDIMM_CACHE */
 	}
 
 	if (fsp_is_system_temporary(page_id.space())) {
@@ -5317,14 +5338,6 @@ buf_page_init(
 	HASH_INSERT(buf_page_t, hash, buf_pool->page_hash,
 		    page_id.fold(), &block->page);
 
-#ifdef UNIV_NVDIMM_CACHE
-#ifdef UNIV_NVDIMM_CACHE_NO
-    if (page_id.space() == 28 /* New-Orders table */) {
-        srv_stats.nvdimm_pages_stored_no.inc();
-    }
-#endif /* UNIV_NVDIMM_CACHE_NO */
-#endif /* UNIV_NVDIMM_CACHE */
-
 	if (page_size.is_compressed()) {
 		page_zip_set_size(&block->page.zip, page_size.physical());
 	}
@@ -5362,7 +5375,11 @@ buf_page_init_for_read(
     
 #ifdef UNIV_NVDIMM_CACHE
     if (mode == BUF_MOVE_TO_NVDIMM) {
-        if (page_id.space() == 30 || page_id.space() == 29) {
+        if (page_id.space() == 30
+#ifdef UNIV_NVDIMM_CACHE_OD
+            || page_id.space() == 29
+#endif /* UNIV_NVDIMM_CACHE_OD */
+            ) {
             buf_pool = &nvdimm_buf_pool_ptr[0];
         }         
 #ifdef UNIV_NVDIMM_CACHE_ST
@@ -6127,27 +6144,26 @@ corrupt:
 		}
 
 #ifdef UNIV_NVDIMM_CACHE
-        if (buf_pool->instance_no >= 8) {
+        if (buf_pool->instance_no >= 8
+            && !bpage->cached_in_nvdimm) {
             bpage->cached_in_nvdimm = true;
 
-#ifdef UNIV_NVDIMM_CACHE_OL
             if (bpage->id.space() == 30) {
-                srv_stats.nvdimm_pages_read_ol.inc();
-            } else if (bpage->id.space() == 29) {
-                srv_stats.nvdimm_pages_read_od.inc();    
+                srv_stats.nvdimm_pages_stored_ol.inc();
+            } else if (bpage->id.space() == 28) {
+                srv_stats.nvdimm_pages_stored_no.inc();
+            }
+#ifdef UNIV_NVDIMM_CACHE_OD
+            else if (bpage->id.space() == 29) {
+                srv_stats.nvdimm_pages_stored_od.inc();    
             } 
-#endif /* UNIV_NVDIMM_CACHE_OL */
+#endif /* UNIV_NVDIMM_CACHE_OD */
 #ifdef UNIV_NVDIMM_CACHE_ST
-            if (bpage->id.space() == 32) {
-                srv_stats.nvdimm_pages_read_st.inc();
+            else if (bpage->id.space() == 32) {
+                srv_stats.nvdimm_pages_stored_st.inc();
             }
 #endif /* UNIV_NVDIMM_CACHE_ST */
-#ifdef UNIV_NVDIMM_CACHE_NO
-            if (bpage->id.space() == 28) {
-                srv_stats.nvdimm_pages_read_no.inc();
-            }
-#endif /* UNIV_NVDIMM_CACHE_NO */
-           
+        
         /*    ulint remains = UT_LIST_GET_LEN(buf_pool->free);
             
             if (!wakeup_nvdimm_cleaner
@@ -6187,23 +6203,21 @@ corrupt:
 
 #ifdef UNIV_NVDIMM_CACHE
         if (bpage->cached_in_nvdimm) {
-#ifdef UNIV_NVDIMM_CACHE_OL
             if (bpage->id.space() == 30) {
                 srv_stats.nvdimm_pages_written_ol.inc();
-            } else if (bpage->id.space() == 29) {
-                srv_stats.nvdimm_pages_written_od.inc();
-            }
-#endif /* UNIV_NVDIMM_CACHE_OL */
-#ifdef UNIV_NVDIMM_CACHE_ST
-            if (bpage->id.space() == 32) {
-                srv_stats.nvdimm_pages_written_st.inc();
-            }
-#endif /* UNIV_NVDIMM_CACHE_ST */
-#ifdef UNIV_NVDIMM_CACHE_NO
-            if (bpage->id.space() == 28) {
+            } else if (bpage->id.space() == 28) {
                 srv_stats.nvdimm_pages_written_no.inc();
             }
-#endif /* UNIV_NVDIMM_CACHE_NO */
+#ifdef UNIV_NVDIMM_CACHE_OD
+            else if (bpage->id.space() == 29) {
+                srv_stats.nvdimm_pages_written_od.inc();
+            }
+#endif /* UNIV_NVDIMM_CACHE_OD */
+#ifdef UNIV_NVDIMM_CACHE_ST
+            else if (bpage->id.space() == 32) {
+                srv_stats.nvdimm_pages_written_st.inc();
+            }
+#endif /* UNIV_NVDIMM_CACHE_ST */ 
         }
 #endif /* UNIV_NVDIMM_CACHE */
 
@@ -7309,15 +7323,11 @@ buf_print_io(
 #ifdef UNIV_NVDIMM_CACHE
 /** Checks whether this page should be moved to the NVDIMM buffer. */
 bool buf_block_will_be_moved_to_nvdimm(const page_id_t& page_id) {
-#ifdef UNIV_NVDIMM_CACHE_NO
     if (page_id.space() == 28 /* New-Orders table */) {
         return (true);
     } else {
         return (false);
     }
-#else
-    return (false);
-#endif /* UNIV_NVDIMM_CACHE_NO */
 }
 #endif /* UNIV_NVDIMM_CACHE */
 
