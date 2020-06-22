@@ -1121,7 +1121,8 @@ buf_flush_write_block_low(
                 << " flush-type: " << flush_type
                 << " buf-fix: " << bpage->buf_fix_count
                 << " with oldest: " << bpage->oldest_modification
-                << " newest: " << bpage->newest_modification;
+                << " newest: " << bpage->newest_modification
+                << " lsn-gap: " << bpage->newest_modification - bpage->oldest_modification;
 */
         if (!srv_use_doublewrite_buf
             || buf_dblwr == NULL
@@ -1136,9 +1137,9 @@ buf_flush_write_block_low(
 
             IORequest	request(type);
 
-            lsn_t lsn_gap = bpage->newest_modification - bpage->oldest_modification;
+            /*lsn_t lsn_gap = bpage->newest_modification - bpage->oldest_modification;
 
-            /*ib::info() << bpage->id.space() << " " << bpage->id.page_no()
+            ib::info() << bpage->id.space() << " " << bpage->id.page_no()
               << " is batch written. cached? " << bpage->cached_in_nvdimm
               << " moved? " << bpage->moved_to_nvdimm
               << " flush-type: " << flush_type
@@ -1177,6 +1178,14 @@ buf_flush_write_block_low(
         }
     }
 #else
+
+    /*ib::info() << bpage->id.space() << " " << bpage->id.page_no()
+        << " is batch written. flush-type: " << flush_type
+        << " buf-fix: " << bpage->buf_fix_count
+        << " with oldest: " << bpage->oldest_modification
+        << " newest: " << bpage->newest_modification
+        << " lsn-gap: " << bpage->newest_modification - bpage->oldest_modification;
+*/
 	if (!srv_use_doublewrite_buf
 	    || buf_dblwr == NULL
 	    || srv_read_only_mode

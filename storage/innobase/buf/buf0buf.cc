@@ -5248,8 +5248,12 @@ buf_page_init_low(
 	HASH_INVALIDATE(bpage, hash);
 
 #ifdef UNIV_NVDIMM_CACHE
-    bpage->cached_in_nvdimm = false;
     bpage->moved_to_nvdimm = false;
+    if (bpage->buf_pool_index >= srv_buf_pool_instances) {
+        bpage->cached_in_nvdimm = true;    
+    } else {
+        bpage->cached_in_nvdimm = false;
+    }
 #endif /* UNIV_NVDIMM_CACHE */
 
 	ut_d(bpage->file_page_was_freed = FALSE);
@@ -5335,7 +5339,7 @@ buf_page_init(
 	block->page.id.copy_from(page_id);
 	block->page.size.copy_from(page_size);
 
-	HASH_INSERT(buf_page_t, hash, buf_pool->page_hash,
+    HASH_INSERT(buf_page_t, hash, buf_pool->page_hash,
 		    page_id.fold(), &block->page);
 
 	if (page_size.is_compressed()) {
@@ -6144,9 +6148,9 @@ corrupt:
 		}
 
 #ifdef UNIV_NVDIMM_CACHE
-        if (buf_pool->instance_no >= 8
-            && !bpage->cached_in_nvdimm) {
-            bpage->cached_in_nvdimm = true;
+        if (/*buf_pool->instance_no >= 8
+            && !*/bpage->cached_in_nvdimm) {
+            //bpage->cached_in_nvdimm = true;
 
             if (bpage->id.space() == 30) {
                 srv_stats.nvdimm_pages_stored_ol.inc();
@@ -6240,7 +6244,7 @@ corrupt:
 			buf_LRU_free_page(bpage, true);
 #ifdef NVDIMM_CACHE
             bpage->moved_to_nvdimm = false;
-            bpage->cached_in_nvdimm = false;
+            //bpage->cached_in_nvdimm = false;
 #endif /* NVDIMM_CACHE */
 		} else {
 			mutex_exit(buf_page_get_mutex(bpage));
@@ -7167,6 +7171,13 @@ buf_print_io_instance(
 		pool_info->lru_len, pool_info->unzip_lru_len,
 		pool_info->io_sum, pool_info->io_cur,
 		pool_info->unzip_sum, pool_info->unzip_cur);
+
+#ifdef UNIV_NVDIMM_CACHE
+    fprintf(file, "Total number of page read performed = " ULINTPF "\n", pool_info->n_pages_read);
+    fprintf(file, "Total number of page created performed = " ULINTPF "\n", pool_info->n_pages_created);
+    fprintf(file, "Total number of page written performed = " ULINTPF "\n", pool_info->n_pages_written);
+    fprintf(file, "Total number of page gets performed = " ULINTPF "\n", pool_info->n_page_gets);
+#endif /* UNIV_NVDIMM_CACHE */
 }
 
 #ifdef UNIV_NVDIMM_CACHE
@@ -7222,6 +7233,9 @@ buf_print_nvdimm_instance(
         (ulint)srv_stats.nvdimm_pages_written_od,
         (ulint)srv_stats.nvdimm_pages_written_st);
 
+    fprintf(file, "Total number of page read performed = " ULINTPF "\n", pool_info->n_pages_read);
+    fprintf(file, "Total number of page created performed = " ULINTPF "\n", pool_info->n_pages_created);
+    fprintf(file, "Total number of page written performed = " ULINTPF "\n", pool_info->n_pages_written);
     fprintf(file, "Total number of page gets performed = " ULINTPF "\n", pool_info->n_page_gets);
 }
 #endif /* UNIV_NVDIMM_CACHE */
