@@ -4943,6 +4943,10 @@ btr_cur_del_mark_set_clust_rec(
 			ulint cur_rec_size = rec_offs_size(offsets); 
 			pm_mmap_mtrlogbuf_commit(rec, cur_rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
     } else {
+        if ( nvm_bpage->id.space() == 28) {
+          fprintf(stderr, "[JONGQ] WATCH-OUT-2\n");
+          exit(-1);
+        }
         btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
 					    roll_ptr, mtr);
     }
@@ -5048,10 +5052,16 @@ btr_cur_del_mark_set_sec_rec(
 	rec_t*		rec;
 	dberr_t		err;
 
+
 	block = btr_cur_get_block(cursor);
 	rec = btr_cur_get_rec(cursor);
 
-	err = lock_sec_rec_modify_check_and_lock(flags,
+  fprintf(stderr,"[JONGQ] btr_cur_del_mark_set_sec_rec! space: %lu\n", block->page.id.space());
+  if (block->page.id.space() == 28) {
+    fprintf(stderr, "[JONGQ] WRONG!!!\n");
+  }
+	
+  err = lock_sec_rec_modify_check_and_lock(flags,
 						 btr_cur_get_block(cursor),
 						 rec, cursor->index, thr, mtr);
 	if (err != DB_SUCCESS) {
@@ -6544,7 +6554,6 @@ btr_cur_unmark_extern_fields(
 
 	for (i = 0; i < n; i++) {
 		if (rec_offs_nth_extern(offsets, i)) {
-
 			btr_cur_set_ownership_of_extern_field(
 				page_zip, rec, index, offsets, i, TRUE, mtr);
 		}
@@ -7534,6 +7543,11 @@ btr_rec_free_externally_stored_fields(
 {
 	ulint	n_fields;
 	ulint	i;
+
+  // dbug
+  if (index->space == 28) {
+    fprintf(stderr, "[JONGQ] btr_rec_Free_externally_stored_fields\n");
+  }
 
 	ut_ad(rec_offs_validate(rec, index, offsets));
 	ut_ad(mtr_is_page_fix(mtr, rec, MTR_MEMO_PAGE_X_FIX, index->table));

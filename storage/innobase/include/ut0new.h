@@ -654,10 +654,9 @@ public:
 		}
 
 		ulint	n_bytes = n_elements * sizeof(T);
-    size_t offset =  mmap_buf_sys->cur_offset;
+    size_t offset = mmap_buf_sys->cur_offset;
 		pointer	ptr = reinterpret_cast<pointer>(
       gb_pm_buf + offset
-		//	os_mem_alloc_large(&n_bytes)
     );
 
 #ifdef UNIV_PFS_MEMORY
@@ -669,8 +668,6 @@ public:
 #endif /* UNIV_PFS_MEMORY */
 
     mmap_buf_sys->cur_offset += n_bytes;
-		//fprintf(stderr, "[JONGQ] large_nvm allocation offset:%lu cur_offset:%lu\n", 
-		//								offset, mmap_buf_sys->cur_offset);
 
 		return(ptr);
 	}
@@ -689,7 +686,6 @@ public:
 		deallocate_trace(pfx);
 #endif /* UNIV_PFS_MEMORY */
 
-		// fprintf(stderr, "[JONGQ] deallocation free! ptr: %p size: %lu\n",ptr, pfx->m_size);
 		mmap_buf_sys->cur_offset -= pfx->m_size;
 		//os_mem_free_large(ptr, pfx->m_size);
 	}

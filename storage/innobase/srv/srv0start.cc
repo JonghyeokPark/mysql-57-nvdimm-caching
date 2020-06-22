@@ -1500,14 +1500,18 @@ innobase_start_or_create_for_mysql(void)
     PMEMMMAP_ERROR_PRINT("gb_pm_mmap created failed  dir: %s\nsize: %zu\n", PMEM_FILE_PATH, pool_size);
     assert(gb_pm_mmap);
   }
-  PMEMMMAP_INFO_PRINT("pmem mtr log region finished!\n");
 
-	// for debugging : chagne the mtr log region size
-	// original : 1024*1024*1024*8UL (8GB)
-	// debugging : 1024*1024*1UL (512MB)
-	pm_mmap_mtrlogbuf_init(1024*1024*1024*1UL);	
-	// buffer retion initialization (2GB)
-	pm_mmap_buf_init(1024*1024*1024*2UL);
+	if (!is_pmem_recv) {
+		// for debugging : chagne the mtr log region size
+		// original : 1024*1024*1024*8UL (8GB)
+		pm_mmap_mtrlogbuf_init(1024*1024*1024*1UL); // 1GB for test
+
+		// TODO(jhpark): change buffer pool recovery policy
+		// buffer retion initialization (2GB)
+		pm_mmap_buf_init(1024*1024*1024*2UL);
+	}
+	
+	//pm_mmap_buf_init(1024*1024*1024*3UL);
 
 #endif /* UNIV_NVDIMM_CACHE */
 
@@ -1912,10 +1916,6 @@ innobase_start_or_create_for_mysql(void)
 	fsp_init();
 	log_init();
 
-//#ifdef UNIV_NVDIMM_CACHE
-//	pm_mmap_mtrlogbuf_init(1024*1024*1024*8UL);
-//#endif
-
 	recv_sys_create();
 	recv_sys_init(buf_pool_get_curr_size());
 	lock_sys_create(srv_lock_table_size);
@@ -2012,7 +2012,6 @@ innobase_start_or_create_for_mysql(void)
 
 	err = srv_sys_space.open_or_create(
 		false, create_new_db, &sum_of_new_sizes, &flushed_lsn);
-
 	switch (err) {
 	case DB_SUCCESS:
 		break;
@@ -2293,18 +2292,25 @@ files_checked:
 		/* Scan and locate truncate log files. Parsed located files
 		and add table to truncate information to central vector for
 		truncate fix-up action post recovery. */
+
 		err = TruncateLogParser::scan_and_parse(srv_log_group_home_dir);
 		if (err != DB_SUCCESS) {
 
 			return(srv_init_abort(DB_ERROR));
 		}
 
+		fprintf(stderr, "[JONGQ] ---- scan_and_parse log file finished\n");
+
 		/* We always try to do a recovery, even if the database had
 		been shut down normally: this is the normal startup path */
 
 		err = recv_recovery_from_checkpoint_start(flushed_lsn);
 
+		fprintf(stderr, "[JONGQ] ---- recv_recovery_from_checkpoint() finished\n");
+
 		recv_sys->dblwr.pages.clear();
+
+		fprintf(stderr, "[JONGQ] ---- dwb clear finished\n");
 
 		if (err == DB_SUCCESS) {
 			/* Initialize the change buffer. */
@@ -2325,13 +2331,28 @@ files_checked:
 
 			return(srv_init_abort(DB_ERROR));
 		}
+		
+		fprintf(stderr, "[JONGQ] ---- pass force recovery!\n"); 
+		
+// TODO(jhpark): NC recovery check !!!!!
+		if (is_pmem_recv)  {
+			PMEMMMAP_INFO_PRINT("YES!!!! recovery!!!! start_offset: %lu end_offset: %lu\n"
+				,pmem_recv_offset, pmem_recv_size);
+//			pm_mmap_recv(pmem_recv_offset, pmem_recv_size);
+//			PMEMMMAP_INFO_PRINT("UNDO page is recoverd !!!!\n");
+//			//pm_mmap_recv_flush_buffer();
+		}
 
 		purge_queue = trx_sys_init_at_db_start();
+
+		fprintf(stderr, "[JONGQ] ---- trx_sys_init_at_db_start finished!\n");
 
 		if (srv_force_recovery < SRV_FORCE_NO_LOG_REDO) {
 			/* Apply the hashed log records to the
 			respective file pages, for the last batch of
 			recv_group_scan_log_recs(). */
+
+			PMEMMMAP_INFO_PRINT("JONGQ recovery-4-1\n");
 
 			recv_apply_hashed_log_recs(TRUE);
 			DBUG_PRINT("ib_log", ("apply completed"));
@@ -2340,6 +2361,8 @@ files_checked:
 				trx_sys_print_mysql_binlog_offset();
 			}
 		}
+
+		 PMEMMMAP_INFO_PRINT("JONGQ recovery-5\n"); 
 
 		if (recv_sys->found_corrupt_log) {
 			ib::warn()
@@ -2549,6 +2572,9 @@ files_checked:
 	/* The number of rsegs that exist in InnoDB is given by status
 	variable srv_available_undo_logs. The number of rsegs to use can
 	be set using the dynamic global variable srv_rollback_segments. */
+	
+	// debug
+	fprintf(stderr, "[JONGQ] initialize undo log lists\n");	
 
 	srv_available_undo_logs = trx_sys_create_rsegs(
 		srv_undo_tablespaces, srv_rollback_segments, srv_tmp_undo_logs);
@@ -2823,14 +2849,6 @@ innobase_shutdown_for_mysql(void)
 			" inside InnoDB at shutdown";
 	}
 
-// TODO(jhpark): change this location after the shutdown issue resolved.
-#ifdef UNIV_NVDIMM_CACHE
-  uint64_t srv_pmem_pool_size = 8 * 1024 * 1024 * 1024UL;
-	// Free NC buffer region
-	pm_mmap_buf_free();
-  pm_mmap_free(srv_pmem_pool_size);
-#endif /* UNIV_NVDIM_CACHE */
-
 	/* 2. Make all threads created by InnoDB to exit */
 	srv_shutdown_all_bg_threads();
 
@@ -2893,6 +2911,15 @@ innobase_shutdown_for_mysql(void)
 	pars_lexer_close();
 	log_mem_free();
 	buf_pool_free(srv_buf_pool_instances);
+
+// TODO(jhpark): change this location after the shutdown issue resolved.
+#ifdef UNIV_NVDIMM_CACHE
+  uint64_t srv_pmem_pool_size = 8 * 1024 * 1024 * 1024UL;
+	// Free NC buffer region
+	pm_mmap_buf_free();
+  pm_mmap_free(srv_pmem_pool_size);
+#endif /* UNIV_NVDIM_CACHE */
+
 
 	/* 6. Free the thread management resoruces. */
 	os_thread_free();

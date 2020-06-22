@@ -1620,8 +1620,6 @@ buf_chunk_nvm_init(
 	// NVDIMM-porting
 	chunk->mem = buf_pool->allocator.allocate_large_nvm(mem_size,
 							&chunk->mem_pfx);
-	//chunk->mem = pm_mmap_buf_chunk_alloc(mem_size, &chunk->mem_pfx);
-
 	if (UNIV_UNLIKELY(chunk->mem == NULL)) {
 		return(NULL);
 	}
@@ -2207,11 +2205,17 @@ buf_pool_free_instance(
 	chunks = buf_pool->chunks;
 	chunk = chunks + buf_pool->n_chunks;
 
+  fprintf(stderr, "[JONGQ] buf_pool->instance_no check: %lu\n", buf_pool->instance_no);
+  
 	while (--chunk >= chunks) {
 		buf_block_t*	block = chunk->blocks;
-   
+  
 #ifdef UNIV_NVDIMM_CACHE
-    if (buf_pool->instance_no == 8 && chunk == chunks) break;
+    if (buf_pool->instance_no == 8 && chunk == chunks) {
+			//buf_pool->allocator.deallocate_large_nvm(
+			//	chunk->mem, &chunk->mem_pfx);
+			break;
+		}
 #endif /* UNIV_NVDIMM_CACHE */
 
 		for (ulint i = chunk->size; i--; block++) {
@@ -2220,8 +2224,18 @@ buf_pool_free_instance(
 			ut_d(rw_lock_free(&block->debug_latch));
 		}
         
+#ifdef UNIV_NVDIMM_CACHE
+    if (buf_pool->instance_no == 8) {
+      buf_pool->allocator.deallocate_large_nvm(
+			          chunk->mem, &chunk->mem_pfx);
+    } else {
+      buf_pool->allocator.deallocate_large(
+			  chunk->mem, &chunk->mem_pfx);
+    }
+#else
 		buf_pool->allocator.deallocate_large(
 			chunk->mem, &chunk->mem_pfx);
+#endif
 	}
 
 	for (ulint i = BUF_FLUSH_LRU; i < BUF_FLUSH_N_TYPES; ++i) {
@@ -2298,7 +2312,7 @@ buf_pool_free(
 	}
 
 #ifdef UNIV_NVDIMM_CACHE
-    nvdimm_buf_pool_free(srv_nvdimm_buf_pool_instances);
+  nvdimm_buf_pool_free(srv_nvdimm_buf_pool_instances);
 #endif /* UNIV_NVDIMM_CACHE */
 
 	UT_DELETE(buf_chunk_map_reg);
@@ -5333,8 +5347,14 @@ buf_page_init_low(
 	HASH_INVALIDATE(bpage, hash);
 
 #ifdef UNIV_NVDIMM_CACHE
-    bpage->cached_in_nvdimm = false;
-    bpage->moved_to_nvdimm = false;
+//    bpage->cached_in_nvdimm = false;
+//    bpage->moved_to_nvdimm = false;
+	bpage->moved_to_nvdimm = false;
+	if (bpage->buf_pool_index >= srv_buf_pool_instances) {
+		bpage->cached_in_nvdimm = true;
+  } else {
+		bpage->cached_in_nvdimm = false;
+  }
 #endif /* UNIV_NVDIMM_CACHE */
 
 	ut_d(bpage->file_page_was_freed = FALSE);

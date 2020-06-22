@@ -216,13 +216,11 @@ trx_undo_get_prev_rec(
 	prev_rec = trx_undo_page_get_prev_rec(rec, page_no, offset);
 
 	if (prev_rec) {
-
 		return(prev_rec);
 	}
 
 	/* We have to go to the previous undo log page to look for the
 	previous record */
-
 	return(trx_undo_get_prev_rec_from_prev_page(rec, page_no, offset,
 						    shared, mtr));
 }

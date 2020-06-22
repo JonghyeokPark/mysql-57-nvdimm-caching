@@ -19,6 +19,12 @@ unsigned char* gb_pm_mmap;
 int gb_pm_mmap_fd;
 PMEM_MMAP_MTRLOG_BUF* mmap_mtrlogbuf = NULL;
 
+// recovery
+bool is_pmem_recv = false;
+uint64_t pmem_recv_offset = 0;
+uint64_t pmem_recv_size = 0;
+
+
 unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
   
   if (access(path, F_OK) != 0) {
@@ -66,12 +72,21 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
 
 		// recvoery check
     PMEM_MMAP_MTRLOG_HDR* recv_mmap_mtrlog_hdr = (PMEM_MMAP_MTRLOG_HDR*) malloc(PMEM_MMAP_MTRLOG_HDR_SIZE);
-    memcpy(recv_mmap_mtrlog_hdr, gb_pm_mmap+recv_mmap_mtrlog_fil_hdr->size, PMEM_MMAP_MTRLOG_HDR_SIZE);
+    memcpy(recv_mmap_mtrlog_hdr, gb_pm_mmap+recv_mmap_mtrlog_fil_hdr->ckpt_offset, PMEM_MMAP_MTRLOG_HDR_SIZE);
 		
-		if (recv_mmap_mtrlog_fil_hdr->size == PMEM_MMAP_MTR_FIL_HDR_SIZE || recv_mmap_mtrlog_hdr->need_recv == false) {
+		if (recv_mmap_mtrlog_fil_hdr->size == PMEM_MMAP_MTR_FIL_HDR_SIZE 
+				|| recv_mmap_mtrlog_hdr->need_recv == false) {
 			PMEMMMAP_INFO_PRINT("Normal Shutdown case, don't need to recveory; Recovery process is terminated\n");
 		} else {
-			// TODO(jhpark): real recovery process 
+			// TODO(jhpark): real recovery process
+			is_pmem_recv = true;
+			pmem_recv_offset = pm_mmap_recv_check(recv_mmap_mtrlog_fil_hdr);
+			pmem_recv_size = recv_mmap_mtrlog_fil_hdr->size;
+			
+			// jhpark: check buffer!!!!!
+			// pm_mmap_recv_flush_buffer();
+
+			PMEMMMAP_INFO_PRINT("recovery offset: %lu\n", pmem_recv_offset);
 		} 
 
 		// step1. allocate mtr_recv_sys
@@ -90,7 +105,7 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
     //fprintf(stderr, "need_recovery: %d\n", recv_mmap_mtrlog_hdr->need_recv);
     
 		free(recv_mmap_mtrlog_fil_hdr);
-    free(recv_mmap_mtrlog_hdr);  
+    free(recv_mmap_mtrlog_hdr);
   }
 
   // Force to set NVIMMM
@@ -105,7 +120,7 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
 void pm_mmap_mtrlogbuf_mem_free() {
   if (mmap_mtrlogbuf != NULL) {
     // TODO(jhpark): free mtr recovery system
-    ut_free(mmap_mtrlogbuf);
+    free(mmap_mtrlogbuf);
     mmap_mtrlogbuf = NULL;
   }
 }
@@ -190,8 +205,6 @@ void pm_mmap_log_commit(ulint cur_space, ulint cur_page, ulint cur_offset) {
 		// (jhpark): At this point, call checkpoint and then call commit
 		// no need to commit
 		if (tmp_mmap_hdr->len == 0) {
-		//	fprintf(stderr, "[mtr-commit] no need to commit!!! offset: %lu len: %lu cur_offset: %lu cur_space: %lu cur_page: %lu\n", 
-    //                offset, tmp_mmap_hdr->len, cur_offset, cur_space, cur_page); 
 			break;
 		}	
 	
@@ -212,6 +225,9 @@ void pm_mmap_log_commit(ulint cur_space, ulint cur_page, ulint cur_offset) {
 
 			if (ckpt_flag) {
 				mmap_mtrlogbuf->ckpt_offset = offset;
+				// write ckpt info (lsn parameter is unused)
+				//fprintf(stderr, "write ckpt info offset: %lu\n", offset);
+				pm_mmap_write_logfile_header_ckpt_info(offset, 0);
 			}
 //			fprintf(stderr, "[mtr-commit] YES ckpt_offset: %lu space: %lu page_no: %lu\n"
 //							,mmap_mtrlogbuf->ckpt_offset,tmp_mmap_hdr->space, tmp_mmap_hdr->page_no);
@@ -225,10 +241,17 @@ void pm_mmap_log_commit(ulint cur_space, ulint cur_page, ulint cur_offset) {
 		// free tmp_mmap_hdr
 		free(tmp_mmap_hdr);
 	}
+	
 }
 
 uint64_t pm_mmap_log_checkpoint(uint64_t cur_offset) {
 	size_t finish_offset = mmap_mtrlogbuf->ckpt_offset;
+
+	///////////////////////////////////////////////////
+	// recovery test
+//	PMEMMMAP_ERROR_PRINT("RECOVERY TEST !!!");
+//	exit(1);
+	///////////////////////////////////////////////////
 
 	// invalidate all offset;
 	memset(gb_pm_mmap + PMEM_MMAP_MTR_FIL_HDR_SIZE, 0x00, (finish_offset - PMEM_MMAP_MTR_FIL_HDR_SIZE));
@@ -391,6 +414,8 @@ void pm_mmap_mtrlogbuf_commit(unsigned char* rec, unsigned long cur_rec_size ,ul
 	//return;
 	flush_cache(rec, cur_rec_size);
 	//fprintf(stderr,"[JONGQ] flush_cach called after page modification rec_size:%lu \n", cur_rec_size);
+	//fprintf(stderr,"[JONGQ] space :%lu, page_no: %lu\n", space, page_no);
+	//fprintf(stderr,"[JONGQ] buf_start_address: %p rec address: %p\n",gb_pm_buf, rec);
 
 /*
 	if (mmap_mtrlogbuf == NULL) return;

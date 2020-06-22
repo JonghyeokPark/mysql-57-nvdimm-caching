@@ -267,10 +267,11 @@ row_undo_mod_clust(
 	ut_ad(rw_lock_own(dict_operation_lock, RW_LOCK_S)
 	      || rw_lock_own(dict_operation_lock, RW_LOCK_X));
 
+
 	log_free_check();
 	pcur = &node->pcur;
 	index = btr_cur_get_index(btr_pcur_get_btr_cur(pcur));
-
+	
 	mtr_start(&mtr);
 	mtr.set_named_space(index->space);
 	dict_disable_redo_if_temporary(index->table, &mtr);

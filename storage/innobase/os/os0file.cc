@@ -6901,7 +6901,6 @@ AIO::reserve_slot(
 	local_seg = (offset >> (UNIV_PAGE_SIZE_SHIFT + 6)) % m_n_segments;
 
 	for (;;) {
-
 		acquire();
 
 		if (m_n_reserved != m_slots.size()) {
@@ -7446,21 +7445,16 @@ os_aio_func(
 	}
 
 try_again:
-
+  
 	AIO*	array;
-
 	array = AIO::select_slot_array(type, read_only, mode);
-
+	
 	Slot*	slot;
-
 	slot = array->reserve_slot(type, m1, m2, file, name, buf, offset, n);
 
 	if (type.is_read()) {
-
 		if (srv_use_native_aio) {
-
 			++os_n_file_reads;
-
 			os_bytes_read_since_printout += n;
 #ifdef WIN_ASYNC_IO
 			ret = ReadFile(
@@ -7476,7 +7470,6 @@ try_again:
 				AIO::get_segment_no_from_slot(array, slot));
 		}
 	} else if (type.is_write()) {
-
 		if (srv_use_native_aio) {
 			++os_n_file_writes;
 
@@ -7503,7 +7496,6 @@ try_again:
 		if ((ret && slot->len == slot->n_bytes)
 		     || (!ret && GetLastError() == ERROR_IO_PENDING)) {
 			/* aio was queued successfully! */
-
 			if (mode == OS_AIO_SYNC) {
 				IORequest	dummy_type;
 				void*		dummy_mess2;

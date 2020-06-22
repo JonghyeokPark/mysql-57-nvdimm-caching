@@ -1047,7 +1047,15 @@ buf_flush_write_block_low(
 
 	/* Force the log to the disk before writing the modified block */
 	if (!srv_read_only_mode) {
-		log_write_up_to(bpage->newest_modification, true);
+		#if defined(UNIV_NVDIMM_CACHE_NO) && defined(UNIV_NVDIMM_CACHE_OL)
+			if (bpage->id.space() != 28) {
+				log_write_up_to(bpage->newest_modification, true);
+			} else {
+				//fprintf(stderr, "avoid neworder page to flush REDO log file\n");
+			}
+		#else
+			log_write_up_to(bpage->newest_modification, true);
+		#endif
 	}
 
 	switch (buf_page_get_state(bpage)) {

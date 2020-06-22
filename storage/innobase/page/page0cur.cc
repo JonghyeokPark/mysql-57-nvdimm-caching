@@ -1545,8 +1545,9 @@ use_heap:
           // skip generating REDO log for nvm-page
 					pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, space_id, page_no);
         } else {
-        page_cur_insert_rec_write_log(insert_rec, rec_size,
-					        current_rec, index, mtr);
+          // original : 
+          page_cur_insert_rec_write_log(insert_rec, rec_size,
+          current_rec, index, mtr);
         }
 #else
         page_cur_insert_rec_write_log(insert_rec, rec_size,

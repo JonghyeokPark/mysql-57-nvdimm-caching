@@ -169,7 +169,6 @@ struct __pmem_mmap_mtrlog_hdr {
 };
 
 // logging? 
-
 int pm_mmap_mtrlogbuf_init(const size_t size);
 void pm_mmap_mtrlogbuf_mem_free();
 void pm_mmap_read_logfile_header(PMEM_MMAP_MTRLOGFILE_HDR* mtrlog_fil_hdr);
@@ -178,7 +177,6 @@ void pm_mmap_write_logfile_header_lsn(uint64_t lsn);
 void pm_mmap_write_logfile_header_ckpt_info(uint64_t offset, uint64_t lsn);
 uint64_t pm_mmap_log_checkpoint(uint64_t cur_offset);
 void pm_mmap_log_commit(unsigned long cur_space, unsigned long cur_page, uint64_t cur_offset);
-
 
 ssize_t pm_mmap_mtrlogbuf_write(const uint8_t* buf, 
                                 unsigned long int n, unsigned long int lsn);
@@ -193,4 +191,32 @@ void pm_mmap_buf_init(const uint64_t size);
 void pm_mmap_buf_free(void);
 void pm_mmap_buf_write(unsigned long len, void* buf);
 //unsigned char* pm_mmap_buf_chunk_alloc(unsigned long mem_size, ut_new_pfx_t* pfx);
+
+
+// recovery
+//bool pm_mmap_recv(PMEM_MMAP_MTRLOGFILE_HDR* log_fil_hdr);
+bool pm_mmap_recv(uint64_t start_offset, uint64_t end_offset);
+uint64_t pm_mmap_recv_check(PMEM_MMAP_MTRLOGFILE_HDR* log_fil_hdr);
+void pm_mmap_recv_flush_buffer();
+
+// TODO(jhpark): covert these variables as structure (i.e., recv_sys_t)
+extern bool is_pmem_recv;
+extern uint64_t pmem_recv_offset;
+extern uint64_t pmem_recv_size;
+
+/** Recovery system data structure */
+//struct recv_sys_t{
+//  ib_mutex_t    mutex;
+	/*!< mutex protecting the fields apply_log_recs,
+	n_addrs, and the state field in each recv_addr struct */
+//  ib_mutex_t    writer_mutex; 
+	/*!< mutex coordinating 
+	flushing between recv_writer_thread and the recovery thread. */
+//  ibool   apply_log_recs;
+	/*!< this is TRUE when log rec application to pages is allowed; this flag tells the
+  i/o-handler if it should do log record application */
+//  byte*   buf;  /*!< buffer for parsing log records */
+//  ulint   len;  /*!< amount of data in buf */
+//};
+
 #endif  /* __PMEMMAPOBJ_H__ */
