@@ -798,11 +798,10 @@ buf_page_is_corrupted(
 
 		/* Stored log sequence numbers at the start and the end
 		of page do not match */
-
 		return(TRUE);
 	}
 
-#if !defined(UNIV_HOTBACKUP) && !defined(UNIV_INNOCHECKSUM)
+#if !defined(UNIV_HOTBACKUP) && !defined(UNIV_INNOCHECKSUM) &!defined(UNIV_NVDIMM_CACHE)
 	if (check_lsn && recv_lsn_checks_on) {
 		lsn_t		current_lsn;
 		const lsn_t	page_lsn
@@ -973,7 +972,6 @@ buf_page_is_corrupted(
 				page_no, is_log_enabled, log_file, curr_algo,
 #endif /* UNIV_INNOCHECKSUM */
 				true)) {
-
 				return(FALSE);
 			}
 			legacy_checksum_checked = true;
@@ -1084,7 +1082,6 @@ buf_page_is_corrupted(
 					page_id);
 			}
 #endif /* UNIV_INNOCHECKSUM */
-
 			return(FALSE);
 		}
 
