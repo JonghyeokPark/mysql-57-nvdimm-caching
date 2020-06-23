@@ -9,3 +9,5 @@ storage/innobase/tags
 bld/
 boost/
 my-nc-only.cnf
+jongq-my.cnf
+jongq-my-origin.cnf
