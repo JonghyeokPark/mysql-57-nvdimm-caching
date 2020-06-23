@@ -49,6 +49,7 @@ Created 11/26/1995 Heikki Tuuri
 #ifdef UNIV_NVDIMM_CACHE
 /** Commit a mini-transaction for nvdimm resident pages */
 #define mtr_commit_nvm(m) (m)->commit_nvm()
+#define mtr_commit_no_nvm(m) (m)->commit_no_nvm()
 #endif /* UNIV_NVDIMM_CACHE */
 
 /** Set and return a savepoint in mtr.
@@ -264,6 +265,7 @@ struct mtr_t {
 #ifdef UNIV_NVDIMM_CACHE
     /** Commit the mini-transaction for nvm resident page. */
     void commit_nvm();
+		void commit_no_nvm();
 #endif /* UNIV_NVDIMM_CACHE */
 
 	/** Commit a mini-transaction that did not modify any pages,

@@ -2493,6 +2493,11 @@ row_upd_clust_rec_by_insert(
 
 	heap = mem_heap_create(1000);
 
+	// debug
+	if (index->space == 28) {
+		fprintf(stderr,"[JONGQ] row_upd_clust_rec_by_insert() check!\n");
+	}
+
 	entry = row_build_index_entry_low(node->upd_row, node->upd_ext,
 					  index, heap, ROW_BUILD_FOR_INSERT);
 	ut_ad(dtuple_get_info_bits(entry) == 0);

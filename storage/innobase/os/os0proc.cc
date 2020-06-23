@@ -169,7 +169,6 @@ os_mem_free_large(
 	ulint	size)
 {
 	ut_a(os_total_large_mem_allocated >= size);
-
 #if defined HAVE_LINUX_LARGE_PAGES && defined UNIV_LINUX
 	if (os_use_large_pages && os_large_page_size && !shmdt(ptr)) {
 		os_atomic_decrement_ulint(

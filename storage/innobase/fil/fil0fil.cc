@@ -5578,8 +5578,8 @@ fil_io(
 	least one file while holding it, if the file is not already open */
 
 	fil_mutex_enter_and_prepare_for_io(page_id.space());
-
-	fil_space_t*	space = fil_space_get_by_id(page_id.space());
+	
+  fil_space_t*	space = fil_space_get_by_id(page_id.space());
 
 	/* If we are deleting a tablespace we don't allow async read operations
 	on that. However, we do allow write operations and sync read operations. */
@@ -5609,14 +5609,12 @@ fil_io(
 	fil_node_t*	node = UT_LIST_GET_FIRST(space->chain);
 
 	for (;;) {
-
 		if (node == NULL) {
-
 			if (req_type.ignore_missing()) {
 				mutex_exit(&fil_system->mutex);
 				return(DB_ERROR);
 			}
-
+			
 			fil_report_invalid_page_access(
 				page_id.page_no(), page_id.space(),
 				space->name, byte_offset, len,
@@ -5632,7 +5630,6 @@ fil_io(
 		} else if (node->size > cur_page_no) {
 			/* Found! */
 			break;
-
 		} else {
 			if (space->id != srv_sys_space.space_id()
 			    && UT_LIST_GET_LEN(space->chain) == 1
@@ -5649,7 +5646,6 @@ fil_io(
 			}
 
 			cur_page_no -= node->size;
-
 			node = UT_LIST_GET_NEXT(chain, node);
 		}
 	}
@@ -5672,7 +5668,6 @@ fil_io(
 						     cur_page_no)
 					<< ", I/O length: " << len << " bytes";
 			}
-
 			return(DB_TABLESPACE_DELETED);
 		}
 
@@ -5774,7 +5769,7 @@ fil_io(
 #ifdef UNIV_HOTBACKUP
 	/* In mysqlbackup do normal i/o, not aio */
 	if (req_type.is_read()) {
-
+    
 		err = os_file_read(req_type, node->handle, buf, offset, len);
 
 	} else {
@@ -5793,7 +5788,6 @@ fil_io(
 		fsp_is_system_temporary(page_id.space())
 		? false : srv_read_only_mode,
 		node, message);
-
 #endif /* UNIV_HOTBACKUP */
 
 	if (err == DB_IO_NO_PUNCH_HOLE) {
@@ -5827,7 +5821,6 @@ fil_io(
 
 		ut_ad(fil_validate_skip());
 	}
-
 	return(err);
 }
 

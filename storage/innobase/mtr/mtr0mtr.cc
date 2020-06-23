@@ -45,6 +45,9 @@ extern unsigned char* gb_pm_mmap;
 extern PMEM_MMAP_MTRLOG_BUF* mmap_mtrlogbuf;
 #endif /* UNIV_NVDIMM_CACHE */
 
+// print_trace
+#include <execinfo.h>
+
 /** Iterate over a memo block in reverse. */
 template <typename Functor>
 struct Iterate {
@@ -437,7 +440,7 @@ public:
 #ifdef UNIV_NVDIMM_CACHE
   /** Write the mtr log (undo + redo of undo) record,and release the resorces */
   void execute_nvm();
-
+	void execute_no_nvm();
   /** Append the redo log records to the NVDIMM mtr log buffer.
 	@param[in]	len	number of bytes to write */
 	void finish_write_nvm(ulint len);
@@ -734,6 +737,28 @@ void mtr_t::commit_nvm() {
     cmd.release_resources();
   }
 }
+
+// just release for row_purge_remove_clust_if_poss_low() function 
+void mtr_t::commit_no_nvm() {
+	ut_ad(is_active());
+  ut_ad(!is_inside_ibuf());
+  ut_ad(m_impl.m_magic_n == MTR_MAGIC_N);
+  m_impl.m_state = MTR_STATE_COMMITTING;
+  // jhpark: release the mtr structure 
+  Command cmd(this);
+	if (m_impl.m_modifications
+	    && (m_impl.m_n_log_recs > 0
+		|| m_impl.m_log_mode == MTR_LOG_NO_REDO)) {
+    cmd.execute_no_nvm();
+  } else {
+    cmd.release_all();
+    cmd.release_resources();
+  }
+
+  //cmd.release_all();
+  //cmd.release_resources();
+}
+
 #endif /* UNIV_NVDIMM_CACHE */
 
 /** Acquire a tablespace X-latch.
@@ -939,6 +964,21 @@ mtr_t::Command::prepare_write_nvm()
 
 /** Prepare to write the mini-transaction log to the redo log buffer.
 @return number of bytes to write in finish_write() */
+/*
+static 
+void print_trace(void) {
+    char **strings;
+    size_t i, size;
+    enum Constexpr { MAX_SIZE = 1024 };
+    void *array[MAX_SIZE];
+    size = backtrace(array, MAX_SIZE);
+    strings = backtrace_symbols(array, size);
+    for (i = 0; i < size; i++)
+        fprintf(stderr,"%s\n", strings[i]);
+    //puts("");
+    free(strings);
+}
+*/
 ulint
 mtr_t::Command::prepare_write()
 {
@@ -975,6 +1015,13 @@ mtr_t::Command::prepare_write()
 	}
 
 	log_mutex_enter();
+
+	// debug : this must not happen !!!!
+	//if (space != NULL && space->id == 28) {
+	//	print_trace();
+	//	fprintf(stderr, "[JONGQ] WRONG prepare_write(): m_log_mode: %d space_id: %lu\n"
+	//									,m_impl->m_log_mode, space->id);
+	//}
 
 	if (fil_names_write_if_was_clean(space, m_impl->m_mtr)) {
 		/* This mini-transaction was the first one to modify
@@ -1168,6 +1215,23 @@ void mtr_t::Command::execute_nvm() {
 //	release_latches();
 //	release_resources();
 
+}
+
+void mtr_t::Command::execute_no_nvm() {
+	ut_ad(m_impl->m_log_mode != MTR_LOG_NONE);
+	fil_space_t* space = m_impl->m_user_space;
+	if (space != NULL && is_system_or_undo_tablespace(space->id)) {
+		space = NULL;
+	}
+
+	if (fil_names_write_if_was_clean(space, m_impl->m_mtr)) {
+		fprintf(stderr, "[JONGQ] fil_names_write_if_was_clean!!!\n");
+	}
+
+	//m_impl->m_mtr->m_commit_lsn = m_end_lsn;
+	release_blocks();
+	release_latches();
+	release_resources();
 }
 #endif /* UNIV_NVDIMM_CACHE */
 
