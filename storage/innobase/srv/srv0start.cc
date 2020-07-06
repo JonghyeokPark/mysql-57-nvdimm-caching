@@ -1509,9 +1509,9 @@ innobase_start_or_create_for_mysql(void)
 		// TODO(jhpark): change buffer pool recovery policy
 		// buffer retion initialization (2GB)
 		pm_mmap_buf_init(1024*1024*1024*2UL);
+	} else {
+		pm_mmap_buf_init(1024*1024*1024*2UL);
 	}
-	
-	//pm_mmap_buf_init(1024*1024*1024*3UL);
 
 #endif /* UNIV_NVDIMM_CACHE */
 
@@ -2573,9 +2573,6 @@ files_checked:
 	variable srv_available_undo_logs. The number of rsegs to use can
 	be set using the dynamic global variable srv_rollback_segments. */
 	
-	// debug
-	fprintf(stderr, "[JONGQ] initialize undo log lists\n");	
-
 	srv_available_undo_logs = trx_sys_create_rsegs(
 		srv_undo_tablespaces, srv_rollback_segments, srv_tmp_undo_logs);
 

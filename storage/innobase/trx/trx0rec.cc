@@ -205,6 +205,7 @@ trx_undo_page_set_next_prev_and_add(
     if (is_nvm_page){
         // skip generate UNDO logs and REDO logs of UNDO page
         // FIXME(jhpark): (INSERT) allow to write UNDO + REDO of UNDO log in mtr log heap
+				// debug : skip?
         trx_undof_page_add_undo_rec_log(undo_page, first_free,
                         end_of_rec, mtr);
     } else {
@@ -2078,18 +2079,16 @@ trx_undo_report_row_operation(
      //                just release the mtr structure.
 #ifdef UNIV_NVDIMM_CACHE
      if (is_nvm_page) {
-				//ulint space = index->space;
-				//ulint page = index->page;
-				//fprintf(stderr, "[mtr-commit] space : %lu page : %lu\n", space, page);
-				//mtr_commit_nvm(&mtr, space, page);
-				mtr_commit_nvm(&mtr);
+				mtr_commit_no_nvm(&mtr);
+				//mtr_commit_nvm(&mtr);
+				//mtr_commit(&mtr);
 		 } else {
-      	mtr_commit(&mtr);
+ 	    	mtr_commit(&mtr);
      }
 #else
      mtr_commit(&mtr);
 #endif /* UNIV_NVDIMM_CACHE */
-            
+    
 			undo->empty = FALSE;
 			undo->top_page_no = page_no;
 			undo->top_offset  = offset;
@@ -2104,6 +2103,7 @@ trx_undo_report_row_operation(
 			*roll_ptr = trx_undo_build_roll_ptr(
 				op_type == TRX_UNDO_INSERT_OP,
 				undo_ptr->rseg->id, page_no, offset);
+
 			return(DB_SUCCESS);
 		}
 

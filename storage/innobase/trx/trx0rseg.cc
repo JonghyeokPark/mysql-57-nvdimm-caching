@@ -352,9 +352,7 @@ trx_rseg_create_instance(
 
 			ut_a(!trx_rseg_get_on_id(i, true));
 
-      //fprintf(stderr, "[JONGQ] page_no != FIL_NULL page_no: %lu \n", page_no);
 			space = trx_sysf_rseg_get_space(sys_header, i, &mtr);
-      //fprintf(stderr, "[JONGQ] space : %lu\n", space);
 
 			bool			found = true;
 			const page_size_t&	page_size
@@ -439,6 +437,9 @@ trx_rseg_create(
 		rseg = trx_rseg_mem_create(
 			slot_no, space_id, page_no, page_size,
 			purge_sys->purge_queue, rseg_array, &mtr);
+
+    // debug
+    fprintf(stderr, "[JONGQ] slot_no: %lu space_id: %lu page_no: %lu\n", slot_no, space_id, page_no);
 	}
 
 	mtr_commit(&mtr);

@@ -649,6 +649,9 @@ public:
   	size_type	n_elements,
 		ut_new_pfx_t*	pfx)
 	{
+    // debug-hhh
+    allocate_large(n_elements, pfx);
+/*
 		if (n_elements == 0 || n_elements > max_size()) {
 			return(NULL);
 		}
@@ -665,11 +668,12 @@ public:
 		}
 #else
 		pfx->m_size = n_bytes;
-#endif /* UNIV_PFS_MEMORY */
+#endif // UNIV_PFS_MEMORY
 
     mmap_buf_sys->cur_offset += n_bytes;
 
 		return(ptr);
+*/
 	}
 
 	/** Free a memory allocated by allocate_large_nvm() and trace the
@@ -682,12 +686,15 @@ public:
 		pointer			ptr,
 		const ut_new_pfx_t*	pfx)
 	{
+  // debug-hhh
+  deallocate_large(ptr, pfx);
+/*
 #ifdef UNIV_PFS_MEMORY
 		deallocate_trace(pfx);
-#endif /* UNIV_PFS_MEMORY */
-
+#endif // UNIV_PFS_MEMORY 
 		mmap_buf_sys->cur_offset -= pfx->m_size;
 		//os_mem_free_large(ptr, pfx->m_size);
+*/
 	}
 
 

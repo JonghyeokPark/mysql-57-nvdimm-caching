@@ -1107,10 +1107,8 @@ mtr_t::Command::finish_write(
 
 	/* Open the database log for log_write_low */
 	m_start_lsn = log_reserve_and_open(len);
-
 	mtr_write_log_t	write_log;
 	m_impl->m_log.for_each_block(write_log);
-
 	m_end_lsn = log_close();
 }
 

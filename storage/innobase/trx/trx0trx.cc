@@ -766,11 +766,13 @@ trx_resurrect_table_locks(
 		undo_rec = trx_undo_get_prev_rec(
 			undo_rec, undo->hdr_page_no,
 			undo->hdr_offset, false, &mtr);
-	} while (undo_rec);
+	
+		// debug
+		if (undo_no == 0 && table_id ==0) break; 	
+
+  } while (undo_rec);
 
 	mtr_commit(&mtr);
-
-	fprintf(stderr, "[JONGQ] escape loop!\n");
 
 	for (table_id_set::const_iterator i = tables.begin();
 	     i != tables.end(); i++) {
@@ -1027,7 +1029,6 @@ trx_lists_init_at_db_start(void)
 		/* At this stage non-redo rseg slots are all NULL as they are
 		re-created on server start and existing slots are not read. */
 		if (rseg == NULL) {
-      fprintf(stderr, "[JONGQ] rseg is NULL \n");
 			continue;
 		}
 
@@ -2170,13 +2171,7 @@ trx_commit_low(
 		number and a bigger commit lsn than T1. */
 
 		/*--------------*/
-#ifdef UNIV_NVDIMM_CACHE
-		// (jhpark): At this point, this mini-transaction records changes on REDO log
-		// that is, update rseg page which moves UNDO seg to history list
-		mtr_commit_nvm(mtr);
-#else
 		mtr_commit(mtr);
-#endif
 
 		DBUG_EXECUTE_IF("ib_crash_during_trx_commit_in_mem",
 				if (trx_is_rseg_updated(trx)) {

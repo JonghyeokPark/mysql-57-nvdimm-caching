@@ -48,6 +48,8 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
   } else {
     // TODO(jhaprk) add the recovery logic
     PMEMMMAP_INFO_PRINT("Start mtr recvoery process\n");
+		// debug
+		is_pmem_recv = true;
     gb_pm_mmap_fd = open(path, O_RDWR, 0777);
 
     if (gb_pm_mmap_fd < 0) {
@@ -249,8 +251,8 @@ uint64_t pm_mmap_log_checkpoint(uint64_t cur_offset) {
 
 	///////////////////////////////////////////////////
 	// recovery test
-//	PMEMMMAP_ERROR_PRINT("RECOVERY TEST !!!");
-//	exit(1);
+	//PMEMMMAP_ERROR_PRINT("RECOVERY TEST !!!");
+	//exit(1);
 	///////////////////////////////////////////////////
 
 	// invalidate all offset;
@@ -411,8 +413,9 @@ ssize_t pm_mmap_mtrlogbuf_write(
 void pm_mmap_mtrlogbuf_commit(unsigned char* rec, unsigned long cur_rec_size ,ulint space, ulint page_no) {
 	// TODO(jhaprk): Keep page modification finish log for recovery	
 	// For current mtr logging version, we jsut ignore this function
-	//return;
-	flush_cache(rec, cur_rec_size);
+	// debug-hhh
+	return;
+	//flush_cache(rec, cur_rec_size);
 	//fprintf(stderr,"[JONGQ] flush_cach called after page modification rec_size:%lu \n", cur_rec_size);
 	//fprintf(stderr,"[JONGQ] space :%lu, page_no: %lu\n", space, page_no);
 	//fprintf(stderr,"[JONGQ] buf_start_address: %p rec address: %p\n",gb_pm_buf, rec);

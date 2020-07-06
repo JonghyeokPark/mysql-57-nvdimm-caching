@@ -1050,8 +1050,6 @@ buf_flush_write_block_low(
 		#if defined(UNIV_NVDIMM_CACHE_NO) && defined(UNIV_NVDIMM_CACHE_OL)
 			if (bpage->id.space() != 28) {
 				log_write_up_to(bpage->newest_modification, true);
-			} else {
-				//fprintf(stderr, "avoid neworder page to flush REDO log file\n");
 			}
 		#else
 			log_write_up_to(bpage->newest_modification, true);
@@ -1095,7 +1093,9 @@ buf_flush_write_block_low(
 	adds an overhead during flushing. */
 
 #ifdef UNIV_NVDIMM_CACHE
-    if (bpage->moved_to_nvdimm && bpage->buf_fix_count == 0) {
+		// (jhpark): disable moving target page to NVDIMM buffer while recoverying
+    // org: if (bpage->moved_to_nvdimm && bpage->buf_fix_count == 0) {
+		if (!is_pmem_recv && bpage->moved_to_nvdimm && bpage->buf_fix_count == 0) { 
         buf_page_t *nvdimm_page;
         page_id_t page_id(bpage->id.space(), bpage->id.page_no());
         const page_size_t page_size = page_size_t(bpage->size.logical(), bpage->size.logical(), false);
@@ -1140,8 +1140,9 @@ buf_flush_write_block_low(
                     sync, bpage->id, bpage->size, 0, bpage->size.physical(),
                     frame, bpage); 
 
-						// jhpark: write oldest_modification_lsn of current NVDIMM-caching page
-						pm_mmap_write_logfile_header_lsn(bpage->oldest_modification);
+						// (jhpark): write oldest_modification_lsn of current NVDIMM-caching page
+						// pm_mmap_write_logfile_header_lsn(bpage->oldest_modification);
+						// TODO(jhpark): need to check flushing nc pages to SSD 
   
         } else if (flush_type == BUF_FLUSH_SINGLE_PAGE) {
             buf_dblwr_write_single_page(bpage, sync);

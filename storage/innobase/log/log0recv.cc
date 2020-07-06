@@ -1679,7 +1679,7 @@ recv_parse_or_apply_log_rec_body(
 	mtr_t*		mtr)
 {
 	ut_ad(!block == !mtr);
-	
+
 	switch (type) {
 	case MLOG_FILE_NAME:
 	case MLOG_FILE_DELETE:
@@ -1783,9 +1783,18 @@ recv_parse_or_apply_log_rec_body(
 		/* Applying a page log record. */
 		page = block->frame;
 		page_zip = buf_block_get_page_zip(block);
+		// debug
+		if (space_id == 30 || space_id == 28) {
+			fprintf(stderr, "[JONGQ] ignore nc page for applying! space_id: %lu\n", space_id);
+			return NULL;
+		}
 		ut_d(page_type = fil_page_get_type(page));
 	} else {
 		/* Parsing a page log record. */
+		// debug
+		if (space_id == 30 || space_id == 28) {
+			fprintf(stderr, "[JONGQ] ignore nc page for parsing! space_id: %lu\n", space_id);
+		}
 		page = NULL;
 		page_zip = NULL;
 		ut_d(page_type = FIL_PAGE_TYPE_ALLOCATED);
@@ -2068,6 +2077,7 @@ recv_parse_or_apply_log_rec_body(
 			ut_a(!page
 			     || (ibool)!!page_is_comp(page)
 			     == dict_table_is_comp(index->table));
+
 			ptr = page_cur_parse_delete_rec(ptr, end_ptr,
 							block, index, mtr);
 		}
@@ -2371,8 +2381,6 @@ recv_recover_page_func(
 		    recv_addr->space, recv_addr->page_no));
 #endif /* !UNIV_HOTBACKUP */
 
-  // debug
-  fprintf(stderr, "[JONGQ] state changed : !!! before: %d after: %d\n", recv_addr->state, RECV_BEING_PROCESSED);
 	recv_addr->state = RECV_BEING_PROCESSED;
 
 	mutex_exit(&(recv_sys->mutex));
@@ -2497,6 +2505,11 @@ recv_recover_page_func(
 				    recv_addr->space,
 				    recv_addr->page_no));
 
+			// debug
+			fprintf(stderr, "[JOGNQ] applying! lsn:%lu len:%lu type:%d page %u:%u\n"
+										, recv->start_lsn, recv->len, recv->type
+										, recv_addr->space, recv_addr->page_no);
+
 			recv_parse_or_apply_log_rec_body(
 				recv->type, buf, buf + recv->len,
 				recv_addr->space, recv_addr->page_no,
@@ -2594,9 +2607,9 @@ recv_read_in_area(
 
 		if (recv_addr && !buf_page_peek(cur_page_id)) {
 			//debug
-			fprintf(stderr, "[JONGQ] recv-before-mutex i: %lu\n", page_no);
+			fprintf(stderr, "[JONGQ] recv-before-mutex space_id: %lu page_no: %lu\n", page_id.space(), page_no);
 			mutex_enter(&(recv_sys->mutex));
-			fprintf(stderr, "[JONGQ] recv-after-mutex i: %lu\n", page_no);  
+			fprintf(stderr, "[JONGQ] recv-after-mutex space_id: %lu page_no: %lu\n", page_id.space(), page_no);  
 
 			if (recv_addr->state == RECV_NOT_PROCESSED) {
 				recv_addr->state = RECV_BEING_READ;
@@ -2723,7 +2736,6 @@ loop:
 					recv_recover_page(FALSE, block);
 					mtr_commit(&mtr);
 				} else {
-					fprintf(stderr, "[JONGQ] check-11!\n");
 					recv_read_in_area(page_id);
 				}
 

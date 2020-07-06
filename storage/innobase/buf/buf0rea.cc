@@ -153,11 +153,11 @@ buf_read_page_low(
 		return(0);
 	}
 
-  // debug
-// fprintf(stderr, "[JONGQ] read page %u:%u size=%u unzip=%u, sync=%d\n"
-//                , (unsigned) page_id.space(),
-//                  (unsigned) page_id.page_no(),
-//                  (unsigned) page_size.physical(), (unsigned) unzip, sync);
+// debug
+ fprintf(stderr, "[JONGQ] read page %u:%u size=%u unzip=%u, sync=%d\n"
+                , (unsigned) page_id.space(),
+                  (unsigned) page_id.page_no(),
+                  (unsigned) page_size.physical(), (unsigned) unzip, sync);
 
 	DBUG_PRINT("ib_buf", ("read page %u:%u size=%u unzip=%u,%s",
 			      (unsigned) page_id.space(),
@@ -885,7 +885,6 @@ buf_read_recv_pages(
 	const page_size_t	page_size(space->flags);
 
 	for (i = 0; i < n_stored; i++) {
-
 		buf_pool_t*		buf_pool;
 		const page_id_t	cur_page_id(space_id, page_nos[i]);
 
@@ -893,6 +892,7 @@ buf_read_recv_pages(
 
 		buf_pool = buf_pool_get(cur_page_id);
 		while (buf_pool->n_pend_reads >= recv_n_pool_free_frames / 2) {
+      
 			os_aio_simulated_wake_handler_threads();
 			os_thread_sleep(10000);
 

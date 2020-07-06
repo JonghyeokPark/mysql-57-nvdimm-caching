@@ -1533,6 +1533,13 @@ use_heap:
 	/* 9. Write log record of the insert */
 	if (UNIV_LIKELY(mtr != NULL)) {
 #ifdef UNIV_NVDIMM_CACHE
+				// debug	
+				if (is_pmem_recv) {
+					page_cur_insert_rec_write_log(insert_rec, rec_size,
+							current_rec, index, mtr);
+					return (insert_rec);
+				}
+
         ulint page_no = page_get_page_no(page);
         ulint space_id = page_get_space_id(page);
         buf_block_t* nvm_block = buf_page_get(page_id_t(space_id, page_no),

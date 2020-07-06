@@ -801,6 +801,7 @@ buf_page_is_corrupted(
 		return(TRUE);
 	}
 
+// (jhpark) ignore lsn anomaly for nc pages
 #if !defined(UNIV_HOTBACKUP) && !defined(UNIV_INNOCHECKSUM) &!defined(UNIV_NVDIMM_CACHE)
 	if (check_lsn && recv_lsn_checks_on) {
 		lsn_t		current_lsn;
@@ -2027,9 +2028,10 @@ nvdimm_buf_pool_init_instance(
 		chunk = buf_pool->chunks;
 
 		do {
-			//if (!buf_chunk_init(buf_pool, chunk, chunk_size)) {
+			if (!buf_chunk_init(buf_pool, chunk, chunk_size)) {
 			// NVDIMM-porting
-				if(!buf_chunk_nvm_init(buf_pool, chunk, chunk_size)) {
+      // debug-hhh
+			//	if(!buf_chunk_nvm_init(buf_pool, chunk, chunk_size)) {
 				while (--chunk >= buf_pool->chunks) {
 					buf_block_t*	block = chunk->blocks;
 
@@ -7387,7 +7389,11 @@ buf_print_io(
 /** Checks whether this page should be moved to the NVDIMM buffer. */
 bool buf_block_will_be_moved_to_nvdimm(const page_id_t& page_id) {
 #ifdef UNIV_NVDIMM_CACHE_NO
-    if (page_id.space() == 28 /* New-Orders table */) {
+
+//	 (jhpark): ignore the new order loading for new-orders pages 
+//						 while recovery
+//    if (page_id.space() == 28 /* New-Orders table */) {
+		if (!is_pmem_recv && page_id.space() == 28) {
         return (true);
     } else {
         return (false);

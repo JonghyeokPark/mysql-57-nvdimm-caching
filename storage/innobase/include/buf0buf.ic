@@ -106,7 +106,10 @@ buf_pool_from_bpage(
 	i = bpage->buf_pool_index;
 
 #ifdef UNIV_NVDIMM_CACHE
-    if (i >= srv_buf_pool_instances) {
+    // (jhpark): add recvoery flag
+    // org : if (i >= srv_buf_pool_instances) {
+
+    if (!is_pmem_recv && i >= srv_buf_pool_instances) {
         return(&nvdimm_buf_pool_ptr[0]);
     } else {
         ut_ad(i < srv_buf_pool_instances);
