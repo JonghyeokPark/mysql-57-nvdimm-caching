@@ -906,6 +906,9 @@ add_size:
 		UT_LIST_ADD_FIRST(fil_system->LRU, node);
 	}
 
+    /* mijin */
+    fprintf(stderr, "%s = %lu\n", node->name, space->id);
+
 	return(true);
 }
 
