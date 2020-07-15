@@ -729,6 +729,7 @@ buf_dblwr_update(
 	    || fsp_is_system_temporary(bpage->id.space())
 #ifdef UNIV_NVDIMM_CACHE
         || bpage->cached_in_nvdimm
+        || bpage->moved_to_nvdimm
 #endif /* UNIV_NVDIMM_CACHE */       
        ) {
 		return;
@@ -764,21 +765,21 @@ buf_dblwr_update(
 		break;
 	case BUF_FLUSH_SINGLE_PAGE:
 		{
-			const ulint size = 2 * TRX_SYS_DOUBLEWRITE_BLOCK_SIZE;
-			ulint i;
-			mutex_enter(&buf_dblwr->mutex);
-			for (i = srv_doublewrite_batch_size; i < size; ++i) {
-				if (buf_dblwr->buf_block_arr[i] == bpage) {
-					buf_dblwr->s_reserved--;
-					buf_dblwr->buf_block_arr[i] = NULL;
-					buf_dblwr->in_use[i] = false;
-					break;
-				}
-			}
+            const ulint size = 2 * TRX_SYS_DOUBLEWRITE_BLOCK_SIZE;
+            ulint i;
+            mutex_enter(&buf_dblwr->mutex);
+            for (i = srv_doublewrite_batch_size; i < size; ++i) {
+                if (buf_dblwr->buf_block_arr[i] == bpage) {
+                    buf_dblwr->s_reserved--;
+                    buf_dblwr->buf_block_arr[i] = NULL;
+                    buf_dblwr->in_use[i] = false;
+                    break;
+                }
+            }
 
-			/* The block we are looking for must exist as a
-			reserved block. */
-			ut_a(i < size);
+            /* The block we are looking for must exist as a
+               reserved block. */
+            ut_a(i < size);
 		}
 		os_event_set(buf_dblwr->s_event);
 		mutex_exit(&buf_dblwr->mutex);
@@ -897,7 +898,7 @@ buf_dblwr_write_block_to_datafile(
 	bool			sync)	/*!< in: true if sync IO
 					is requested */
 {
-	ut_a(buf_page_in_file(bpage));
+    ut_a(buf_page_in_file(bpage));
 
 	ulint	type = IORequest::WRITE;
 
