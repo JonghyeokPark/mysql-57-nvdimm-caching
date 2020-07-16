@@ -1175,7 +1175,17 @@ buf_LRU_get_free_only(
 		ut_d(block->page.in_free_list = FALSE);
 		ut_ad(!block->page.in_flush_list);
 		ut_ad(!block->page.in_LRU_list);
-		ut_a(!buf_page_in_file(&block->page));
+        /* mijin */
+		if (buf_page_in_file(&block->page)) {
+            ib::info() << "not free: "
+                    << (&block->page)->id.space() << " "
+                    << (&block->page)->id.page_no() << " in "
+                    << buf_pool->instance_no
+                    << " state = " << (&block->page)->state
+                    << " io = " << (&block->page)->io_fix
+                    << " total = " << UT_LIST_GET_LEN(buf_pool->free);
+        }
+        ut_a(!buf_page_in_file(&block->page));
 		UT_LIST_REMOVE(buf_pool->free, &block->page);
 
 		if (buf_pool->curr_size >= buf_pool->old_size
@@ -1195,15 +1205,15 @@ buf_LRU_get_free_only(
 
 			buf_page_mutex_exit(block);
 			break;
-		}
+        }
 
 		/* This should be withdrawn */
 		UT_LIST_ADD_LAST(
 			buf_pool->withdraw,
 			&block->page);
 		ut_d(block->in_withdraw_list = TRUE);
-
-		block = reinterpret_cast<buf_block_t*>(
+        
+        block = reinterpret_cast<buf_block_t*>(
 			UT_LIST_GET_FIRST(buf_pool->free));
 	}
 
@@ -1401,11 +1411,16 @@ loop:
 
 	if (!srv_read_only_mode) {
 #ifdef UNIV_NVDIMM_CACHE
-        if (buf_pool->instance_no == 8) {
-            os_event_set(buf_flush_nvdimm_event);
-        } else {
+        if (buf_pool->instance_no < srv_buf_pool_instances) {
             os_event_set(buf_flush_event);
+        } else if (buf_pool->instance_no == srv_buf_pool_instances) {
+            os_event_set(buf_flush_nvdimm_event);
+        } 
+#ifdef UNIV_NVDIMM_CACHE_ST
+        else {
+            os_event_set(buf_flush_nvdimm_stock_event);
         }
+#endif /* UNIV_NVDIMM_CACHE_ST */
 #else
         os_event_set(buf_flush_event);
 #endif /* UNIV_NVDIMM_CACHE */
@@ -1428,21 +1443,16 @@ loop:
 	involved (particularly in case of compressed pages). We
 	can do that in a separate patch sometime in future. */
 
-/*#ifdef UNIV_NVDIMM_CACHE
-    if (buf_pool->instance_no != 8 && !buf_flush_single_page_from_LRU(buf_pool)) {
-        MONITOR_INC(MONITOR_LRU_SINGLE_FLUSH_FAILURE_COUNT);
-        ++flush_failures;
-    }
-#else*/
-    if (!buf_flush_single_page_from_LRU(buf_pool)) {
-        MONITOR_INC(MONITOR_LRU_SINGLE_FLUSH_FAILURE_COUNT);
-        ++flush_failures;
-    }
-//#endif /* UNIV_NVDIMM_CACHE */
+    if (buf_pool->instance_no < 8) {
+        if (!buf_flush_single_page_from_LRU(buf_pool)) {
+            MONITOR_INC(MONITOR_LRU_SINGLE_FLUSH_FAILURE_COUNT);
+            ++flush_failures;
+        }
 
-	srv_stats.buf_pool_wait_free.add(n_iterations, 1);
+        srv_stats.buf_pool_wait_free.add(n_iterations, 1);
 
-	n_iterations++;
+        n_iterations++;
+    }
 
 	goto loop;
 }
@@ -1936,7 +1946,7 @@ func_exit:
 	ut_ad(buf_page_can_relocate(bpage));
 
 	if (!buf_LRU_block_remove_hashed(bpage, zip)) {
-		return(true);
+        return(true);
 	}
 
 	/* buf_LRU_block_remove_hashed() releases the hash_lock */
@@ -2182,8 +2192,8 @@ buf_LRU_block_free_non_file_page(
 			&block->page);
 		ut_d(block->in_withdraw_list = TRUE);
 	} else {
-		UT_LIST_ADD_FIRST(buf_pool->free, &block->page);
-		ut_d(block->page.in_free_list = TRUE);
+        UT_LIST_ADD_FIRST(buf_pool->free, &block->page);
+        ut_d(block->page.in_free_list = TRUE);
 	}
 
 	UNIV_MEM_ASSERT_AND_FREE(block->frame, UNIV_PAGE_SIZE);
@@ -2541,13 +2551,18 @@ nvdimm_buf_LRU_old_ratio_update(
 			during the initialization of InnoDB */
 {
 	uint	new_ratio = 0;
+    buf_pool_t* buf_pool;
 
-	for (ulint i = 0; i < srv_buf_pool_instances; i++) {
-		buf_pool_t* buf_pool = &nvdimm_buf_pool_ptr[i];
-
-		new_ratio = buf_LRU_old_ratio_update_instance(
+    /* FIXME: fixed buf_pool index*/
+    buf_pool = &nvdimm_buf_pool_ptr[0];
+	new_ratio = buf_LRU_old_ratio_update_instance(
 			buf_pool, old_pct, adjust);
-	}
+
+#ifdef UNIV_NVDIMM_CACHE_ST 
+    buf_pool = &nvdimm_buf_pool_ptr[1];
+	new_ratio = buf_LRU_old_ratio_update_instance(
+			buf_pool, old_pct, adjust);
+#endif /* UNIV_NVDIMM_CACHE_ST */
 
 	return(new_ratio);
 }

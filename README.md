@@ -21,10 +21,10 @@ The above command will compile and build the source code with the default option
 | Option     | Description |
 | :--------- | :---------- |
 | --origin   | No caching (Vanilla version)                        										 |
-| --nc-ol    | Caching New-Orders and Order-Line pages (`default`) 										 |
-| --nc-st    | Caching New-Orders and Stock pages                  										 |
-| --nc-ol-st | Caching New-Orders, Order-Line and Stock pages      										 |
-| --mtr 		 | Caching New-Orders, Order-Line and Stock pages with mtr logging enabled |
+| --nc    | Caching New-Orders and Order-Line pages (`default`) 										 |
+| --nc-st    | Caching New-Orders, Order-Line and Stock pages                  										 |
+| --nc-st-od | Caching New-Orders, Order-Line, Stock and Orders pages      										 |
+| --mtr 		 | Caching New-Orders, Order-Line, Stock and Orders pages with mtr logging enabled |
 
 If you want the vanilla version, you can run the script as follows:
 

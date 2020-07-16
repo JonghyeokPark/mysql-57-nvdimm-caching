@@ -9,8 +9,8 @@ if [ ! -d "$BUILD_DIR" ]; then
     mkdir bld
 fi
 
-#cd $BASE_DIR
 cd $BUILD_DIR
+
 rm -rf CMakeCache.txt
 sudo rm -rf CMakeFiles/*
 
@@ -18,29 +18,30 @@ sudo rm -rf CMakeFiles/*
 if [ "$1" = "--origin" ]; then
     # No caching
     BUILD_FLAGS=""
-elif [ "$1" = "--nc-ol" ]; then
+elif [ "$1" = "--nc" ]; then
     # Cache New-Orders and Order-Line pages
-    BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_NVDIMM_CACHE_NO -DUNIV_NVDIMM_CACHE_OL"
+    BUILD_FLAGS="-DUNIV_NVDIMM_CACHE"
 elif [ "$1" = "--nc-st" ]; then
-    # Cache New-Orders and Stock pages
-    BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_NVDIMM_CACHE_NO -DUNIV_NVDIMM_CACHE_ST"
-elif [ "$1" = "--nc-ol-st" ]; then
     # Cache New-Orders, Order-Line and Stock pages
-    BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_NVDIMM_CACHE_NO -DUNIV_NVDIMM_CACHE_OL -DUNIV_NVDIMM_CACHE_ST"
+    BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_NVDIMM_CACHE_ST"
+elif [ "$1" = "--nc-st-od" ]; then
+    # Cache New-Orders, Order-Line, Stock and Orders pages
+    BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_NVDIMM_CACHE_ST -DUNIV_NVDIMM_CACHE_OD"
 elif [ "$1" = "--mtr" ]; then
- 		# Cache New-Orders, Order-Line with mtr-logging enabled
-		BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_NVDIMM_CACHE_NO -DUNIV_NVDIMM_CACHE_OL -DUNIV_LOG_HEADER"
+    # Cache New-Orders, Order-Line, Stock and Orders pages with mtr-logging enabled
+    BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_NVDIMM_CACHE_ST -DUNIV_NVDIMM_CACHE_OD -DUNIV_LOG_HEADER"
 else
     # Cache New-Orders and Order-Line pages (default)
-    BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_NVDIMM_CACHE_NO -DUNIV_NVDIMM_CACHE_OL"
+    BUILD_FLAGS="-DUNIV_NVDIMM_CACHE"
 fi
 
 echo "Start build using $BUILD_FLAGS"
 
-cmake .. -DWITH_DEBUG=0 -DCMAKE_C_FLAGS="$BUILD_FLAGS" -DCMAKE_CXX_FLAGS="$BUILD_FLAGS" \
--DDOWNLOAD_BOOST=ON -DWITH_BOOST=$BASE_DIR/boost -DENABLED_LOCAL_INFILE=1 -DCMAKE_INSTALL_PREFIX=$BUILD_DIR \
--DWITH_RAPID=OFF
-#-DWITH_INNOBASE_STORAGE_ENGINE=1 -DWITH_ARCHIVE_STORAGE_ENGINE=1
+cd $BASE_DIR
+
+cmake -DWITH_DEBUG=0 -DCMAKE_C_FLAGS="$BUILD_FLAGS" -DCMAKE_CXX_FLAGS="$BUILD_FLAGS" \
+-DDOWNLOAD_BOOST=ON -DWITH_BOOST=$BASE_DIR/boost -DENABLED_LOCAL_INFILE=1 \
+-DCMAKE_INSTALL_PREFIX=$BUILD_DIR
 
 make -j8
 sudo make install

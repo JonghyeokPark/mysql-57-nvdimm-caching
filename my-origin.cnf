@@ -46,7 +46,7 @@ innodb_page_size=4KB
 innodb_file_per_table=1
 
 #buffer settings
-innodb_buffer_pool_size=5000M
+innodb_buffer_pool_size=6G
 innodb_buffer_pool_instances=8
 innodb_max_dirty_pages_pct_lwm=0
 
@@ -64,7 +64,7 @@ innodb_log_buffer_size=32M
 innodb_flush_neighbors=0
 
 #doublewrite and flush method
-innodb_doublewrite=OFF
+innodb_doublewrite=ON
 innodb_flush_method=O_DIRECT
 
 #AIO control
