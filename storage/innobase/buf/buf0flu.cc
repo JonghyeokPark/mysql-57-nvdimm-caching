@@ -1117,6 +1117,7 @@ buf_flush_write_block_low(
         buf_flush_note_modification((buf_block_t *)nvdimm_page, bpage->newest_modification, bpage->newest_modification, nvdimm_page->flush_observer);
 
         // TODO: NVDIMM-porting
+        flush_cache(((buf_block_t *)nvdimm_page)->frame, UNIV_PAGE_SIZE);
 
         /* Remove the target page from the original buffer pool. */
         buf_page_io_complete(bpage, true);
