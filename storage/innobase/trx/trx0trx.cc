@@ -2170,13 +2170,7 @@ trx_commit_low(
 		number and a bigger commit lsn than T1. */
 
 		/*--------------*/
-#ifdef UNIV_NVDIMM_CACHE
-		// (jhpark): At this point, this mini-transaction records changes on REDO log
-		// that is, update rseg page which moves UNDO seg to history list
-		mtr_commit_nvm(mtr);
-#else
 		mtr_commit(mtr);
-#endif
 
 		DBUG_EXECUTE_IF("ib_crash_during_trx_commit_in_mem",
 				if (trx_is_rseg_updated(trx)) {

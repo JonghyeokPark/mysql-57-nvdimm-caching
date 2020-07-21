@@ -1111,14 +1111,23 @@ buf_flush_write_block_low(
 
         /* Add the target page to the NVDIMM buffer. */
         nvdimm_page = buf_page_init_for_read(&err, BUF_MOVE_TO_NVDIMM, page_id, page_size, false);
+        
+        if (nvdimm_page == NULL)    goto normal;
+        
+        ib::info() << "page_id = " << bpage->id.space()
+            << " offset = " << bpage->id.page_no() 
+            << " dst = " << &(((buf_block_t *)nvdimm_page)->frame) << " src = " << &(((buf_block_t *)bpage)->frame)
+            << " flush-type = " << bpage->flush_type;
         memcpy(((buf_block_t *)nvdimm_page)->frame, ((buf_block_t *)bpage)->frame, UNIV_PAGE_SIZE);
 
         /* Set the oldest LSN of the NVDIMM page to the previous newest LSN. */
         buf_flush_note_modification((buf_block_t *)nvdimm_page, bpage->newest_modification, bpage->newest_modification, nvdimm_page->flush_observer);
 
         // TODO: NVDIMM-porting
+        // 1
         flush_cache(((buf_block_t *)nvdimm_page)->frame, UNIV_PAGE_SIZE);
-
+        // 2
+        
         /* Remove the target page from the original buffer pool. */
         buf_page_io_complete(bpage, true);
         buf_page_io_complete(nvdimm_page);
@@ -1128,6 +1137,7 @@ buf_flush_write_block_low(
                 << nvdimm_page->id.page_no() << " is moved to "
                 << nvdimm_page->buf_pool_index << " from " << bpage->buf_pool_index;*/
     } else {
+normal:
         bpage->moved_to_nvdimm = false;
 
         /*ib::info() << bpage->id.space() << " " << bpage->id.page_no()
