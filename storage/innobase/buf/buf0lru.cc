@@ -1175,16 +1175,6 @@ buf_LRU_get_free_only(
 		ut_d(block->page.in_free_list = FALSE);
 		ut_ad(!block->page.in_flush_list);
 		ut_ad(!block->page.in_LRU_list);
-        /* mijin */
-		if (buf_page_in_file(&block->page)) {
-            ib::info() << "not free: "
-                    << (&block->page)->id.space() << " "
-                    << (&block->page)->id.page_no() << " in "
-                    << buf_pool->instance_no
-                    << " state = " << (&block->page)->state
-                    << " io = " << (&block->page)->io_fix
-                    << " total = " << UT_LIST_GET_LEN(buf_pool->free);
-        }
         ut_a(!buf_page_in_file(&block->page));
 		UT_LIST_REMOVE(buf_pool->free, &block->page);
 
