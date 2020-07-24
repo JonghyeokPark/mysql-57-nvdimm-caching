@@ -1616,6 +1616,7 @@ buf_chunk_nvm_init(
 	DBUG_EXECUTE_IF("ib_buf_chunk_init_fails", return(NULL););
 
 	// NVDIMM-porting
+	fprintf(stderr, "[JONGQ] block desc size: %lu\n", (sizeof *block));
 	chunk->mem = buf_pool->allocator.allocate_large_nvm(mem_size,
 							&chunk->mem_pfx);
 	if (UNIV_UNLIKELY(chunk->mem == NULL)) {
@@ -1654,6 +1655,8 @@ buf_chunk_nvm_init(
 	/* Subtract the space needed for block descriptors. */
 	{
 		ulint	size = chunk->size;
+		// debug-JOGNQ
+		//fprintf(stderr, "[JONGQ] (1) chudnk->size:%lu\n", size);
 
 		while (frame < (byte*) (chunk->blocks + size)) {
 			frame += UNIV_PAGE_SIZE;
@@ -1661,6 +1664,8 @@ buf_chunk_nvm_init(
 		}
 
 		chunk->size = size;
+		// debug-JOGNQ
+		//fprintf(stderr, "[JONGQ] (2) chudnk->size:%lu\n", size);
 	}
 
 	/* Init block structs and assign frames for them. Then we
@@ -2028,10 +2033,11 @@ nvdimm_buf_pool_init_instance(
 		chunk = buf_pool->chunks;
 
 		do {
-			if (!buf_chunk_init(buf_pool, chunk, chunk_size)) {
+			//if (!buf_chunk_init(buf_pool, chunk, chunk_size)) {
 			// NVDIMM-porting
       // debug-hhh
-			//	if(!buf_chunk_nvm_init(buf_pool, chunk, chunk_size)) {
+
+			if(!buf_chunk_nvm_init(buf_pool, chunk, chunk_size)) {
 				while (--chunk >= buf_pool->chunks) {
 					buf_block_t*	block = chunk->blocks;
 

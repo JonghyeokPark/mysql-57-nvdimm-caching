@@ -97,6 +97,12 @@ page_dir_find_owner_slot(
 	register const page_dir_slot_t*	first_slot;
 	register const rec_t*		r = rec;
 
+  // debug-kkk
+  if (r == NULL) {
+    ib::info() << "current page is corruptted due to the NC logging! ignore it\n";
+    return -1;
+  }
+
 	ut_ad(page_rec_check(rec));
 
 	page = page_align(rec);
@@ -106,6 +112,11 @@ page_dir_find_owner_slot(
 	if (page_is_comp(page)) {
 		while (rec_get_n_owned_new(r) == 0) {
 			r = rec_get_next_ptr_const(r, TRUE);
+      // debug-kkk
+      if (r == NULL) {
+         ib::info() << "current page is corruptted due to the NC logging! ignore it\n";
+         return -1;
+      }
 			ut_ad(r >= page + PAGE_NEW_SUPREMUM);
 			ut_ad(r < page + (UNIV_PAGE_SIZE - PAGE_DIR));
 		}
@@ -122,6 +133,11 @@ page_dir_find_owner_slot(
 	while (UNIV_LIKELY(*(uint16*) slot != rec_offs_bytes)) {
 
 		if (UNIV_UNLIKELY(slot == first_slot)) {
+      
+      // debug-kkk
+      ib::info() << "current page is corruptted due to the NC logging! ignore it\n";
+      return -1;
+      
 			ib::error() << "Probable data corruption on page "
 				<< page_get_page_no(page)
 				<< ". Original record on that page;";

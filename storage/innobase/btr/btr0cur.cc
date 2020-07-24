@@ -4943,11 +4943,7 @@ btr_cur_del_mark_set_clust_rec(
 			ulint cur_rec_size = rec_offs_size(offsets); 
 			pm_mmap_mtrlogbuf_commit(rec, cur_rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
     } else {
-        if ( nvm_bpage->id.space() == 28) {
-          fprintf(stderr, "[JONGQ] WATCH-OUT-2\n");
-          exit(-1);
-        }
-        btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
+      btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
 					    roll_ptr, mtr);
     }
 #else

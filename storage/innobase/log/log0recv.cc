@@ -1784,7 +1784,8 @@ recv_parse_or_apply_log_rec_body(
 		page = block->frame;
 		page_zip = buf_block_get_page_zip(block);
 		// debug
-		if (space_id == 30 || space_id == 28) {
+		//if (space_id == 30 || space_id == 28) {
+		if (pm_mmap_recv_nc_page_validate(space_id, page_no)) {
 			fprintf(stderr, "[JONGQ] ignore nc page for applying! space_id: %lu\n", space_id);
 			return NULL;
 		}
@@ -1792,8 +1793,10 @@ recv_parse_or_apply_log_rec_body(
 	} else {
 		/* Parsing a page log record. */
 		// debug
-		if (space_id == 30 || space_id == 28) {
+		//if (space_id == 30 || space_id == 28) {
+		if (pm_mmap_recv_nc_page_validate(space_id, page_no)) {
 			fprintf(stderr, "[JONGQ] ignore nc page for parsing! space_id: %lu\n", space_id);
+			
 		}
 		page = NULL;
 		page_zip = NULL;
@@ -2212,6 +2215,14 @@ recv_add_to_hash_table(
 	lsn_t		start_lsn,	/*!< in: start lsn of the mtr */
 	lsn_t		end_lsn)	/*!< in: end lsn of the mtr */
 {
+
+	// (jhpark): debug
+	// ignore nc page to normal recovery process
+	if (pm_mmap_recv_nc_page_validate(space, page_no)) {
+		fprintf(stderr, "[JONGQ] ignore nc pages at recv_add_to_hash_table!!!\n");
+		return;
+	} 
+
 	recv_t*		recv;
 	ulint		len;
 	recv_data_t*	recv_data;
@@ -2714,10 +2725,6 @@ loop:
 					      stderr);
 					has_printed = TRUE;
 				}
-				
-				// debug
-				fprintf(stderr, "[JONGQ] i=%d recv_sys->n_addrs: %lu\n"
-											,i, recv_sys->n_addrs);
 
 				mutex_exit(&(recv_sys->mutex));
 
@@ -2753,11 +2760,8 @@ loop:
 				 / hash_get_n_cells(recv_sys->addr_hash)));
 		}
 	}
-	// debug
-	fprintf(stderr, "[JONGQ] escape for loop!\n");
 
 	/* Wait until all the pages have been processed */
-
 	while (recv_sys->n_addrs != 0) {
 
 		mutex_exit(&(recv_sys->mutex));
@@ -2767,16 +2771,12 @@ loop:
 		mutex_enter(&(recv_sys->mutex));
 	}
 
-	fprintf(stderr, "[JONGQ] check-1!\n");
-
 	if (has_printed) {
 
 		fprintf(stderr, "\n");
 	}
 
 	if (!allow_ibuf) {
-
-		fprintf(stderr, "[JONGQ] check-3!\n"); 
 
 		/* Flush all the file pages to disk and invalidate them in
 		the buffer pool */

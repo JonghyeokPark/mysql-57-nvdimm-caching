@@ -2340,12 +2340,16 @@ files_checked:
 				,pmem_recv_offset, pmem_recv_size);
 //			pm_mmap_recv(pmem_recv_offset, pmem_recv_size);
 //			PMEMMMAP_INFO_PRINT("UNDO page is recoverd !!!!\n");
-//			//pm_mmap_recv_flush_buffer();
+//				pm_mmap_recv_flush_buffer();
 		}
 
 		purge_queue = trx_sys_init_at_db_start();
 
 		fprintf(stderr, "[JONGQ] ---- trx_sys_init_at_db_start finished!\n");
+	
+		// debug
+		// check active transaction id list
+		pm_mmap_recv_show_trx_list();
 
 		if (srv_force_recovery < SRV_FORCE_NO_LOG_REDO) {
 			/* Apply the hashed log records to the
@@ -2362,7 +2366,7 @@ files_checked:
 			}
 		}
 
-		 PMEMMMAP_INFO_PRINT("JONGQ recovery-5\n"); 
+		 PMEMMMAP_INFO_PRINT("JONGQ recovery-5\n");
 
 		if (recv_sys->found_corrupt_log) {
 			ib::warn()

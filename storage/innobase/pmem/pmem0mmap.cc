@@ -43,8 +43,7 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
     if (gb_pm_mmap == MAP_FAILED) {
       PMEMMMAP_ERROR_PRINT("pm_mmap mmap() failed\n");
     }
-    memset(gb_pm_mmap, 0x00, pool_size);
-
+    memset(gb_pm_mmap, 0, pool_size);
   } else {
     // TODO(jhaprk) add the recovery logic
     PMEMMMAP_INFO_PRINT("Start mtr recvoery process\n");
@@ -61,6 +60,10 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
     if (gb_pm_mmap == MAP_FAILED) {
       PMEMMMAP_ERROR_PRINT("pm_mmap mmap() faild recovery failed\n");
     }
+
+		// debug
+		// jhpark: check buffer!!!!!
+		pm_mmap_recv_flush_buffer();
 
 		// get file construct
 		PMEM_MMAP_MTRLOGFILE_HDR* recv_mmap_mtrlog_fil_hdr = (PMEM_MMAP_MTRLOGFILE_HDR*) 
@@ -84,9 +87,6 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
 			is_pmem_recv = true;
 			pmem_recv_offset = pm_mmap_recv_check(recv_mmap_mtrlog_fil_hdr);
 			pmem_recv_size = recv_mmap_mtrlog_fil_hdr->size;
-			
-			// jhpark: check buffer!!!!!
-			// pm_mmap_recv_flush_buffer();
 
 			PMEMMMAP_INFO_PRINT("recovery offset: %lu\n", pmem_recv_offset);
 		} 
@@ -414,8 +414,8 @@ void pm_mmap_mtrlogbuf_commit(unsigned char* rec, unsigned long cur_rec_size ,ul
 	// TODO(jhaprk): Keep page modification finish log for recovery	
 	// For current mtr logging version, we jsut ignore this function
 	// debug-hhh
-	return;
-	//flush_cache(rec, cur_rec_size);
+	//return;
+	flush_cache(rec, cur_rec_size);
 	//fprintf(stderr,"[JONGQ] flush_cach called after page modification rec_size:%lu \n", cur_rec_size);
 	//fprintf(stderr,"[JONGQ] space :%lu, page_no: %lu\n", space, page_no);
 	//fprintf(stderr,"[JONGQ] buf_start_address: %p rec address: %p\n",gb_pm_buf, rec);

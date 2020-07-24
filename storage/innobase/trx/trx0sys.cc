@@ -487,7 +487,6 @@ trx_sys_init_at_db_start(void)
 	mtr.commit();
 	ut_d(trx_sys->rw_max_trx_id = trx_sys->max_trx_id);
 	trx_dummy_sess = sess_open();
-  PMEMMMAP_INFO_PRINT("JONGQ recovery-trx_sys_init-22\n");      
 	trx_lists_init_at_db_start();
 
 	/* This mutex is not strictly required, it is here only to satisfy

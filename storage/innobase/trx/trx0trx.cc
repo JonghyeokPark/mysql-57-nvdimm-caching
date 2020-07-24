@@ -1039,7 +1039,7 @@ trx_lists_init_at_db_start(void)
 
       fprintf(stderr, "[JONGQ] insert undoing-1!!!\n");
 			trx_t*	trx;
-      
+     
 
 			trx = trx_resurrect_insert(undo, rseg);
 
@@ -1048,7 +1048,11 @@ trx_lists_init_at_db_start(void)
 			trx_resurrect_table_locks(
 				trx, &trx->rsegs.m_redo, undo);
       
-      fprintf(stderr, "[JONGQ] insert undoing-2!!!\n");  
+      fprintf(stderr, "[JONGQ] insert undoing-2!!!\n");
+      // add active transaction ids
+      fprintf(stderr, "[JONGQ] !!!! (insert) active trx id : %lu\n", trx->id);
+      pm_mmap_recv_add_active_trx_list(trx->id);
+
 		}
 
 		/* Ressurrect transactions that were doing updates. */
@@ -1079,7 +1083,11 @@ trx_lists_init_at_db_start(void)
 			fprintf(stderr, "[JONGQ] update undoing-5!!!\n"); 
 			trx_resurrect_table_locks(
 				trx, &trx->rsegs.m_redo, undo);
-	    fprintf(stderr, "[JONGQ] update undoing-6!!!\n"); 
+	    fprintf(stderr, "[JONGQ] update undoing-6!!!\n");
+    
+      // add active transaction ids
+      fprintf(stderr, "[JONGQ] !!!! (update) active trx id : %lu\n", trx->id);
+      pm_mmap_recv_add_active_trx_list(trx->id); 
 		}
 	}
 

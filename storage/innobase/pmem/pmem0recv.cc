@@ -19,8 +19,39 @@
 #include "mtr0types.h"
 #include "trx0rec.h"
 
+#include <set>
+
 extern unsigned char* gb_pm_mmap;
 extern uint64_t pmem_recv_size;
+
+std::map<std::pair<unsigned long, unsigned long>, bool> nc_page_map;
+std::set<unsigned long> nc_active_trx_ids;
+
+// @return : True if valid nc pages or False
+bool pm_mmap_recv_nc_page_validate(unsigned long space_id, unsigned long page_no) {
+	std::map<std::pair<unsigned long, unsigned long>, bool>::iterator iter;
+	iter = nc_page_map.find(std::make_pair(space_id, page_no));
+	return (iter != nc_page_map.end());
+}
+
+void pm_mmap_recv_add_active_trx_list(unsigned long trx_id) {
+	// add all active trx_list do not allow duplication
+	nc_active_trx_ids.insert(trx_id);
+}
+
+
+void pm_mmap_recv_show_trx_list() {
+	// shwo all active transaction while conflict 
+	std::set<unsigned long>::iterator it;
+	fprintf(stderr, " ============ active transaction ============== \n");
+	for (it = nc_active_trx_ids.begin(); it != nc_active_trx_ids.end(); ++it) {
+		fprintf(stderr, "%lu ", *it);
+	}
+	fprintf(stderr, "\n============================================= \n");
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
 
 uint64_t pm_mmap_recv_check(PMEM_MMAP_MTRLOGFILE_HDR* log_fil_hdr) {
 	size_t tmp_offset = log_fil_hdr->ckpt_offset;
@@ -159,7 +190,12 @@ void pm_mmap_recv_flush_buffer() {
 
 	uint64_t cur_offset = 0;
 	uint64_t total_buf_size = (1024*1024*1024*2UL);
-	unsigned char* cur_gb_pm_buf = gb_pm_mmap + (1024*1024*3UL);
+	unsigned char* cur_gb_pm_buf = gb_pm_mmap + (1024*1024*1024*1UL);
+
+
+	// align page
+	//byte* frame = (byte*) ut_align(gb_pm_mmap, UNIV_PAGE_SIZE);
+	byte* frame = (byte*) ut_align(cur_gb_pm_buf, UNIV_PAGE_SIZE);
 
 	while (true) {
 		if (cur_offset >= total_buf_size) {
@@ -173,41 +209,129 @@ void pm_mmap_recv_flush_buffer() {
 		
 		// TODO(jhpark): convert page size as constant variable
 		byte* buf = (byte*) malloc(4096*1024); // 4KB page
-		memcpy(buf, gb_pm_mmap + cur_offset, (4096*1024));
-		// align page
-		page_align(buf);
+		memcpy(buf, frame + cur_offset, (4096*1024));
+				//page_align(buf);
 
 		// check page information
 		// refer to btr0btr.ic
 		// first check page_no and space_id
-		
+	
+		unsigned long page_type = mach_read_from_2(buf + FIL_PAGE_TYPE);	
 		unsigned long space_id = mach_read_from_4(buf + FIL_PAGE_SPACE_ID);
 		unsigned long page_no = mach_read_from_4(buf + FIL_PAGE_OFFSET);  			
 		
-		fprintf(stderr, "[JONGQ] cur_offset: %lu, space_id: %lu, page_no: %lu\n"
-		,cur_offset, space_id, page_no);		
+		fprintf(stderr, "[JONGQ] cur_gb_pm_buf: %p, \n", cur_gb_pm_buf);
+		fprintf(stderr, "[JONGQ] cur_offset: %lu, page_type: %lu, space_id: %lu, page_no: %lu\n"
+		,cur_offset, page_type, space_id, page_no);		
 
 		if (space_id == 28 || space_id == 30) {
+      fprintf(stderr, "NC page !!!\n");
 			//&& page_no == 0)) {
 			// perform fil_io
-			IORequest write_request(IORequest::WRITE);
-			write_request.disable_compression(); // stil needed?
-
+			//IORequest write_request(IORequest::WRITE);
+			//write_request.disable_compression(); // stil needed?
 			// similar process, partila updates! 
-			write_request.dblwr_recover();
-			fprintf(stderr, "[JONGQ] perform fil_io write!!!\n");
-			int check = 0;
-			check = fil_io(write_request, true, page_id_t(space_id, page_no), 
-					univ_page_size, 0 ,univ_page_size.physical(), (void*) buf, NULL);
-
-			fprintf(stderr, "[JONGQ] fil_io check: %d!\n", check);
+			//write_request.dblwr_recover();
+			//fprintf(stderr, "[JONGQ] perform fil_io write!!!\n");
+			//int check = 0;
+			//check = fil_io(write_request, true, page_id_t(space_id, page_no), 
+			//		univ_page_size, 0 ,univ_page_size.physical(), (void*) buf, NULL);
+			//fprintf(stderr, "[JONGQ] fil_io check: %d!\n", check);
 		}
 
 		cur_offset += (4096*1024);
 		free(buf);
 	}
 
-    // step2. call fil_io() function to flush current 
-    // note that changes on these pages are not atomic 
-    // they might have partial updates
+	// version2
+	fprintf(stderr, "========= version 2!!!! ===========\n");
+	cur_offset = 0;
+	fprintf(stderr, "sizeof(buf_block_t) : %lu", sizeof(buf_block_t));
+
+	fprintf(stderr, "fast check!!!\n");
+	byte* frame3 = (byte*) ut_align(cur_gb_pm_buf + 147324928, UNIV_PAGE_SIZE);
+	while (true) {
+		if (cur_offset >= total_buf_size) {
+			break;
+		}
+		byte* buf2 = (byte*) malloc(4096*1024); // 4KB page
+		memcpy(buf2, frame3 + cur_offset, (4096*1024));
+	
+		unsigned long page_type3 = mach_read_from_2(buf2 + FIL_PAGE_TYPE);	
+		unsigned long space_id3 = mach_read_from_4(buf2 + FIL_PAGE_SPACE_ID);
+		unsigned long page_no3 = mach_read_from_4(buf2 + FIL_PAGE_OFFSET);  			
+		
+		fprintf(stderr, "[JONGQ] cur_offset: %lu, page_type: %lu, space_id: %lu, page_no: %lu\n"
+		,cur_offset, page_type3, space_id3, page_no3);		
+
+		cur_offset += (4096*1024);
+		free(buf2);	
+	}
+
+	// version new
+	fprintf(stderr, "========= version new!!!! ===========\n");
+	cur_offset = 0;
+	uint64_t nc_pages = 0;
+	byte* frame4 = (byte*) ut_align(cur_gb_pm_buf + sizeof(buf_block_t), UNIV_PAGE_SIZE);
+
+	while (true) {
+		if (cur_offset >= total_buf_size) {
+			break;
+		}
+
+		while (true) {
+			if (cur_offset >= total_buf_size) break;
+			byte* check = (byte*) malloc(2);	// 2B checker
+			memcpy(check, frame4+cur_offset, 2);
+
+			// check index page
+			if (mach_read_from_2(check) == FIL_PAGE_INDEX) {
+				byte* tmp = (byte *)malloc(4096*1024);
+				memcpy(tmp, frame4 + cur_offset - FIL_PAGE_TYPE, (4096*1024));
+				uint64_t tmp_space = mach_read_from_4(tmp + FIL_PAGE_SPACE_ID);
+				if ( tmp_space == 28 || tmp_space == 30) {
+					cur_offset -= FIL_PAGE_TYPE; 
+					free(tmp);
+					free(check);
+
+					// add real nc pages into hash map
+					byte* buf4 = (byte*) malloc(4096*1024); // 4KB page
+					memcpy(buf4, frame4 + cur_offset, (4096*1024));
+	
+					unsigned long page_type4 = mach_read_from_2(buf4 + FIL_PAGE_TYPE);	
+					unsigned long space_id4 = mach_read_from_4(buf4 + FIL_PAGE_SPACE_ID);
+					unsigned long page_no4 = mach_read_from_4(buf4 + FIL_PAGE_OFFSET);  			
+		
+					fprintf(stderr, "[JONGQ] cur_offset: %lu, page_type: %lu, space_id: %lu, page_no: %lu\n"
+												,cur_offset, page_type4, space_id4, page_no4);
+			
+					nc_page_map[std::make_pair(space_id4, page_no4)] = true;
+					nc_pages++;
+					cur_offset += (4096*1024);
+					free(buf4);
+					break;
+				}
+				free(tmp);
+			}
+
+			cur_offset += 2;
+			free(check);
+		}
+
+	}
+
+	fprintf(stderr, "[JONGQ] real NC pages: %lu\n",nc_pages);
+	
+	fprintf(stderr, "[JONGQ] ======== check nc page maps!!!! =========\n");
+	std::map<std::pair<unsigned long, unsigned long>, bool>::iterator iter;
+	int count = 0;
+	for (iter = nc_page_map.begin(); iter != nc_page_map.end(); iter++) {
+		count++;
+		fprintf(stderr, "key : (%lu, %lu) value: %d\n", iter->first.first, iter->first.second, iter->second);
+	}
+	fprintf(stderr, "[JONGQ] ====== count :%d =================\n", count);
+	
+  // step2. call fil_io() function to flush current 
+  // note that changes on these pages are not atomic 
+  // they might have partial updates
 }

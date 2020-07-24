@@ -11,6 +11,8 @@
 #include <unistd.h>
 
 #include <pthread.h>
+#include <map>
+
 //#include "ut0new.h"
 //#include "log0log.h"
 
@@ -205,6 +207,11 @@ extern uint64_t pmem_recv_offset;
 extern uint64_t pmem_recv_size;
 
 /** Recovery system data structure */
+
+bool pm_mmap_recv_nc_page_validate(unsigned long space_id, unsigned long page_no);
+void pm_mmap_recv_add_active_trx_list(unsigned long trx_id);
+void pm_mmap_recv_show_trx_list();
+
 //struct recv_sys_t{
 //  ib_mutex_t    mutex;
 	/*!< mutex protecting the fields apply_log_recs,
@@ -218,5 +225,6 @@ extern uint64_t pmem_recv_size;
 //  byte*   buf;  /*!< buffer for parsing log records */
 //  ulint   len;  /*!< amount of data in buf */
 //};
+
 
 #endif  /* __PMEMMAPOBJ_H__ */
