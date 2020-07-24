@@ -4550,7 +4550,21 @@ loop:
 				"innodb_page_corruption_retries",
 				retries = BUF_PAGE_READ_MAX_RETRIES;
 			);
+
+#ifdef UNIV_NVDIMM_CACHE
+            buf_pool_t* after_buf_pool = buf_pool_get(page_id);
+
+            if (buf_pool->instance_no != after_buf_pool->instance_no) {
+                /*ib::info() << buf_pool->instance_no << " != " 
+                    << after_buf_pool->instance_no << " for " 
+                    << page_id.space() << " " << page_id.page_no();*/    
+                buf_pool = after_buf_pool;
+            }
+#endif /* UNIV_NVDIMM_CACHE */
 		} else {
+            /* mijin */
+            buf_pool_t* after_buf_pool = buf_pool_get(page_id);
+
 			ib::fatal() << "Unable to read page " << page_id
 				<< " into the buffer pool after "
 				<< BUF_PAGE_READ_MAX_RETRIES << " attempts."
@@ -4562,7 +4576,9 @@ loop:
 				" you can try to fix this problem by using"
 				" innodb_force_recovery."
 				" Please see " REFMAN " for more"
-				" details. Aborting...";
+				" details. Aborting...before "
+                << buf_pool->instance_no << " after "
+                << after_buf_pool->instance_no;
 		}
 
 #if defined UNIV_DEBUG || defined UNIV_BUF_DEBUG

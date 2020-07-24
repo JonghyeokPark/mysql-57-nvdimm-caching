@@ -1114,10 +1114,10 @@ buf_flush_write_block_low(
         
         if (nvdimm_page == NULL)    goto normal;
         
-        ib::info() << "page_id = " << bpage->id.space()
+        /*ib::info() << "page_id = " << bpage->id.space()
             << " offset = " << bpage->id.page_no() 
             << " dst = " << &(((buf_block_t *)nvdimm_page)->frame) << " src = " << &(((buf_block_t *)bpage)->frame)
-            << " flush-type = " << bpage->flush_type;
+            << " flush-type = " << bpage->flush_type;*/
         memcpy(((buf_block_t *)nvdimm_page)->frame, ((buf_block_t *)bpage)->frame, UNIV_PAGE_SIZE);
 
         /* Set the oldest LSN of the NVDIMM page to the previous newest LSN. */
