@@ -1407,15 +1407,17 @@ buf_flush_page(
 		buffer pool or removed from flush_list or LRU_list. */
 
         /* mijin */
-        /*if (bpage->id.space() == 32) {
+        if (bpage->id.space() == 32) {
             lsn_t before_lsn = mach_read_from_8(reinterpret_cast<const buf_block_t *>(bpage)->frame + FIL_PAGE_LSN);
             lsn_t lsn_gap = bpage->oldest_modification - before_lsn;
             
             ib::info() << bpage->id.space() << " " << bpage->id.page_no()
                 << " is written with flush-type: " << flush_type
                 << " lsn-gap: " << lsn_gap
+					      << " before lsn: " << before_lsn
+        				<< " oldest lsn: " << bpage->oldest_modification
                 << " fix-count: " << bpage->buf_fix_count;
-        }*/
+        }
         /* end */
 
 		buf_flush_write_block_low(bpage, flush_type, sync);
