@@ -1052,15 +1052,13 @@ buf_flush_write_block_low(
 
 	/* Force the log to the disk before writing the modified block */
 	if (!srv_read_only_mode) {
-		#if defined(UNIV_NVDIMM_CACHE_NO) && defined(UNIV_NVDIMM_CACHE_OL)
-			if (bpage->id.space() != 28) {
+#ifdef UNIV_NVDIMM_CACHE
+			if (bpage->buf_pool_index < srv_buf_pool_instances) {
 				log_write_up_to(bpage->newest_modification, true);
-			} else {
-				//fprintf(stderr, "avoid neworder page to flush REDO log file\n");
 			}
-		#else
+#else
 			log_write_up_to(bpage->newest_modification, true);
-		#endif
+#endif /* UNIV_NVDIMM_CACHE */
 	}
 
 	switch (buf_page_get_state(bpage)) {
@@ -2377,13 +2375,6 @@ buf_flush_single_page_from_LRU(
 
 		buf_page_t*	prev = UT_LIST_GET_PREV(LRU, bpage);
       
-#ifdef UNIV_NVDIMM_CACHE
-        if (!prev/* && buf_pool->instance_no == 8*/) {
-            ib::info() << UT_LIST_GET_LEN(buf_pool->LRU) << " error in " << buf_pool->instance_no;
-            break;
-        }
-#endif /* UNIV_NVDIMM_CACHE */
-
 		buf_pool->single_scan_itr.set(prev);
 
 		BPageMutex*	block_mutex;
@@ -4069,7 +4060,6 @@ buf_flush_nvdimm_LRU_list_batch(
 		buf_pool->lru_hp.set(prev);
 
         //if (bpage->id.space() == 28)  continue;
-//        if (bpage->id.space() != 30 && bpage->id.space() != 32)  continue;
 
 		BPageMutex*	block_mutex = buf_page_get_mutex(bpage);
 
@@ -4148,7 +4138,7 @@ buf_flush_do_nvdimm_batch(
 	}
 
 	if (!buf_flush_start(buf_pool, type)) {
-        ib::info() << "fail.." << buf_pool->n_flush[BUF_FLUSH_LRU] << " " << buf_pool->init_flush[BUF_FLUSH_LRU]; 
+        ib::info() << "fail.." << buf_pool->n_flush[BUF_FLUSH_LRU] << " " << buf_pool->init_flush[BUF_FLUSH_LRU] << " in " << buf_pool->instance_no; 
 		return(false);
 	}
     
@@ -4295,7 +4285,7 @@ DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
         if (!page_cleaner->is_running) {
             break;
         }
-
+        
         if (srv_check_activity(last_activity)) {
             /* Flush pages from end of LRU */
             buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);

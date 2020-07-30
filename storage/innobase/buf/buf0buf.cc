@@ -804,7 +804,7 @@ buf_page_is_corrupted(
 		return(TRUE);
 	}
 
-#if !defined(UNIV_HOTBACKUP) && !defined(UNIV_INNOCHECKSUM) &!defined(UNIV_NVDIMM_CACHE)
+#if !defined(UNIV_HOTBACKUP) && !defined(UNIV_INNOCHECKSUM) && !defined(UNIV_NVDIMM_CACHE)
 	if (check_lsn && recv_lsn_checks_on) {
 		lsn_t		current_lsn;
 		const lsn_t	page_lsn
@@ -834,7 +834,7 @@ buf_page_is_corrupted(
 
 		}
 	}
-#endif /* !UNIV_HOTBACKUP && !UNIV_INNOCHECKSUM */
+#endif /* !UNIV_HOTBACKUP && !UNIV_INNOCHECKSUM && !UNIV_NVDIMM_CACHE */
 
 	/* Check whether the checksum fields have correct values */
 
@@ -1693,8 +1693,7 @@ buf_chunk_nvm_init(
 #endif /* PFS_GROUP_BUFFER_SYNC */
 	return(chunk);
 }
-
-#endif
+#endif /* UNIV_NVDIMM_CACHE */
 
 #ifdef UNIV_DEBUG
 /*********************************************************************//**
@@ -2211,7 +2210,7 @@ buf_pool_free_instance(
 		buf_block_t*	block = chunk->blocks;
   
 #ifdef UNIV_NVDIMM_CACHE
-        if (buf_pool->instance_no >= 8 && chunk == chunks) break;
+        if (buf_pool->instance_no >= srv_buf_pool_instances && chunk == chunks) break;
 #endif /* UNIV_NVDIMM_CACHE */
 
 		for (ulint i = chunk->size; i--; block++) {
@@ -2221,7 +2220,7 @@ buf_pool_free_instance(
 		}
         
 #ifdef UNIV_NVDIMM_CACHE
-    if (buf_pool->instance_no == 8) {
+    if (buf_pool->instance_no >= srv_buf_pool_instances) {
       buf_pool->allocator.deallocate_large_nvm(
 			          chunk->mem, &chunk->mem_pfx);
     } else {
@@ -4592,7 +4591,7 @@ loop:
 
 #ifdef UNIV_NVDIMM_CACHE
         /* Buffer Hit */
-        if (buf_pool->instance_no >= 8) {
+        if (buf_pool->instance_no >= srv_buf_pool_instances) {
             if (page_id.space() == 30) {
                 srv_stats.nvdimm_pages_read_ol.inc();
             } else if (page_id.space() == 28) {
@@ -6280,10 +6279,7 @@ corrupt:
 		}
 
 #ifdef UNIV_NVDIMM_CACHE
-        if (/*buf_pool->instance_no >= 8
-            && !*/bpage->cached_in_nvdimm) {
-            //bpage->cached_in_nvdimm = true;
-
+        if (bpage->cached_in_nvdimm) {
             if (bpage->id.space() == 30) {
                 srv_stats.nvdimm_pages_stored_ol.inc();
             } else if (bpage->id.space() == 28) {

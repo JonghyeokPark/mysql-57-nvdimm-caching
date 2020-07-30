@@ -7544,11 +7544,6 @@ btr_rec_free_externally_stored_fields(
 	ulint	n_fields;
 	ulint	i;
 
-  // dbug
-  if (index->space == 28) {
-    fprintf(stderr, "[JONGQ] btr_rec_Free_externally_stored_fields\n");
-  }
-
 	ut_ad(rec_offs_validate(rec, index, offsets));
 	ut_ad(mtr_is_page_fix(mtr, rec, MTR_MEMO_PAGE_X_FIX, index->table));
 	/* Free possible externally stored fields in the record */

@@ -2558,12 +2558,12 @@ row_ins_clust_index_entry_low(
 err_exit:
 
 
-#ifdef UNIV_NVDIMM_CACHE
+/*#ifdef UNIV_NVDIMM_CACHE
     if (index->space == 28) {
       mtr_commit_no_nvm(&mtr);
       goto func_exit;
     }
-#endif
+#endif*/
 			mtr_commit(&mtr);
 			goto func_exit;
 		}
@@ -2571,12 +2571,12 @@ err_exit:
 
 	if (dup_chk_only) {
 
-#ifdef UNIV_NVDIMM_CACHE
+/*#ifdef UNIV_NVDIMM_CACHE
     if (index->space == 28) {
       mtr_commit_no_nvm(&mtr);
       goto func_exit;
     }
-#endif
+#endif*/
 
 		mtr_commit(&mtr);
 		goto func_exit;
@@ -2609,11 +2609,11 @@ err_exit:
 		}
 
 #ifdef UNIV_NVDIMM_CACHE
-    if (index->space == 28) {
+  /*  if (index->space == 28) {
       mtr_commit_no_nvm(&mtr);
     } else {
-      mtr_commit(&mtr);
-    }
+    */  mtr_commit(&mtr);
+    //}
 #else
 		mtr_commit(&mtr);
 #endif
@@ -2657,11 +2657,11 @@ err_exit:
 		if (big_rec != NULL) {
 
 #ifdef UNIV_NVDIMM_CACHE
-      if (index->space == 28) {
+     /* if (index->space == 28) {
         mtr_commit_no_nvm(&mtr);
-      } else {
+      } else {*/
         mtr_commit(&mtr);
-      }
+      //}
 #else
 		  mtr_commit(&mtr);
 #endif
@@ -2691,11 +2691,11 @@ err_exit:
 //			mtr_commit(&mtr);
 
 #ifdef UNIV_NVDIMM_CACHE
-      if (index->space == 28) {
+     /* if (index->space == 28) {
         mtr_commit_no_nvm(&mtr);
-      } else {
+      } else {*/
         mtr_commit(&mtr);
-      }
+      //}
 #else
 		  mtr_commit(&mtr);
 #endif
@@ -2949,11 +2949,6 @@ row_ins_sec_index_entry_low(
 	cursor.rtr_info = NULL;
 	ut_ad(thr_get_trx(thr)->id != 0
 	      || dict_table_is_intrinsic(index->table));
-
-  // debug
-  if (index->space == 28) {
-    fprintf(stderr, "[JONGQ] row_ins_sec_index_entry_low check!\n");
-  }
 
 	mtr_start(&mtr);
 	mtr.set_named_space(index->space);

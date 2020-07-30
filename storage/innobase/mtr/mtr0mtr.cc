@@ -740,7 +740,8 @@ void mtr_t::commit_nvm() {
 
 // just release for row_purge_remove_clust_if_poss_low() function 
 void mtr_t::commit_no_nvm() {
-	ut_ad(is_active());
+    commit();
+/*	ut_ad(is_active());
   ut_ad(!is_inside_ibuf());
   ut_ad(m_impl.m_magic_n == MTR_MAGIC_N);
   m_impl.m_state = MTR_STATE_COMMITTING;
@@ -754,7 +755,7 @@ void mtr_t::commit_no_nvm() {
     cmd.release_all();
     cmd.release_resources();
   }
-
+*/
   //cmd.release_all();
   //cmd.release_resources();
 }
