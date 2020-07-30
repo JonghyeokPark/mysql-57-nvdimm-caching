@@ -195,19 +195,18 @@ func_exit:
 	//				 instead, persist NVDIMM region
 
 #ifdef UNIV_NVDIMM_CACHE
-	if (index->space == 28) {
-    //fprintf(stderr, "[JONGQ] avoid to write REDO log !!!!\n");
-		if (node->found_clust) {
-			//btr_pcur_commit_specify_mtr(&node->pcur, &mtr);
-		  ut_ad(node->pcur.pos_state == BTR_PCUR_IS_POSITIONED);
-		  node->pcur.latch_mode = BTR_NO_LATCHES;
-  		mtr_commit_no_nvm(&mtr);
-		  node->pcur.pos_state = BTR_PCUR_WAS_POSITIONED;			
-		} else {
-			mtr_commit_no_nvm(&mtr);
-		}	
-		return (success);
-	}
+    if (index->space == 28) {
+        if (node->found_clust) {
+            ut_ad(node->pcur.pos_state == BTR_PCUR_IS_POSITIONED);
+            node->pcur.latch_mode = BTR_NO_LATCHES;
+            mtr_commit(&mtr);
+            //mtr_commit_no_nvm(&mtr);
+            node->pcur.pos_state = BTR_PCUR_WAS_POSITIONED;			
+        } else {
+            mtr_commit_no_nvm(&mtr);
+        }	
+        return (success);
+    }
 #endif
 
 	if (node->found_clust) {
