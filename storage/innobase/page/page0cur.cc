@@ -1543,7 +1543,8 @@ use_heap:
 
         if (nvm_bpage->cached_in_nvdimm) {
           // skip generating REDO log for nvm-page
-					pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, space_id, page_no);
+          pm_mmap_mtrlogbuf_commit(nvm_block->frame, UNIV_PAGE_SIZE, space_id, page_no);
+					//pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, space_id, page_no);
         } else {
           // original : 
           page_cur_insert_rec_write_log(insert_rec, rec_size,
@@ -1950,7 +1951,9 @@ page_cur_insert_rec_zip(
 
                     if (nvm_bpage->cached_in_nvdimm) {
                         // skip generating REDO log for nvm-page
-                        pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
+                        pm_mmap_mtrlogbuf_commit(nvm_block->frame, UNIV_PAGE_SIZE, nvm_bpage->id.space(), nvm_bpage->id.page_no());
+
+                        //pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
                     } else {
                         page_cur_insert_rec_write_log(
                             insert_rec, rec_size,
@@ -2240,7 +2243,9 @@ use_heap:
         if (nvm_bpage->cached_in_nvdimm) {
           // skip generating REDO logs for nvm-page
 					// persist records
-          pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
+            pm_mmap_mtrlogbuf_commit(nvm_block->frame, UNIV_PAGE_SIZE, nvm_bpage->id.space(), nvm_bpage->id.page_no());
+
+          //pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
         } else {
             page_cur_insert_rec_write_log(insert_rec, rec_size,
                               cursor->rec, index, mtr);
@@ -2478,7 +2483,8 @@ page_copy_rec_list_end_to_created_page(
 
         if (nvm_bpage->cached_in_nvdimm) {
             // skip generating REDO logs for nvm-page
-						pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
+						//pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
+						pm_mmap_mtrlogbuf_commit(nvm_block->frame, UNIV_PAGE_SIZE, nvm_bpage->id.space(), nvm_bpage->id.page_no());
         } else {
             page_cur_insert_rec_write_log(insert_rec, rec_size, prev_rec,
                               index, mtr);
