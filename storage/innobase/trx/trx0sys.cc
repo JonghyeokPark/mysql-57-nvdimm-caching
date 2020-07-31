@@ -487,18 +487,13 @@ trx_sys_init_at_db_start(void)
 	mtr.commit();
 	ut_d(trx_sys->rw_max_trx_id = trx_sys->max_trx_id);
 	trx_dummy_sess = sess_open();
-  PMEMMMAP_INFO_PRINT("JONGQ recovery-trx_sys_init-22\n");      
 	trx_lists_init_at_db_start();
 
 	/* This mutex is not strictly required, it is here only to satisfy
 	the debug code (assertions). We are still running in single threaded
 	bootstrap mode. */
 
-  PMEMMMAP_INFO_PRINT("JONGQ recovery-trx_sys_init-3\n");
-
 	trx_sys_mutex_enter();
-
-  PMEMMMAP_INFO_PRINT("JONGQ recovery-trx_sys_init-4\n");
 
 	if (UT_LIST_GET_LEN(trx_sys->rw_trx_list) > 0) {
 		const trx_t*	trx;
