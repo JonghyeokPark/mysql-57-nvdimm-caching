@@ -3933,8 +3933,10 @@ btr_cur_update_in_place(
 				//pm_mmap_buf_write(nvm_bpage->size.physical(), (void*) ((buf_block_t*) nvm_bpage)->frame);
 				
 				// persist records
-				ulint cur_rec_size = rec_offs_size(offsets); 
-				pm_mmap_mtrlogbuf_commit(rec, cur_rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
+				ulint cur_rec_size = rec_offs_size(offsets);
+                pm_mmap_mtrlogbuf_commit(nvm_block->frame, UNIV_PAGE_SIZE, nvm_bpage->id.space(), nvm_bpage->id.page_no());
+ 
+				//pm_mmap_mtrlogbuf_commit(rec, cur_rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
     } else {
         btr_cur_update_in_place_log(flags, rec, index, update,
                         trx_id, roll_ptr, mtr);
@@ -4941,7 +4943,9 @@ btr_cur_del_mark_set_clust_rec(
 			// TODO(jhpark): flush only modified region not whole records 
 			// persist records
 			ulint cur_rec_size = rec_offs_size(offsets); 
-			pm_mmap_mtrlogbuf_commit(rec, cur_rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
+            pm_mmap_mtrlogbuf_commit(block->frame, UNIV_PAGE_SIZE, nvm_bpage->id.space(), nvm_bpage->id.page_no());
+
+			//pm_mmap_mtrlogbuf_commit(rec, cur_rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
     } else {
         if ( nvm_bpage->id.space() == 28) {
           fprintf(stderr, "[JONGQ] WATCH-OUT-2\n");
