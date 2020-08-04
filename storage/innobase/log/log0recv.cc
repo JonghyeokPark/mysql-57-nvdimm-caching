@@ -2371,8 +2371,10 @@ recv_recover_page_func(
 		    recv_addr->space, recv_addr->page_no));
 #endif /* !UNIV_HOTBACKUP */
 
+#ifdef UNIV_NVDIMM_CACHE
   // debug
   fprintf(stderr, "[JONGQ] state changed : !!! before: %d after: %d\n", recv_addr->state, RECV_BEING_PROCESSED);
+#endif /* UNIV_NVDIMM_CACHE */
 	recv_addr->state = RECV_BEING_PROCESSED;
 
 	mutex_exit(&(recv_sys->mutex));

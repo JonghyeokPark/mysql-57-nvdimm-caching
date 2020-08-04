@@ -1433,7 +1433,9 @@ loop:
 	involved (particularly in case of compressed pages). We
 	can do that in a separate patch sometime in future. */
 
-    if (buf_pool->instance_no < 8) {
+#ifdef UNIV_NVDIMM_CACHE
+    if (buf_pool->instance_no < srv_buf_pool_instances) {
+#endif /* UNIV_NVDIMM_CACHE */ 
         if (!buf_flush_single_page_from_LRU(buf_pool)) {
             MONITOR_INC(MONITOR_LRU_SINGLE_FLUSH_FAILURE_COUNT);
             ++flush_failures;
@@ -1442,7 +1444,9 @@ loop:
         srv_stats.buf_pool_wait_free.add(n_iterations, 1);
 
         n_iterations++;
+#ifdef UNIV_NVDIMM_CACHE
     }
+#endif /* UNIV_NVDIMM_CACHE */ 
 
 	goto loop;
 }

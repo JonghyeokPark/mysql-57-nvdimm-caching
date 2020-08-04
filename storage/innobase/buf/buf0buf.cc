@@ -2204,7 +2204,9 @@ buf_pool_free_instance(
 	chunks = buf_pool->chunks;
 	chunk = chunks + buf_pool->n_chunks;
 
+#ifdef UNIV_NVDIMM_CACHE
   fprintf(stderr, "[JONGQ] buf_pool->instance_no check: %lu\n", buf_pool->instance_no);
+#endif /* UNIV_NVDIMM_CACHE */
   
 	while (--chunk >= chunks) {
 		buf_block_t*	block = chunk->blocks;
