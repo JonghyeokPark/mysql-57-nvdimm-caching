@@ -898,7 +898,7 @@ buf_dblwr_write_block_to_datafile(
 	bool			sync)	/*!< in: true if sync IO
 					is requested */
 {
-    ut_a(buf_page_in_file(bpage));
+  ut_a(buf_page_in_file(bpage));
 
 	ulint	type = IORequest::WRITE;
 

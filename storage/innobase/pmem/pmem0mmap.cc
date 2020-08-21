@@ -59,6 +59,8 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
     if (gb_pm_mmap == MAP_FAILED) {
       PMEMMMAP_ERROR_PRINT("pm_mmap mmap() faild recovery failed\n");
     }
+    is_pmem_recv=true;
+    pm_mmap_recv_flush_buffer();
 
 		// get file construct
 		PMEM_MMAP_MTRLOGFILE_HDR* recv_mmap_mtrlog_fil_hdr = (PMEM_MMAP_MTRLOGFILE_HDR*) 
@@ -84,8 +86,7 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
 			pmem_recv_size = recv_mmap_mtrlog_fil_hdr->size;
 			
 			// jhpark: check buffer!!!!!
-			// pm_mmap_recv_flush_buffer();
-
+			//pm_mmap_recv_flush_buffer();
 			PMEMMMAP_INFO_PRINT("recovery offset: %lu\n", pmem_recv_offset);
 		} 
 
@@ -497,5 +498,18 @@ void pm_mmap_mtrlogbuf_commit_v1(ulint space, ulint page_no) {
 		offset += data_len;
 	}
 	fprintf(stderr, "break out ! ckpt_offset: %lu\n", mmap_mtrlogbuf->ckpt_offset);
+}
+
+// jhpark-recvoery
+int pm_mmap_memcmp(const unsigned char *tmp1, const unsigned char *tmp2, unsigned long len) {
+
+  if (len >= 4) {
+    long diff = *(unsigned long *)tmp1 - *(unsigned long *)tmp2;
+    if (diff) {
+      return diff;
+    }
+  }
+
+  return memcmp(tmp1,tmp2,len);
 }
 

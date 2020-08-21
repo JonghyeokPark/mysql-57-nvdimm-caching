@@ -1533,6 +1533,13 @@ use_heap:
 	/* 9. Write log record of the insert */
 	if (UNIV_LIKELY(mtr != NULL)) {
 #ifdef UNIV_NVDIMM_CACHE
+    // jhpark-recovery 
+    if (is_pmem_recv) {
+      page_cur_insert_rec_write_log(insert_rec, rec_size,
+           current_rec, index, mtr);
+      return(insert_rec);
+    }
+
         ulint page_no = page_get_page_no(page);
         ulint space_id = page_get_space_id(page);
         buf_block_t* nvm_block = buf_page_get(page_id_t(space_id, page_no),
@@ -1944,6 +1951,16 @@ page_cur_insert_rec_zip(
 					    page_zip, page, index,
 					    level, NULL, NULL)) {
 #ifdef UNIV_NVDIMM_CACHE
+
+    // jhpark-recovery
+    if (is_pmem_recv) {
+                        page_cur_insert_rec_write_log(
+                            insert_rec, rec_size,
+                            cursor->rec, index, mtr);
+ 
+    } else {
+
+
                     buf_block_t* nvm_block = page_cur_get_block(cursor);
                     assert(nvm_block != NULL);
 
@@ -1959,6 +1976,7 @@ page_cur_insert_rec_zip(
                             insert_rec, rec_size,
                             cursor->rec, index, mtr);
                     }
+    }
 #else
 					page_cur_insert_rec_write_log(
 						insert_rec, rec_size,
@@ -2235,6 +2253,13 @@ use_heap:
 	/* 9. Write log record of the insert */
 	if (UNIV_LIKELY(mtr != NULL)) {
 #ifdef UNIV_NVDIMM_CACHE
+
+    // jhpark-recovery
+    if (is_pmem_recv) {
+       page_cur_insert_rec_write_log(insert_rec, rec_size,
+            cursor->rec, index, mtr);
+    }
+
         buf_block_t* nvm_block = page_cur_get_block(cursor);
         assert(nvm_block != NULL);
 
@@ -2473,6 +2498,12 @@ page_copy_rec_list_end_to_created_page(
 		rec_offs_make_valid(insert_rec, index, offsets);
 
 #ifdef UNIV_NVDIMM_CACHE
+
+    // jhpark-recovery
+    if (is_pmem_recv) {
+      page_cur_insert_rec_write_log(insert_rec, rec_size, prev_rec,
+					      index, mtr);
+    } else {
         ulint page_no = page_get_page_no(new_page);
         ulint space_id = page_get_space_id(new_page);
         buf_block_t* nvm_block = buf_page_get(page_id_t(space_id, page_no),
@@ -2489,6 +2520,7 @@ page_copy_rec_list_end_to_created_page(
             page_cur_insert_rec_write_log(insert_rec, rec_size, prev_rec,
                               index, mtr);
         }
+    }
 #else
 		page_cur_insert_rec_write_log(insert_rec, rec_size, prev_rec,
 					      index, mtr);

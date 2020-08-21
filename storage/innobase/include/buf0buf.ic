@@ -1030,6 +1030,20 @@ buf_pool_get(
 	const page_id_t&	page_id)
 {
 #ifdef UNIV_NVDIMM_CACHE
+  // jhpark-recovery: recvoery add !!! // 
+  ////////////////////////////////////////////////////////////////////
+  if (is_pmem_recv) {
+  /* 2log of BUF_READ_AHEAD_AREA (64) */
+    ulint       ignored_page_no = page_id.page_no() >> 6;
+
+    page_id_t   id(page_id.space(), ignored_page_no);
+
+    ulint       i = id.fold() % srv_buf_pool_instances;
+
+    return(&buf_pool_ptr[i]);
+  }
+  ////////////////////////////////////////////////////////////////////
+
     if (buf_block_will_be_moved_to_nvdimm(page_id)) {
         return(&nvdimm_buf_pool_ptr[0]);
     } 

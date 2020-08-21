@@ -790,7 +790,7 @@ buf_page_is_corrupted(
 	FILE*			log_file
 #endif /* UNIV_INNOCHECKSUM */
 )
-{
+{ 
 	ulint		checksum_field1;
 	ulint		checksum_field2;
 
@@ -4554,6 +4554,9 @@ loop:
             buf_pool_t* after_buf_pool = buf_pool_get(page_id);
 
             if (buf_pool->instance_no != after_buf_pool->instance_no) {
+              // jhpark-recovery
+              fprintf(stderr, "buf_pool->instance_no != after_buf_pool->instance_no\n");
+
                 /*ib::info() << buf_pool->instance_no << " != " 
                     << after_buf_pool->instance_no << " for " 
                     << page_id.space() << " " << page_id.page_no();*/    
@@ -5381,7 +5384,12 @@ buf_page_init_low(
 #ifdef UNIV_NVDIMM_CACHE
     bpage->moved_to_nvdimm = false;
     if (bpage->buf_pool_index >= srv_buf_pool_instances) {
-        bpage->cached_in_nvdimm = true;    
+      // jhpark-recvoery
+      if (is_pmem_recv) {
+        bpage->cached_in_nvdimm = false;    
+      } else {
+        bpage->cached_in_nvdimm = true;
+      }
     } else {
         bpage->cached_in_nvdimm = false;
     }
@@ -5507,7 +5515,7 @@ buf_page_init_for_read(
 	ibool		lru	= FALSE;
 	void*		data;
 	buf_pool_t*	buf_pool;
-    
+   
 #ifdef UNIV_NVDIMM_CACHE
     if (mode == BUF_MOVE_TO_NVDIMM) {
         if (page_id.space() == 30
@@ -6148,9 +6156,17 @@ buf_page_io_complete(
 		/* From version 3.23.38 up we store the page checksum
 		to the 4 first bytes of the page end lsn field */
 		if (compressed_page
-		    || buf_page_is_corrupted(
+		    || 
+#ifdef UNIV_NVDIMM_CACHE
+        buf_page_is_corrupted(
+			    false, frame, bpage->size,
+			    fsp_is_checksum_disabled(bpage->id.space()))
+#else
+        buf_page_is_corrupted(
 			    true, frame, bpage->size,
-			    fsp_is_checksum_disabled(bpage->id.space()))) {
+			    fsp_is_checksum_disabled(bpage->id.space()))
+#endif 
+        ) {
 
 			/* Not a real corruption if it was triggered by
 			error injection */
@@ -6224,7 +6240,15 @@ corrupt:
 		if (recv_recovery_is_on()) {
 			/* Pages must be uncompressed for crash recovery. */
 			ut_a(uncompressed);
-			recv_recover_page(TRUE, (buf_block_t*) bpage);
+#ifdef UNIV_NVDIMM_CACHE
+      if (!pm_mmap_recv_nc_page_validate(bpage->id.space(), bpage->id.page_no())) {
+        recv_recover_page(TRUE, (buf_block_t*) bpage);
+      } else {
+        recv_sys->n_addrs--;
+      }
+#else
+		  recv_recover_page(TRUE, (buf_block_t*) bpage);
+#endif
 		}
 
 		/* If space is being truncated then avoid ibuf operation.
@@ -6387,6 +6411,9 @@ corrupt:
 	DBUG_PRINT("ib_buf", ("%s page " UINT32PF ":" UINT32PF,
 			      io_type == BUF_IO_READ ? "read" : "wrote",
 			      bpage->id.space(), bpage->id.page_no()));
+
+  // jhpark-recovery
+  //fprintf(stderr, "ib_buf: %s page %lu:%lu\n", io_type == BUF_IO_READ ? "read" : "wrote", bpage->id.space(), bpage->id.page_no()); 
 
 	buf_pool_mutex_exit(buf_pool);
 

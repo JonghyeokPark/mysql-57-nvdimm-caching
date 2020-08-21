@@ -28,7 +28,8 @@ pm_mmap_buf_init(const uint64_t size) {
 		// TODO(jhpark): support idempotent recovery!!
     // 1024*1024*1024*1UL 
     gb_pm_buf = gb_pm_mmap + (1024*1024*1024*1UL);
-    PMEMMMAP_INFO_PRINT("[recv] pm_mmap_buf initialization finished!\n");  
+    PMEMMMAP_INFO_PRINT("[recv] pm_mmap_buf initialization finished!\n");
+
   } else {	
   	gb_pm_buf = gb_pm_mmap + mmap_mtrlogbuf->size;
   	PMEMMMAP_INFO_PRINT("pm_mmap_buf initialization finished! size: %lu address: %p\n", size, gb_pm_buf);

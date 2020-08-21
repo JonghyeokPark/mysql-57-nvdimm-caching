@@ -1518,7 +1518,9 @@ innobase_start_or_create_for_mysql(void)
 		// TODO(jhpark): change buffer pool recovery policy
 		// buffer retion initialization (2GB)
 		pm_mmap_buf_init(1024*1024*1024*2UL);
-	}
+	} else {
+    pm_mmap_buf_init(1024*1024*1024*2UL);
+  }
 	
 	//pm_mmap_buf_init(1024*1024*1024*3UL);
 
@@ -2354,18 +2356,19 @@ files_checked:
 			return(srv_init_abort(DB_ERROR));
 		}
 		
-// TODO(jhpark): NC recovery check !!!!!
+		purge_queue = trx_sys_init_at_db_start();
+
+    // TODO(jhpark): NC recovery check !!!!!
 #ifdef UNIV_NVDIMM_CACHE
 		if (is_pmem_recv)  {
 			PMEMMMAP_INFO_PRINT("YES!!!! recovery!!!! start_offset: %lu end_offset: %lu\n"
 				,pmem_recv_offset, pmem_recv_size);
 //			pm_mmap_recv(pmem_recv_offset, pmem_recv_size);
 //			PMEMMMAP_INFO_PRINT("UNDO page is recoverd !!!!\n");
-//			//pm_mmap_recv_flush_buffer();
+//      	pm_mmap_recv_flush_buffer();
 		}
 #endif
 
-		purge_queue = trx_sys_init_at_db_start();
 
 		if (srv_force_recovery < SRV_FORCE_NO_LOG_REDO) {
 			/* Apply the hashed log records to the
@@ -2390,6 +2393,7 @@ files_checked:
 				" It may be safest to recover your"
 				" InnoDB database from a backup!";
 		}
+
 
 		/* The purge system needs to create the purge view and
 		therefore requires that the trx_sys is inited. */

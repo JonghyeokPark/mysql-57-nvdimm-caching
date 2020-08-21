@@ -225,7 +225,10 @@ and the insert buffer must be empty when the database is started */
                                                 info output */
 #endif
 
-#define UNIV_BTR_DEBUG				/* check B-tree links */
+// jhpark-recovery
+////////////////////////////////////////////////////////////////
+//#define UNIV_BTR_DEBUG				/* check B-tree links */
+////////////////////////////////////////////////////////////////
 #define UNIV_LIGHT_MEM_DEBUG			/* light memory debugging */
 
 // #define UNIV_SQL_DEBUG

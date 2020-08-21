@@ -321,6 +321,9 @@ btr_cur_latch_leaves(
 
 #ifdef UNIV_BTR_DEBUG
 		/* Sanity check only after both the blocks are latched. */
+#ifdef UNIV_NVDIMM_CACHE
+    // jhpark-recvoery: ignore btree-check
+#else
 		if (latch_leaves.blocks[0] != NULL) {
 			ut_a(page_is_comp(latch_leaves.blocks[0]->frame)
 				== page_is_comp(page));
@@ -329,6 +332,7 @@ btr_cur_latch_leaves(
 				== page_get_page_no(page));
 		}
 		ut_a(page_is_comp(get_block->frame) == page_is_comp(page));
+#endif
 #endif /* UNIV_BTR_DEBUG */
 
 		if (spatial) {
@@ -350,6 +354,9 @@ btr_cur_latch_leaves(
 				page_size, RW_X_LATCH, cursor->index, mtr);
 			latch_leaves.blocks[2] = get_block;
 #ifdef UNIV_BTR_DEBUG
+#ifdef UNIV_NVDIMM_CACHE
+      // jhpark-recvoery
+#else
 			ut_a(page_is_comp(get_block->frame)
 			     == page_is_comp(page));
 			/* mijin */
@@ -362,6 +369,7 @@ btr_cur_latch_leaves(
             /* end */
             ut_a(btr_page_get_prev(get_block->frame, mtr)
 			     == page_get_page_no(page));
+#endif
 #endif /* UNIV_BTR_DEBUG */
 			if (spatial) {
 				cursor->rtr_info->tree_blocks[
@@ -4947,12 +4955,8 @@ btr_cur_del_mark_set_clust_rec(
 
 			//pm_mmap_mtrlogbuf_commit(rec, cur_rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
     } else {
-        if ( nvm_bpage->id.space() == 28) {
-          fprintf(stderr, "[JONGQ] WATCH-OUT-2\n");
-          exit(-1);
-        }
         btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
-					    roll_ptr, mtr);
+            roll_ptr, mtr);
     }
 #else
 	btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,

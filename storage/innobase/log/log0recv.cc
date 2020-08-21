@@ -2371,8 +2371,6 @@ recv_recover_page_func(
 		    recv_addr->space, recv_addr->page_no));
 #endif /* !UNIV_HOTBACKUP */
 
-  // debug
-  fprintf(stderr, "[JONGQ] state changed : !!! before: %d after: %d\n", recv_addr->state, RECV_BEING_PROCESSED);
 	recv_addr->state = RECV_BEING_PROCESSED;
 
 	mutex_exit(&(recv_sys->mutex));
@@ -2558,6 +2556,7 @@ recv_recover_page_func(
 	recv_addr->state = RECV_PROCESSED;
 
 	ut_a(recv_sys->n_addrs);
+  fprintf(stderr, "[NC_RCHECK] 2-recv_sys->n_addrs--!!!!\n");
 	recv_sys->n_addrs--;
 
 	mutex_exit(&(recv_sys->mutex));
@@ -2593,11 +2592,7 @@ recv_read_in_area(
 		const page_id_t	cur_page_id(page_id.space(), page_no);
 
 		if (recv_addr && !buf_page_peek(cur_page_id)) {
-			//debug
-			fprintf(stderr, "[JONGQ] recv-before-mutex i: %lu\n", page_no);
 			mutex_enter(&(recv_sys->mutex));
-			fprintf(stderr, "[JONGQ] recv-after-mutex i: %lu\n", page_no);  
-
 			if (recv_addr->state == RECV_NOT_PROCESSED) {
 				recv_addr->state = RECV_BEING_READ;
 
@@ -2609,8 +2604,8 @@ recv_read_in_area(
 			mutex_exit(&(recv_sys->mutex));
 		}
 	}
-	fprintf(stderr, "[JONGQ] call buf_read_recv_pages\n"); 
-	buf_read_recv_pages(FALSE, page_id.space(), page_nos, n);
+	
+  buf_read_recv_pages(FALSE, page_id.space(), page_nos, n);
  	fprintf(stderr, "[JONGQ] Recv pages at %lu n %lu\n", page_nos[0], n);
 
 	/*
@@ -2673,12 +2668,14 @@ loop:
 				that is schedule for TRUNCATE. */
 				ut_a(recv_sys->n_addrs);
 				recv_addr->state = RECV_DISCARDED;
+        fprintf(stderr, "[NC_RCHECK] 3-recv_sys->n_addrs--!!!!\n");
 				recv_sys->n_addrs--;
 				continue;
 			}
 
 			if (recv_addr->state == RECV_DISCARDED) {
 				ut_a(recv_sys->n_addrs);
+        fprintf(stderr, "[NC_RCHECK] 4-recv_sys->n_addrs--!!!!\n");
 				recv_sys->n_addrs--;
 				continue;
 			}
@@ -2723,7 +2720,6 @@ loop:
 					recv_recover_page(FALSE, block);
 					mtr_commit(&mtr);
 				} else {
-					fprintf(stderr, "[JONGQ] check-11!\n");
 					recv_read_in_area(page_id);
 				}
 
@@ -2755,16 +2751,12 @@ loop:
 		mutex_enter(&(recv_sys->mutex));
 	}
 
-	fprintf(stderr, "[JONGQ] check-1!\n");
-
 	if (has_printed) {
 
 		fprintf(stderr, "\n");
 	}
 
 	if (!allow_ibuf) {
-
-		fprintf(stderr, "[JONGQ] check-3!\n"); 
 
 		/* Flush all the file pages to disk and invalidate them in
 		the buffer pool */
@@ -2867,6 +2859,7 @@ recv_apply_log_recs_for_backup(void)
 				recv_addr->state = RECV_DISCARDED;
 
 				ut_a(recv_sys->n_addrs);
+        fprintf(stderr, "[NC_RCHECK] 5-recv_sys->n_addrs--!!!!\n");
 				recv_sys->n_addrs--;
 
 				goto skip_this_recv_addr;
@@ -4033,7 +4026,7 @@ recv_init_crash_recovery_spaces(void)
 	}
 
 	buf_dblwr_process();
-
+ 
 	if (srv_force_recovery < SRV_FORCE_NO_LOG_REDO) {
 		/* Spawn the background thread to flush dirty pages
 		from the buffer pools. */

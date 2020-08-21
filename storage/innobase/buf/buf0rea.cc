@@ -146,10 +146,11 @@ buf_read_page_low(
 	or is being dropped; if we succeed in initing the page in the buffer
 	pool for read, then DISCARD cannot proceed until the read has
 	completed */
+
 	bpage = buf_page_init_for_read(err, mode, page_id, page_size, unzip);
 
-	if (bpage == NULL) {
 
+	if (bpage == NULL) {
 		return(0);
 	}
 
@@ -196,7 +197,8 @@ buf_read_page_low(
 
 	IORequest	request(type | IORequest::READ);
 
-	*err = fil_io(
+
+ 	*err = fil_io(
 		request, sync, page_id, page_size, 0, page_size.physical(),
 		dst, bpage);
 
@@ -213,6 +215,7 @@ buf_read_page_low(
 			if (recv_recovery_on) {
 				mutex_enter(&recv_sys->mutex);
 				ut_ad(recv_sys->n_addrs > 0);
+        fprintf(stderr, "[NC_RCHECK] 1-recv_sys->n_addrs--!!!!\n");
 				recv_sys->n_addrs--;
 				mutex_exit(&recv_sys->mutex);
 			}
@@ -233,7 +236,7 @@ buf_read_page_low(
 			return(0);
 		}
 	}
-  
+
 	return(1);
 }
 
@@ -881,7 +884,7 @@ buf_read_recv_pages(
 	}
   
 	fil_space_open_if_needed(space);
-
+ 
 	const page_size_t	page_size(space->flags);
 
 	for (i = 0; i < n_stored; i++) {
@@ -907,7 +910,9 @@ buf_read_recv_pages(
 			}
 		}
     
-		if ((i + 1 == n_stored) && sync) {
+    // jhpark-recovery 
+    // (jhpark): for debugging, make all recv_read IO request as synchronous
+		if ( true || (i + 1 == n_stored) && sync) {
 			buf_read_page_low(
 				&err, true,
 				0,

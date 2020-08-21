@@ -556,7 +556,7 @@ rec_get_offsets_func(
 	ut_ad(rec);
 	ut_ad(index);
 	ut_ad(heap);
-
+  
 	if (dict_table_is_comp(index->table)) {
 		switch (UNIV_EXPECT(rec_get_status(rec),
 				    REC_STATUS_ORDINARY)) {

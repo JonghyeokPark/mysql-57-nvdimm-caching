@@ -1,7 +1,8 @@
-commit: ee9e038d0618e9baab499cead3dcd513a87820f8
-date: 2018-10-04 11:18:36 +0530
-build-date: 2018-10-04 07:48:35 +0200
-short: ee9e038
-branch: mysql-5.7.24-release
+commit: 9bf0209b516b456685e8257ef9c79a8f5689b040
+date: 2020-07-31 20:01:12 +0900
+build-date: 2020-08-21 20:37:43 +0900 
+short: 9bf0209b
+branch: develop
+
 
 MySQL source 5.7.24

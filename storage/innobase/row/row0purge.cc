@@ -146,6 +146,27 @@ row_purge_remove_clust_if_poss_low(
 	mtr_start(&mtr);
 	mtr.set_named_space(index->space);
 
+  // (jhpark): ignore NC page purge operation
+  ////////////////////////////////////////////////////////////////////////////////
+  //buf_block_t* tmp_block = btr_pcur_get_block(&node->pcur);
+  if (index) {
+    
+    //page_id_t page_id = tmp_block->page.id;
+    //fprintf(stderr, "page2: %lu:%lu\n", page_id.space(), page_id.page_no());
+    //if (pm_mmap_recv_nc_page_validate(page_id.space(), page_id.page_no())) {
+    fprintf(stderr, "index is NOT NULL!\n");
+    fprintf(stderr, "page2 : %lu:%lu\n", index->space, index->page);
+    if (pm_mmap_recv_nc_page_validate(index->space, index->page)) {
+      fprintf(stderr, "THIS IS NC PAGE at purge!\n");
+      goto func_exit;
+    }
+  } else {
+    fprintf(stderr, "index is NULL!\n");
+  }
+  ////////////////////////////////////////////////////////////////////////////////
+
+
+
 	if (!row_purge_reposition_pcur(mode, node, &mtr)) {
 		/* The record was already removed. */
 		goto func_exit;
@@ -229,6 +250,7 @@ row_purge_remove_clust_if_poss(
 /*===========================*/
 	purge_node_t*	node)	/*!< in/out: row purge node */
 {
+
 	if (row_purge_remove_clust_if_poss_low(node, BTR_MODIFY_LEAF)) {
 		return(true);
 	}
@@ -1011,6 +1033,7 @@ row_purge_record_func(
 	node->index = dict_table_get_next_index(clust_index);
 	ut_ad(!trx_undo_roll_ptr_is_insert(node->roll_ptr));
 
+  
 	switch (node->rec_type) {
 	case TRX_UNDO_DEL_MARK_REC:
 		purged = row_purge_del_mark(node);
@@ -1065,6 +1088,16 @@ row_purge(
 {
 	if (undo_rec != &trx_purge_dummy_rec) {
 		bool	updated_extern;
+  
+  // jhpark-recvoery
+  // (jhpark): ignore NC page purge operation
+  ////////////////////////////////////////////////////////////////////////////////
+//  page_id_t page_id = node->pcur.btr_cur.page_cur.block->page.id;
+//  fprintf(stderr, "current page : %lu:%lu\n", page_id.space(), page_id.page_no());
+//  if (pm_mmap_recv_nc_page_validate(page_id.space(), page_id.page_no())) {
+//    return; 
+//  }
+  ////////////////////////////////////////////////////////////////////////////////
 
 		while (row_purge_parse_undo_rec(
 			       node, undo_rec, &updated_extern, thr)) {
@@ -1138,7 +1171,7 @@ row_purge_step(
 
 	ut_a(!node->done);
 
-	ut_ad(que_node_get_type(node) == QUE_NODE_PURGE);
+ 	ut_ad(que_node_get_type(node) == QUE_NODE_PURGE);
 
 	if (!(node->undo_recs == NULL || ib_vector_is_empty(node->undo_recs))) {
 		trx_purge_rec_t*purge_rec;

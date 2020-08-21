@@ -406,6 +406,37 @@ close_table:
 	} else {
 		clust_index = dict_table_get_first_index(node->table);
 
+#ifdef UNIV_NVDIMM_CACHE
+    // jhpark-recovery
+    /////////////////////////////////////////////////////////////////
+    if (is_pmem_recv) {
+
+    if (clust_index) {
+      fprintf(stderr, "index is NOT NULL! row_undo_ins_parse_undo_rec %lu:%lu\n", clust_index->space, clust_index->page);
+      if (pm_mmap_recv_nc_page_validate(clust_index->space, clust_index->page)) {
+        fprintf(stderr, "THIS IS NC PAGE at row_undo_ins_parse_undo_rec!\n");
+        goto close_table;
+      }
+
+      // jhpark-test
+      if (clust_index->space == 29 && clust_index->page == 3) {
+        fprintf(stderr, "IT IS TRAP!!!!\n");
+        goto close_table;
+      }
+      if (clust_index->space == 30 && clust_index->page == 4) {
+        fprintf(stderr, "IT IS TRAP 2!!!!\n");
+        goto close_table;
+      }
+
+
+    } else {
+      fprintf(stderr, "index is NULL! at row_undo_ins_parse_undo_rec\n");
+    }
+
+    }
+  /////////////////////////////////////////////////////////////////
+#endif
+
 		if (clust_index != NULL) {
 			ptr = trx_undo_rec_get_row_ref(
 				ptr, clust_index, &node->ref, node->heap);
@@ -515,14 +546,48 @@ row_undo_ins(
 		return(DB_SUCCESS);
 	}
 
-	/* Iterate over all the indexes and undo the insert.*/
+ 	/* Iterate over all the indexes and undo the insert.*/
 
 	node->index = dict_table_get_first_index(node->table);
 	ut_ad(dict_index_is_clust(node->index));
 	/* Skip the clustered index (the first index) */
 	node->index = dict_table_get_next_index(node->index);
 
-	dict_table_skip_corrupt_index(node->index);
+  // jhpark-recvoery
+  if (node->index->space == 30 && node->index->page == 4) {
+    fprintf(stderr, "THIS IS TRAP 3!\n");
+    return (DB_SUCCESS);
+  }
+
+
+	// jhpark-recovery
+#ifdef UNIV_NVDIMM_CACHE
+  /////////////////////////////////////////////////////////////////
+  if (is_pmem_recv) {
+  buf_block_t* tmp_block = btr_pcur_get_block(&node->pcur);
+  if (tmp_block) {
+    page_id_t page_id = tmp_block->page.id;
+    fprintf(stderr, "tmp_block is NOT NULL! %lu:%lu\n", page_id.space(), page_id.page_no());
+
+    if (pm_mmap_recv_nc_page_validate(page_id.space(), page_id.page_no())) {
+      fprintf(stderr, "THIS IS NC PAGE at row_undo_step!\n");
+    	btr_pcur_close(&(node->pcur));
+    	mem_heap_empty(node->heap);
+    	thr->run_node = node;
+      err = DB_SUCCESS;
+    	return(err);
+    }
+
+  } else {
+    fprintf(stderr, "tmp_block is NULL! at row_udno\n");
+  }
+  }
+#endif 
+  /////////////////////////////////////////////////////////////////
+
+
+  
+  dict_table_skip_corrupt_index(node->index);
 
 	err = row_undo_ins_remove_sec_rec(node, thr);
 

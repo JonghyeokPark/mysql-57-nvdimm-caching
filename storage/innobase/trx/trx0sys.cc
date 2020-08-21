@@ -508,6 +508,9 @@ trx_sys_init_at_db_start(void)
 			if (trx_state_eq(trx, TRX_STATE_ACTIVE)) {
 				rows_to_undo += trx->undo_no;
 			}
+
+      // jhpark-recovery
+      pm_mmap_recv_add_active_trx_list(trx->id);
 		}
 
 		if (rows_to_undo > 1000000000) {
@@ -520,8 +523,12 @@ trx_sys_init_at_db_start(void)
 			" cleaned up in total " << rows_to_undo << unit
 			<< " row operations to undo";
 
-		ib::info() << "Trx id counter is " << trx_sys->max_trx_id;
+		ib::info() << "Trx id counter is " << trx_sys->max_trx_id; 
 	}
+
+  // jhpark-recvoery : check active transactions
+  fprintf(stderr,"[NC-RECOVERY] call show trx_list\n");
+  pm_mmap_recv_show_trx_list();
 
 	trx_sys_mutex_exit();
 
