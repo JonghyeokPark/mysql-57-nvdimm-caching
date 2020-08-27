@@ -7382,22 +7382,6 @@ buf_print_total_nvdimm_info(
         (ulint)srv_stats.nvdimm_pages_written_od,
         (ulint)srv_stats.nvdimm_pages_written_st);
 }
-
-/*********************************************************************//**
-Prints info of the NVDIMM buffer. */
-void
-buf_print_nvdimm_instance(
-/*==================*/
-	buf_pool_info_t*pool_info,	/*!< in: buffer pool info */
-	FILE*		file)		    /*!< in/out: buffer where to print */
-{
-	ut_ad(pool_info);
-
-    fprintf(file, "Total number of page read performed = " ULINTPF "\n", pool_info->n_pages_read);
-    fprintf(file, "Total number of page created performed = " ULINTPF "\n", pool_info->n_pages_created);
-    fprintf(file, "Total number of page written performed = " ULINTPF "\n", pool_info->n_pages_written);
-    fprintf(file, "Total number of page gets performed = " ULINTPF "\n", pool_info->n_page_gets);
-}
 #endif /* UNIV_NVDIMM_CACHE */
 
 /*********************************************************************//**
@@ -7486,7 +7470,6 @@ buf_print_io(
         for (i = srv_buf_pool_instances; i < srv_buf_pool_instances + srv_nvdimm_buf_pool_instances; i++) {
             fprintf(file, "---BUFFER POOL " ULINTPF "\n", i);
             buf_print_io_instance(&pool_info[i], file);
-            buf_print_nvdimm_instance(&pool_info[i], file);
         }
 
         buf_print_total_nvdimm_info(file);
