@@ -7055,7 +7055,12 @@ buf_stats_aggregate_pool_info(
 	total_info->n_pend_reads += pool_info->n_pend_reads;
 	total_info->n_pending_flush_lru += pool_info->n_pending_flush_lru;
 	total_info->n_pending_flush_list += pool_info->n_pending_flush_list;
-	total_info->n_pages_made_young += pool_info->n_pages_made_young;
+#ifdef UNIV_FLUSH_MONITOR
+    total_info->n_flush_flush_list += pool_info->n_flush_flush_list;
+    total_info->n_flush_lru += pool_info->n_flush_lru;
+    total_info->n_flush_spf += pool_info->n_flush_spf;
+#endif /* UNIV_FLUSH_MONITOR */
+    total_info->n_pages_made_young += pool_info->n_pages_made_young;
 	total_info->n_pages_not_made_young += pool_info->n_pages_not_made_young;
 	total_info->n_pages_read += pool_info->n_pages_read;
 	total_info->n_pages_created += pool_info->n_pages_created;
@@ -7132,6 +7137,12 @@ buf_stats_get_pool_info(
 	pool_info->n_pending_flush_single_page =
 		 (buf_pool->n_flush[BUF_FLUSH_SINGLE_PAGE]
 		  + buf_pool->init_flush[BUF_FLUSH_SINGLE_PAGE]);
+
+#ifdef UNIV_FLUSH_MONITOR
+    pool_info->n_flush_flush_list = buf_pool->n_flush_flush_list;
+    pool_info->n_flush_lru = buf_pool->n_flush_lru;
+    pool_info->n_flush_spf = buf_pool->n_flush_spf;
+#endif /* UNIV_FLUSH_MONITOR */
 
 	buf_flush_list_mutex_exit(buf_pool);
 
@@ -7239,6 +7250,11 @@ buf_print_io_instance(
 		"Pending writes: LRU " ULINTPF
 		", flush list " ULINTPF
 		", single page " ULINTPF "\n",
+#ifdef UNIV_FLUSH_MONITOR
+        "Flushing: LRU " ULINTPF
+		", flush list " ULINTPF
+		", single page " ULINTPF "\n",
+#endif /* UNIV_FLUSH_MONITOR */
 		pool_info->pool_size,
 		pool_info->free_list_len,
 		pool_info->lru_len,
@@ -7247,7 +7263,13 @@ buf_print_io_instance(
 		pool_info->n_pend_reads,
 		pool_info->n_pending_flush_lru,
 		pool_info->n_pending_flush_list,
-		pool_info->n_pending_flush_single_page);
+		pool_info->n_pending_flush_single_page
+#ifdef UNIV_FLUSH_MONITOR
+        pool_info->n_flush_lru,
+        pool_info->n_flush_flush_list,
+        pool_info->n_flush_spf
+#endif /* UNIV_FLUSH_MONITOR */
+        );
 
 	fprintf(file,
 		"Pages made young " ULINTPF
@@ -7312,15 +7334,12 @@ buf_print_io_instance(
 
 #ifdef UNIV_NVDIMM_CACHE
 /*********************************************************************//**
-Prints info of the NVDIMM buffer. */
+Prints info of total pages of the NVDIMM buffer. */
 void
-buf_print_nvdimm_instance(
+buf_print_total_nvdimm_info(
 /*==================*/
-	buf_pool_info_t*pool_info,	/*!< in: buffer pool info */
-	FILE*		file)		/*!< in/out: buffer where to print */
+	FILE*		file)		    /*!< in/out: buffer where to print */
 {
-	ut_ad(pool_info);
-
     fprintf(file,
         "---The number of pages stored in NVDIMM buffer\n"
         "New-Orders      " ULINTPF
@@ -7336,7 +7355,7 @@ buf_print_nvdimm_instance(
         (ulint)srv_stats.nvdimm_pages_stored_st);
 
     fprintf(file,
-        "---The number of pages read\n"
+        "---The number of pages read in NVDIMM buffer\n"
         "New-Orders      " ULINTPF
         "\n"
         "Order-Line      " ULINTPF
@@ -7350,7 +7369,7 @@ buf_print_nvdimm_instance(
         (ulint)srv_stats.nvdimm_pages_read_st);
 
     fprintf(file,
-        "---The number of pages written\n"
+        "---The number of pages written in NVDIMM buffer\n"
         "New-Orders      " ULINTPF
         "\n"
         "Order-Line      " ULINTPF
@@ -7362,6 +7381,17 @@ buf_print_nvdimm_instance(
         (ulint)srv_stats.nvdimm_pages_written_ol,
         (ulint)srv_stats.nvdimm_pages_written_od,
         (ulint)srv_stats.nvdimm_pages_written_st);
+}
+
+/*********************************************************************//**
+Prints info of the NVDIMM buffer. */
+void
+buf_print_nvdimm_instance(
+/*==================*/
+	buf_pool_info_t*pool_info,	/*!< in: buffer pool info */
+	FILE*		file)		    /*!< in/out: buffer where to print */
+{
+	ut_ad(pool_info);
 
     fprintf(file, "Total number of page read performed = " ULINTPF "\n", pool_info->n_pages_read);
     fprintf(file, "Total number of page created performed = " ULINTPF "\n", pool_info->n_pages_created);
@@ -7458,6 +7488,8 @@ buf_print_io(
             buf_print_io_instance(&pool_info[i], file);
             buf_print_nvdimm_instance(&pool_info[i], file);
         }
+
+        buf_print_total_nvdimm_info(file);
     }
 #endif /* UNIV_NVDIMM_CACHE */
 

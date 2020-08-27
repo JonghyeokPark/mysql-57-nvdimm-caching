@@ -1200,7 +1200,19 @@ normal:
         }
     }
 #else
-	if (!srv_use_doublewrite_buf
+#ifdef UNIV_FLUSH_MONITOR
+    /* mijin: FIXME: ONLY USE FOR MONITORING */
+    if (bpage->flush_type == BUF_FLUSH_LIST) {
+        buf_pool->n_flush_flush_list++;
+    } else if (bpage->flush_type == BUF_FLUSH_LRU) {
+        buf_pool->n_flush_lru++;
+    } else if (bpage->flush_type == BUF_FLUSH_SINGLE_PAGE) {
+        buf_pool->n_flush_spf++;
+    }
+	/* end */
+#endif /* UNIV_FLUSH_MONITOR */
+
+    if (!srv_use_doublewrite_buf
 	    || buf_dblwr == NULL
 	    || srv_read_only_mode
 	    || fsp_is_system_temporary(bpage->id.space())) {

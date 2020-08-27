@@ -2,6 +2,7 @@
 
 BASE_DIR=`pwd -P`
 BUILD_DIR=$BASE_DIR/bld
+PASSWD="sudo-passwd"
 
 # Make a directory for build
 if [ ! -d "$BUILD_DIR" ]; then
@@ -12,12 +13,15 @@ fi
 cd $BUILD_DIR
 
 rm -rf CMakeCache.txt
-sudo rm -rf CMakeFiles/*
+echo $PASSWD | sudo -S rm -rf CMakeFiles/*
 
 # Build and install the source code
 if [ "$1" = "--origin" ]; then
     # No caching
     BUILD_FLAGS=""
+elif [ "$1" = "--origin-monitor" ]; then
+    # No caching but monitor the flush status
+    BUILD_FLAGS="-DUNIV_FLUSH_MONITOR"
 elif [ "$1" = "--nc" ]; then
     # Cache New-Orders and Order-Line pages
     BUILD_FLAGS="-DUNIV_NVDIMM_CACHE"
@@ -44,4 +48,4 @@ cmake -DWITH_DEBUG=0 -DCMAKE_C_FLAGS="$BUILD_FLAGS" -DCMAKE_CXX_FLAGS="$BUILD_FL
 -DCMAKE_INSTALL_PREFIX=$BUILD_DIR
 
 make -j8
-sudo make install
+echo $PASSWD | sudo -S make install

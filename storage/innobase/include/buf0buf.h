@@ -165,7 +165,12 @@ struct buf_pool_info_t{
 					threads */
 	ulint	n_pending_flush_list;	/*!< Pages pending flush in FLUSH
 					LIST */
-	ulint	n_pages_made_young;	/*!< number of pages made young */
+#ifdef UNIV_FLUSH_MONITOR
+	ulint	n_flush_lru;        /*!< Pages flushed in LRU */
+    ulint	n_flush_spf;        /*!< Pages flushed in SPF */
+	ulint	n_flush_flush_list;	/*!< Pages flushed in FLUSH LIST */
+#endif /* UNIV_FLUSH_MONITOR */
+    ulint	n_pages_made_young;	/*!< number of pages made young */
 	ulint	n_pages_not_made_young;	/*!< number of pages not made young */
 	ulint	n_pages_read;		/*!< buf_pool->n_pages_read */
 	ulint	n_pages_created;	/*!< buf_pool->n_pages_created */
@@ -2299,6 +2304,11 @@ struct buf_pool_t{
 # error "BUF_BUDDY_LOW > UNIV_ZIP_SIZE_MIN"
 #endif
 	/* @} */
+#ifdef UNIV_FLUSH_MONITOR
+    ulint	n_flush_lru;        /*!< Pages flushed in LRU */
+    ulint	n_flush_spf;        /*!< Pages flushed in SPF */
+	ulint	n_flush_flush_list;	/*!< Pages flushed in FLUSH LIST */
+#endif /* UNIV_FLUSH_MONITOR */
 };
 
 /** Print the given buf_pool_t object.
