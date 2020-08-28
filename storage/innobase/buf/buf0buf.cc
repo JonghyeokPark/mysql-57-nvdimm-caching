@@ -7249,7 +7249,7 @@ buf_print_io_instance(
 		"Pending reads      " ULINTPF "\n"
 		"Pending writes: LRU " ULINTPF
 		", flush list " ULINTPF
-		", single page " ULINTPF "\n",
+		", single page " ULINTPF "\n"
 #ifdef UNIV_FLUSH_MONITOR
         "Flushing: LRU " ULINTPF
 		", flush list " ULINTPF
@@ -7263,7 +7263,7 @@ buf_print_io_instance(
 		pool_info->n_pend_reads,
 		pool_info->n_pending_flush_lru,
 		pool_info->n_pending_flush_list,
-		pool_info->n_pending_flush_single_page
+		pool_info->n_pending_flush_single_page,
 #ifdef UNIV_FLUSH_MONITOR
         pool_info->n_flush_lru,
         pool_info->n_flush_flush_list,

@@ -1200,18 +1200,6 @@ normal:
         }
     }
 #else
-#ifdef UNIV_FLUSH_MONITOR
-    /* mijin: FIXME: ONLY USE FOR MONITORING */
-    if (bpage->flush_type == BUF_FLUSH_LIST) {
-        buf_pool->n_flush_flush_list++;
-    } else if (bpage->flush_type == BUF_FLUSH_LRU) {
-        buf_pool->n_flush_lru++;
-    } else if (bpage->flush_type == BUF_FLUSH_SINGLE_PAGE) {
-        buf_pool->n_flush_spf++;
-    }
-	/* end */
-#endif /* UNIV_FLUSH_MONITOR */
-
     if (!srv_use_doublewrite_buf
 	    || buf_dblwr == NULL
 	    || srv_read_only_mode
@@ -1425,6 +1413,15 @@ buf_flush_page(
                 << " fix-count: " << bpage->buf_fix_count;
         }*/
         /* end */
+#ifdef UNIV_FLUSH_MONITOR
+        if (bpage->flush_type == BUF_FLUSH_LIST) {
+            buf_pool->n_flush_flush_list++;
+        } else if (bpage->flush_type == BUF_FLUSH_LRU) {
+            buf_pool->n_flush_lru++;
+        } else if (bpage->flush_type == BUF_FLUSH_SINGLE_PAGE) {
+            buf_pool->n_flush_spf++;
+        }
+#endif /* UNIV_FLUSH_MONITOR */
 
 		buf_flush_write_block_low(bpage, flush_type, sync);
     }
