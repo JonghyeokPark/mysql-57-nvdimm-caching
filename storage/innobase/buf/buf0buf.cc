@@ -7254,6 +7254,8 @@ buf_print_io_instance(
         "Flushing: LRU " ULINTPF
 		", flush list " ULINTPF
 		", single page " ULINTPF "\n",
+#else
+       ,
 #endif /* UNIV_FLUSH_MONITOR */
 		pool_info->pool_size,
 		pool_info->free_list_len,
@@ -7263,9 +7265,9 @@ buf_print_io_instance(
 		pool_info->n_pend_reads,
 		pool_info->n_pending_flush_lru,
 		pool_info->n_pending_flush_list,
-		pool_info->n_pending_flush_single_page,
+		pool_info->n_pending_flush_single_page
 #ifdef UNIV_FLUSH_MONITOR
-        pool_info->n_flush_lru,
+        ,pool_info->n_flush_lru,
         pool_info->n_flush_flush_list,
         pool_info->n_flush_spf
 #endif /* UNIV_FLUSH_MONITOR */
