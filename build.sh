@@ -34,6 +34,9 @@ elif [ "$1" = "--nc-st-od" ]; then
 elif [ "$1" = "--mtr" ]; then
     # Cache New-Orders, Order-Line, Stock and Orders pages with mtr-logging enabled
     BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_NVDIMM_CACHE_ST -DUNIV_NVDIMM_CACHE_OD -DUNIV_LOG_HEADER"
+elif [ "$1" = "--mtr-monitor" ]; then
+    # Cache New-Orders, Order-Line, Stock and Orders pages with mtr-logging/monitoring enabled
+    BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_NVDIMM_CACHE_ST -DUNIV_NVDIMM_CACHE_OD -DUNIV_LOG_HEADER -DUNIV_FLUSH_MONITOR"
 else
     # Cache New-Orders and Order-Line pages (default)
     BUILD_FLAGS="-DUNIV_NVDIMM_CACHE"
