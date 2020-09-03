@@ -24,6 +24,11 @@ extern uint64_t pmem_recv_size;
 std::map<std::pair<unsigned long, unsigned long>, uint64_t> nc_page_map;
 std::set<unsigned long> nc_active_trx_ids;
 
+void pm_for_debug() {
+  fprintf(stderr, "catch the debug point!\n");
+  return;
+}
+
 bool pm_mmap_recv_nc_page_copy(unsigned long space_id, unsigned long page_no, void* buf) {
   std::map<std::pair<unsigned long, unsigned long>, uint64_t>::iterator iter;
 	iter = nc_page_map.find(std::make_pair(space_id, page_no));
@@ -202,7 +207,7 @@ void pm_mmap_recv_flush_buffer() {
 	// TODO(jhpark): need to modify to get pmem_log_buffer size automatically
 
 	uint64_t cur_offset = 0, nc_pages = 0;
-	uint64_t total_buf_size = (1024*1024*1024*2UL);
+	uint64_t total_buf_size = (1024*1024*1024*4UL);
 	unsigned char* cur_gb_pm_buf = gb_pm_mmap + (1024*1024*1024*1UL);
 
 	// align page
@@ -218,13 +223,21 @@ void pm_mmap_recv_flush_buffer() {
 			memcpy(check, frame+cur_offset, 2);
 			
 			// check whether index page
-			if (mach_read_from_2(check) == FIL_PAGE_INDEX) {
+			if (mach_read_from_2(check) == FIL_PAGE_INDEX || 
+            mach_read_from_2(check) == FIL_PAGE_INODE ||
+            mach_read_from_2(check) == FIL_PAGE_COMPRESSED || 
+            mach_read_from_2(check) == FIL_PAGE_TYPE_BLOB ||
+            mach_read_from_2(check) == FIL_PAGE_TYPE_XDES ||
+            mach_read_from_2(check) == FIL_PAGE_TYPE_FSP_HDR ||
+            mach_read_from_2(check) == FIL_PAGE_TYPE_SYS 
+            //|| mach_read_from_2(check) == FIL_PAGE_TYPE_ALLOCATED
+            ) {
 				byte* tmp = (byte*) malloc(UNIV_PAGE_SIZE);
 				memcpy(tmp, frame + cur_offset - FIL_PAGE_TYPE, UNIV_PAGE_SIZE);
 				uint64_t tmp_space = mach_read_from_4(tmp+FIL_PAGE_SPACE_ID);
 				// detect NC pages
 				if (tmp_space == 28 || tmp_space == 30 || tmp_space == 32 || tmp_space == 29) {
-					cur_offset -= FIL_PAGE_TYPE;
+          cur_offset -= FIL_PAGE_TYPE;
 					free(tmp);
 					free(check);
 
@@ -247,7 +260,8 @@ void pm_mmap_recv_flush_buffer() {
 					break;
 				}
 				free(tmp);
-			}
+			} // check index page
+
 			cur_offset += 2;
 			free(check);
 		}

@@ -321,9 +321,6 @@ btr_cur_latch_leaves(
 
 #ifdef UNIV_BTR_DEBUG
 		/* Sanity check only after both the blocks are latched. */
-#ifdef UNIV_NVDIMM_CACHE
-    // jhpark-recvoery: ignore btree-check
-#else
 		if (latch_leaves.blocks[0] != NULL) {
 			ut_a(page_is_comp(latch_leaves.blocks[0]->frame)
 				== page_is_comp(page));
@@ -332,7 +329,6 @@ btr_cur_latch_leaves(
 				== page_get_page_no(page));
 		}
 		ut_a(page_is_comp(get_block->frame) == page_is_comp(page));
-#endif
 #endif /* UNIV_BTR_DEBUG */
 
 		if (spatial) {
@@ -354,9 +350,6 @@ btr_cur_latch_leaves(
 				page_size, RW_X_LATCH, cursor->index, mtr);
 			latch_leaves.blocks[2] = get_block;
 #ifdef UNIV_BTR_DEBUG
-#ifdef UNIV_NVDIMM_CACHE
-      // jhpark-recvoery
-#else
 			ut_a(page_is_comp(get_block->frame)
 			     == page_is_comp(page));
 			/* mijin */
@@ -369,7 +362,6 @@ btr_cur_latch_leaves(
             /* end */
             ut_a(btr_page_get_prev(get_block->frame, mtr)
 			     == page_get_page_no(page));
-#endif
 #endif /* UNIV_BTR_DEBUG */
 			if (spatial) {
 				cursor->rtr_info->tree_blocks[
@@ -1123,8 +1115,10 @@ search_loop:
 retry_page_get:
 	ut_ad(n_blocks < BTR_MAX_LEVELS);
 	tree_savepoints[n_blocks] = mtr_set_savepoint(mtr);
+ 
 	block = buf_page_get_gen(page_id, page_size, rw_latch, guess,
 				 buf_mode, file, line, mtr);
+
 	tree_blocks[n_blocks] = block;
 
 	if (block == NULL) {
@@ -1196,7 +1190,7 @@ retry_page_get:
 		must read the page from disk. */
 
 		buf_mode = BUF_GET;
-
+    fprintf(stderr, "[JONGQ-RECOVERY] retry-page-get-1\n");
 		goto retry_page_get;
 	}
 
@@ -1809,6 +1803,7 @@ need_opposite_intention:
 
 			buf_mode = BUF_GET;
 			rw_latch = RW_NO_LATCH;
+      fprintf(stderr, "[JONGQ-RECOVERY] retry-page-get-2\n");
 			goto retry_page_get;
 		}
 

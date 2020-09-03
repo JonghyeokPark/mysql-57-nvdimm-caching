@@ -724,7 +724,41 @@ page_cur_search_with_match_bytes(
 			ut_ad(mode == PAGE_CUR_L || mode == PAGE_CUR_LE
 			      || mode == PAGE_CUR_G || mode == PAGE_CUR_GE);
 #endif /* UNIV_DEBUG */
-	page = buf_block_get_frame(block);
+
+  // jhpark-recvery
+/*
+#ifdef UNIV_NVDIMM_CACHE
+  if (is_pmem_recv) {
+    if (pm_mmap_recv_nc_page_validate(block->page.id.space(), block->page.id.page_no())) {
+      fprintf(stderr, "YEAH, THIS IS NC PAGE! %lu:%lu\n", block->page.id.space(), block->page.id.page_no());
+      byte tmp_buf[UNIV_PAGE_SIZE];
+      if (pm_mmap_recv_nc_page_copy(block->page.id.space(), block->page.id.page_no(), tmp_buf) ) {
+        fprintf(stderr, "OK COPY FROM NC BUFFER!\n");
+        page = tmp_buf;
+      } else {
+        fprintf(stderr, "THIS IS NC PAGE BUT CORRUPTED! %lu:%lu\n",block->page.id.space() ,block->page.id.page_no());
+        
+        //if (fil_io(IORequestRead, true, block->page.id, univ_page_size, 0, UNIV_PAGE_SIZE, tmp_buf, NULL) != 10) {
+        //  fprintf(stderr, "FIL_IO READ FAIL !!!\n");
+        //} else {
+        //  fprintf(stderr, "FIO_IO READ SUCCESS !!!\n");
+        //  page = tmp_buf;
+        //}
+        page = buf_block_get_frame(block);
+      }
+    } else {
+      page = buf_block_get_frame(block);
+    }
+  }
+#else
+	page = buf_block_get_frame(block); 
+#endif
+*/
+
+  page = buf_block_get_frame(block); 
+  //jhpark-recovery
+  fprintf(stderr, "[RECOVERY!!!] frame address: %p gb_pm_buf address: %p\n", page , gb_pm_buf );
+
 #ifdef UNIV_ZIP_DEBUG
 	ut_a(!page_zip || page_zip_validate(page_zip, page, index));
 #endif /* UNIV_ZIP_DEBUG */

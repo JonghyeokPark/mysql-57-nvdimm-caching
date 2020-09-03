@@ -4446,6 +4446,7 @@ buf_page_get_gen(
 
 	buf_pool->stat.n_page_gets++;
 	hash_lock = buf_page_hash_lock_get(buf_pool, page_id);
+
 loop:
 	block = guess;
 
@@ -4483,7 +4484,6 @@ loop:
 
 	if (block == NULL) {
 		/* Page not in buf_pool: needs to be read from file */
-
 		if (mode == BUF_GET_IF_IN_POOL_OR_WATCH) {
 			rw_lock_x_lock(hash_lock);
 
@@ -4544,6 +4544,7 @@ loop:
 
 			retries = 0;
 		} else if (retries < BUF_PAGE_READ_MAX_RETRIES) {
+
 			++retries;
 			DBUG_EXECUTE_IF(
 				"innodb_page_corruption_retries",
@@ -4554,9 +4555,6 @@ loop:
             buf_pool_t* after_buf_pool = buf_pool_get(page_id);
 
             if (buf_pool->instance_no != after_buf_pool->instance_no) {
-              // jhpark-recovery
-              fprintf(stderr, "buf_pool->instance_no != after_buf_pool->instance_no\n");
-
                 /*ib::info() << buf_pool->instance_no << " != " 
                     << after_buf_pool->instance_no << " for " 
                     << page_id.space() << " " << page_id.page_no();*/    
@@ -4591,6 +4589,7 @@ loop:
 		goto loop;
 	} else {
 		fix_block = block;
+
 
 #ifdef UNIV_NVDIMM_CACHE
         /* Buffer Hit */
@@ -5042,6 +5041,13 @@ got_block:
 
 	ut_ad(!rw_lock_own(hash_lock, RW_LOCK_X));
 	ut_ad(!rw_lock_own(hash_lock, RW_LOCK_S));
+
+#ifdef UNIV_NVDIMM_CACHE
+  if (page_id.space() == 29 && page_id.page_no() == 281687) {
+    fprintf(stderr, "buf_page_get_gen-4\n");
+  }
+#endif
+
 
 	return(fix_block);
 }
@@ -6157,10 +6163,13 @@ buf_page_io_complete(
 		to the 4 first bytes of the page end lsn field */
 		if (compressed_page
 		    || 
+// jhpark-recovery
 #ifdef UNIV_NVDIMM_CACHE
         buf_page_is_corrupted(
 			    false, frame, bpage->size,
 			    fsp_is_checksum_disabled(bpage->id.space()))
+
+        && !recv_recovery_is_on()
 #else
         buf_page_is_corrupted(
 			    true, frame, bpage->size,
@@ -6240,6 +6249,8 @@ corrupt:
 		if (recv_recovery_is_on()) {
 			/* Pages must be uncompressed for crash recovery. */
 			ut_a(uncompressed);
+
+      // jhpark-recvoery !!!!
 #ifdef UNIV_NVDIMM_CACHE
       if (!pm_mmap_recv_nc_page_validate(bpage->id.space(), bpage->id.page_no())) {
         recv_recover_page(TRUE, (buf_block_t*) bpage);
@@ -6249,6 +6260,7 @@ corrupt:
 #else
 		  recv_recover_page(TRUE, (buf_block_t*) bpage);
 #endif
+
 		}
 
 		/* If space is being truncated then avoid ibuf operation.
@@ -6411,9 +6423,6 @@ corrupt:
 	DBUG_PRINT("ib_buf", ("%s page " UINT32PF ":" UINT32PF,
 			      io_type == BUF_IO_READ ? "read" : "wrote",
 			      bpage->id.space(), bpage->id.page_no()));
-
-  // jhpark-recovery
-  //fprintf(stderr, "ib_buf: %s page %lu:%lu\n", io_type == BUF_IO_READ ? "read" : "wrote", bpage->id.space(), bpage->id.page_no()); 
 
 	buf_pool_mutex_exit(buf_pool);
 

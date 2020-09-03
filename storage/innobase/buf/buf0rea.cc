@@ -155,10 +155,18 @@ buf_read_page_low(
 	}
 
   // debug
-// fprintf(stderr, "[JONGQ] read page %u:%u size=%u unzip=%u, sync=%d\n"
-//                , (unsigned) page_id.space(),
-//                  (unsigned) page_id.page_no(),
-//                  (unsigned) page_size.physical(), (unsigned) unzip, sync);
+ fprintf(stderr, "[JONGQ] read page %u:%u size=%u unzip=%u, sync=%d\n"
+                , (unsigned) page_id.space(),
+                  (unsigned) page_id.page_no(),
+                  (unsigned) page_size.physical(), (unsigned) unzip, sync);
+
+#ifdef UNIV_NVDIMM_CACHE
+ if (is_pmem_recv) {
+  if (pm_mmap_recv_nc_page_validate(page_id.space(), page_id.page_no())) {
+    fprintf(stderr, "[JONGQ] this is NC page!!!! %lu:%lu\n", page_id.space(), page_id.page_no());   
+  }
+ }
+#endif
 
 	DBUG_PRINT("ib_buf", ("read page %u:%u size=%u unzip=%u,%s",
 			      (unsigned) page_id.space(),
@@ -202,6 +210,12 @@ buf_read_page_low(
 		request, sync, page_id, page_size, 0, page_size.physical(),
 		dst, bpage);
 
+#ifdef UNIV_NVDIMM_CACHE
+  if (pm_mmap_recv_nc_page_validate(page_id.space(), page_id.page_no())) {
+    fprintf(stderr, "[JONGQ] this is NC page!!!! fil_io work?: %d %lu:%lu\n", *err, page_id.space(), page_id.page_no());
+  }
+#endif
+
 	if (sync) {
 		thd_wait_end(NULL);
 	}
@@ -215,7 +229,6 @@ buf_read_page_low(
 			if (recv_recovery_on) {
 				mutex_enter(&recv_sys->mutex);
 				ut_ad(recv_sys->n_addrs > 0);
-        fprintf(stderr, "[NC_RCHECK] 1-recv_sys->n_addrs--!!!!\n");
 				recv_sys->n_addrs--;
 				mutex_exit(&recv_sys->mutex);
 			}
@@ -912,7 +925,8 @@ buf_read_recv_pages(
     
     // jhpark-recovery 
     // (jhpark): for debugging, make all recv_read IO request as synchronous
-		if ( true || (i + 1 == n_stored) && sync) {
+		//if ( true || (i + 1 == n_stored) && sync) {
+    if ( (i + 1 == n_stored) && sync) {
 			buf_read_page_low(
 				&err, true,
 				0,

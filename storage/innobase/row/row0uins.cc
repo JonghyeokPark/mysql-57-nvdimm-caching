@@ -406,36 +406,26 @@ close_table:
 	} else {
 		clust_index = dict_table_get_first_index(node->table);
 
+    /*
 #ifdef UNIV_NVDIMM_CACHE
     // jhpark-recovery
     /////////////////////////////////////////////////////////////////
     if (is_pmem_recv) {
 
-    if (clust_index) {
-      fprintf(stderr, "index is NOT NULL! row_undo_ins_parse_undo_rec %lu:%lu\n", clust_index->space, clust_index->page);
-      if (pm_mmap_recv_nc_page_validate(clust_index->space, clust_index->page)) {
-        fprintf(stderr, "THIS IS NC PAGE at row_undo_ins_parse_undo_rec!\n");
-        goto close_table;
+      if (clust_index) {
+        fprintf(stderr, "index is NOT NULL! row_undo_ins_parse_undo_rec %lu:%lu\n", clust_index->space, clust_index->page);
+        if (pm_mmap_recv_nc_page_validate(clust_index->space, clust_index->page)) {
+          fprintf(stderr, "THIS IS NC PAGE at row_undo_ins_parse_undo_rec!\n");
+          goto close_table;
+        }
+      } else {
+        fprintf(stderr, "index is NULL! at row_undo_ins_parse_undo_rec\n");
       }
-
-      // jhpark-test
-      if (clust_index->space == 29 && clust_index->page == 3) {
-        fprintf(stderr, "IT IS TRAP!!!!\n");
-        goto close_table;
-      }
-      if (clust_index->space == 30 && clust_index->page == 4) {
-        fprintf(stderr, "IT IS TRAP 2!!!!\n");
-        goto close_table;
-      }
-
-
-    } else {
-      fprintf(stderr, "index is NULL! at row_undo_ins_parse_undo_rec\n");
-    }
 
     }
   /////////////////////////////////////////////////////////////////
 #endif
+  */
 
 		if (clust_index != NULL) {
 			ptr = trx_undo_rec_get_row_ref(
@@ -553,17 +543,41 @@ row_undo_ins(
 	/* Skip the clustered index (the first index) */
 	node->index = dict_table_get_next_index(node->index);
 
-  // jhpark-recvoery
-  if (node->index->space == 30 && node->index->page == 4) {
-    fprintf(stderr, "THIS IS TRAP 3!\n");
-    return (DB_SUCCESS);
-  }
-
 
 	// jhpark-recovery
 #ifdef UNIV_NVDIMM_CACHE
   /////////////////////////////////////////////////////////////////
   if (is_pmem_recv) {
+/*
+  // jhpark-recvoery
+  if (node->index->space == 30 && node->index->page == 4) {
+    fprintf(stderr, "THIS IS TRAP 3!\n");
+    fprintf(stderr, "pcur->btr_cur version: %lu:%lu\n", node->pcur.btr_cur.index->space, node->pcur.btr_cur.index->page);
+    if (page_is_leaf(node->pcur.btr_cur.page_cur.block->frame) == true) {
+      fprintf(stderr, "THIS PAGE IS LEAF!\n");
+    } else {
+      fprintf(stderr, "THIS PAGE IS NOT LEAF!\n");
+    }
+
+    return (DB_SUCCESS);
+  }
+  // jhpark-recvoery
+  if (node->index->space == 29 && node->index->page == 3) {
+    fprintf(stderr, "THIS IS TRAP 4!\n");
+    return (DB_SUCCESS);
+  }
+  
+
+  if (node->pcur.btr_cur.index->space == 30 && node->pcur.btr_cur.index->page ==4) {
+    fprintf(stderr, "THIS IS NEW TRAP 3!\n");
+    return (DB_SUCCESS);
+  }
+
+  if (node->pcur.btr_cur.index->space == 29 && node->pcur.btr_cur.index->page ==3) {
+    fprintf(stderr, "THIS IS NEW TRAP 4!\n");
+    return (DB_SUCCESS);
+  }
+
   buf_block_t* tmp_block = btr_pcur_get_block(&node->pcur);
   if (tmp_block) {
     page_id_t page_id = tmp_block->page.id;
@@ -581,6 +595,7 @@ row_undo_ins(
   } else {
     fprintf(stderr, "tmp_block is NULL! at row_udno\n");
   }
+  */
   }
 #endif 
   /////////////////////////////////////////////////////////////////

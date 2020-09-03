@@ -5513,16 +5513,20 @@ fil_io(
 	IORequest		req_type(type);
 
 #ifdef UNIV_NVDIMM_CACHE
-  //fprintf(stderr, "fio_io called !!!! space: %lu page: %lu\n", page_id.space(), page_id.page_no());
-  // copy only for valid page
-  /*
-  if (pm_mmap_recv_nc_page_validate(page_id.space(), page_id.page_no())) {
-    fprintf(stderr, "WARNING !!! IT IS NC PAGE !!!!!! space: %lu page_no: %lu\n", page_id.space(), page_id.page_no());
-    if (pm_mmap_recv_nc_page_copy(page_id.space(), page_id.page_no(), buf)) {
-      return DB_SUCCESS;
+  
+  if (is_pmem_recv) {  
+    // jhpark-recovery
+    fprintf(stderr, "fio_io called !!!! space: %lu page: %lu\n", page_id.space(), page_id.page_no());
+    // copy only for valid page
+  
+    if (pm_mmap_recv_nc_page_validate(page_id.space(), page_id.page_no())) {
+      fprintf(stderr, "WARNING !!! IT IS NC PAGE !!!!!! space: %lu page_no: %lu\n", page_id.space(), page_id.page_no());
+      if (pm_mmap_recv_nc_page_copy(page_id.space(), page_id.page_no(), buf)) {
+        return DB_SUCCESS;
+      }
     }
   }
-  */
+
 #endif
 
 	ut_ad(req_type.validate());

@@ -148,6 +148,8 @@ row_purge_remove_clust_if_poss_low(
 
   // (jhpark): ignore NC page purge operation
   ////////////////////////////////////////////////////////////////////////////////
+#ifdef UNIV_NVDIMM_CACHE
+  if (is_pmem_recv) {
   //buf_block_t* tmp_block = btr_pcur_get_block(&node->pcur);
   if (index) {
     
@@ -163,6 +165,9 @@ row_purge_remove_clust_if_poss_low(
   } else {
     fprintf(stderr, "index is NULL!\n");
   }
+  }
+
+#endif
   ////////////////////////////////////////////////////////////////////////////////
 
 
@@ -1091,13 +1096,15 @@ row_purge(
   
   // jhpark-recvoery
   // (jhpark): ignore NC page purge operation
+  /*
   ////////////////////////////////////////////////////////////////////////////////
-//  page_id_t page_id = node->pcur.btr_cur.page_cur.block->page.id;
-//  fprintf(stderr, "current page : %lu:%lu\n", page_id.space(), page_id.page_no());
-//  if (pm_mmap_recv_nc_page_validate(page_id.space(), page_id.page_no())) {
-//    return; 
-//  }
+  page_id_t page_id = node->pcur.btr_cur.page_cur.block->page.id;
+  fprintf(stderr, "current page : %lu:%lu\n", page_id.space(), page_id.page_no());
+  if (pm_mmap_recv_nc_page_validate(page_id.space(), page_id.page_no())) {
+    return; 
+  }
   ////////////////////////////////////////////////////////////////////////////////
+  */
 
 		while (row_purge_parse_undo_rec(
 			       node, undo_rec, &updated_extern, thr)) {

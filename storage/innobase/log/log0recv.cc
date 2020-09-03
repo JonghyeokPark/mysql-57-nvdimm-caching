@@ -2556,7 +2556,6 @@ recv_recover_page_func(
 	recv_addr->state = RECV_PROCESSED;
 
 	ut_a(recv_sys->n_addrs);
-  fprintf(stderr, "[NC_RCHECK] 2-recv_sys->n_addrs--!!!!\n");
 	recv_sys->n_addrs--;
 
 	mutex_exit(&(recv_sys->mutex));
@@ -2675,7 +2674,6 @@ loop:
 
 			if (recv_addr->state == RECV_DISCARDED) {
 				ut_a(recv_sys->n_addrs);
-        fprintf(stderr, "[NC_RCHECK] 4-recv_sys->n_addrs--!!!!\n");
 				recv_sys->n_addrs--;
 				continue;
 			}
@@ -2699,10 +2697,6 @@ loop:
 					has_printed = TRUE;
 				}
 				
-				// debug
-				fprintf(stderr, "[JONGQ] i=%d recv_sys->n_addrs: %lu\n"
-											,i, recv_sys->n_addrs);
-
 				mutex_exit(&(recv_sys->mutex));
 
 				if (buf_page_peek(page_id)) {

@@ -212,6 +212,7 @@ bool pm_mmap_recv_nc_page_validate(unsigned long space_id, unsigned long page_no
 void pm_mmap_recv_add_active_trx_list(unsigned long trx_id);
 void pm_mmap_recv_show_trx_list();
 bool pm_mmap_recv_nc_page_copy(unsigned long space_id, unsigned long page_no, void* buf);
+void pm_for_debug();
 
 //struct recv_sys_t{
 //  ib_mutex_t    mutex;

@@ -1720,8 +1720,15 @@ dict_check_if_system_table_exists(
 {
 	dict_table_t*	sys_table;
 	dberr_t		error = DB_SUCCESS;
-
+#ifdef UNIV_NVDIMM_CACHE
+  if (is_pmem_recv) {
+    if (srv_get_active_thread_type() != SRV_NONE) {
+      ib::info() << "IT MUST BE SRV_NONE TYPE, However WE are using NC!";
+    }
+  }
+#else
 	ut_a(srv_get_active_thread_type() == SRV_NONE);
+#endif
 
 	mutex_enter(&dict_sys->mutex);
 
@@ -1761,7 +1768,16 @@ dict_create_or_check_foreign_constraint_tables(void)
 	dberr_t		sys_foreign_err;
 	dberr_t		sys_foreign_cols_err;
 
+  // jhpark-recvoery : see this again !!! MUST
+#ifdef UNIV_NVDIMM_CACHE
+  if (is_pmem_recv) {
+    if (srv_get_active_thread_type() != SRV_NONE) {
+     ib::info() << "IT MUST BE SRV_NONE TYPE, However WE are using NC!";
+    }
+  }
+#else
 	ut_a(srv_get_active_thread_type() == SRV_NONE);
+#endif
 
 	/* Note: The master thread has not been started at this point. */
 
@@ -1892,7 +1908,17 @@ dict_create_or_check_sys_virtual()
 	my_bool		srv_file_per_table_backup;
 	dberr_t		err;
 
+ // jhpark-recvoery : see this again !!! MUST
+#ifdef UNIV_NVDIMM_CACHE
+  if (is_pmem_recv) {
+    if (srv_get_active_thread_type() != SRV_NONE) {
+     ib::info() << "IT MUST BE SRV_NONE TYPE, However WE are using NC!";
+    }
+  }
+#else
 	ut_a(srv_get_active_thread_type() == SRV_NONE);
+#endif
+
 
 	/* Note: The master thread has not been started at this point. */
 	err = dict_check_if_system_table_exists(
@@ -2424,7 +2450,16 @@ dict_create_or_check_sys_tablespace(void)
 	dberr_t		sys_tablespaces_err;
 	dberr_t		sys_datafiles_err;
 
+ // jhpark-recvoery : see this again !!! MUST
+#ifdef UNIV_NVDIMM_CACHE
+  if (is_pmem_recv) {
+    if (srv_get_active_thread_type() != SRV_NONE) {
+     ib::info() << "IT MUST BE SRV_NONE TYPE, However WE are using NC!";
+    }
+  }
+#else
 	ut_a(srv_get_active_thread_type() == SRV_NONE);
+#endif
 
 	/* Note: The master thread has not been started at this point. */
 

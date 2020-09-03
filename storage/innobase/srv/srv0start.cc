@@ -2805,6 +2805,14 @@ files_checked:
 	os_thread_create(buf_resize_thread, NULL, NULL);
 
 	srv_was_started = TRUE;
+
+#ifdef UNIV_NVDIMM_CACHE
+  if (is_pmem_recv) {
+    ib::info() << "Now we finished the recovery, change as normal state";
+    is_pmem_recv = false;
+  }
+#endif
+
 	return(DB_SUCCESS);
 }
 
