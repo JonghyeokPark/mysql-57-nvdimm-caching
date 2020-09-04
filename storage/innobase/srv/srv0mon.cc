@@ -1209,49 +1209,49 @@ static monitor_info_t	innodb_counter_info[] =
      "Number of stock pages that been read"
      " (innodb_nvdimm_pages_read_st)",
      static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
-     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_ST},
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_READ_ST},
 
     {"innodb_nvdimm_pages_read_ol", "server",
      "Number of order-line pages that been read"
      " (innodb_nvdimm_pages_read_ol)",
      static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
-     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_OL},
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_READ_OL},
 
     {"innodb_nvdimm_pages_read_od", "server",
      "Number of orders pages that been read"
      " (innodb_nvdimm_pages_read_od)",
      static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
-     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_OD},
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_READ_OD},
 
     {"innodb_nvdimm_pages_read_no", "server",
      "Number of new-orders pages that been read"
      " (innodb_nvdimm_pages_read_no)",
      static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
-     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_NO},
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_READ_NO},
 
     {"innodb_nvdimm_pages_written_st", "server",
      "Number of stock pages that been written"
      " (innodb_nvdimm_pages_written_st)",
      static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
-     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_ST},
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_WRITTEN_ST},
 
     {"innodb_nvdimm_pages_written_ol", "server",
      "Number of order-line pages that been written"
      " (innodb_nvdimm_pages_written_ol)",
      static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
-     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_OL},
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_WRITTEN_OL},
 
     {"innodb_nvdimm_pages_written_od", "server",
      "Number of orders pages that been written"
      " (innodb_nvdimm_pages_written_od)",
      static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
-     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_OD},
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_WRITTEN_OD},
 
     {"innodb_nvdimm_pages_written_no", "server",
      "Number of new-orders pages that been written"
      " (innodb_nvdimm_pages_written_no)",
      static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
-     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_NO},
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_WRITTEN_NO},
 #endif /* UNIV_NVDIMM_CACHE */
 
 	{"innodb_page_size", "server",
