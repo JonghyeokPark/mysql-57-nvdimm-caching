@@ -211,7 +211,7 @@ buf_read_page_low(
 		dst, bpage);
 
 #ifdef UNIV_NVDIMM_CACHE
-  if (pm_mmap_recv_nc_page_validate(page_id.space(), page_id.page_no())) {
+  if (!is_pmem_recv && pm_mmap_recv_nc_page_validate(page_id.space(), page_id.page_no())) {
     fprintf(stderr, "[JONGQ] this is NC page!!!! fil_io work?: %d %lu:%lu\n", *err, page_id.space(), page_id.page_no());
   }
 #endif
@@ -923,10 +923,11 @@ buf_read_recv_pages(
 			}
 		}
     
-    // jhpark-recovery 
-    // (jhpark): for debugging, make all recv_read IO request as synchronous
-		//if ( true || (i + 1 == n_stored) && sync) {
-    if ( (i + 1 == n_stored) && sync) {
+    // jhpark-recovery-2
+    // (jhpark): for NC recovery, make all recv_read IO request as synchronous
+		if ( true ) { 
+    //|| (i + 1 == n_stored) && sync) {
+    //if ( (i + 1 == n_stored) && sync) {
 			buf_read_page_low(
 				&err, true,
 				0,

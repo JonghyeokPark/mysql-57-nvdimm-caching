@@ -1076,10 +1076,12 @@ mtr_t::Command::finish_write_nvm(
 	ut_ad(len > 0);
 
 	/* Open the database log for log_write_low */
-  m_start_lsn = log_sys->lsn;
+  // (jhpark): write mtr log with vanilla mtr log 
+  //           we only need write to NVM ! ignore othre logging info
+  //m_start_lsn = log_sys->lsn;
 	mtr_nvm_write_log_t	write_log;
 	m_impl->m_log.for_each_block(write_log);
-  m_end_lsn = log_sys->lsn; 
+  //m_end_lsn = log_sys->lsn; 
 }
 #endif /* UNIV_NVDIMM_CACHE */
 
@@ -1159,6 +1161,10 @@ mtr_t::Command::execute()
 	ut_ad(m_impl->m_log_mode != MTR_LOG_NONE);
 
 	if (const ulint len = prepare_write()) {
+
+//#ifdef UNIV_NVDIMM_CACHE
+//    finish_write_nvm(len);
+//#endif
 		finish_write(len);
 	}
 
@@ -1188,14 +1194,17 @@ mtr_t::Command::execute()
 void mtr_t::Command::execute_nvm() {
 	ut_ad(m_impl->m_log_mode != MTR_LOG_NONE);
 
+  // (jhpark): we only need "mtr-log" for validate NC page 
+  //           we are logging together with vanilla NC page
 	if (const ulint len = prepare_write_nvm()) {
     finish_write_nvm(len);
 	}
 
-	m_impl->m_mtr->m_commit_lsn = m_end_lsn;
-	release_blocks();
-	release_latches();
-	release_resources();
+// ignore below
+//	m_impl->m_mtr->m_commit_lsn = m_end_lsn;
+//	release_blocks();
+//	release_latches();
+//	release_resources();
 
 // TODO(jhpark): add flush_order mutex when nvdimm caching page is flushed.
 //	if (m_impl->m_made_dirty) {

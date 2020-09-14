@@ -1519,10 +1519,11 @@ innobase_start_or_create_for_mysql(void)
 		// buffer retion initialization (2GB)
 		pm_mmap_buf_init(1024*1024*1024*2UL);
 	} else {
+    // jhpark-debug
+    pm_mmap_mtrlogbuf_check();
     pm_mmap_buf_init(1024*1024*1024*2UL);
   }
-	
-	//pm_mmap_buf_init(1024*1024*1024*3UL);
+  //pm_mmap_buf_init(1024*1024*1024*3UL);
 
 #endif /* UNIV_NVDIMM_CACHE */
 
@@ -2363,6 +2364,8 @@ files_checked:
 		if (is_pmem_recv)  {
 			PMEMMMAP_INFO_PRINT("YES!!!! recovery!!!! start_offset: %lu end_offset: %lu\n"
 				,pmem_recv_offset, pmem_recv_size);
+      // (jharpk): just check current mtr logs
+
 //			pm_mmap_recv(pmem_recv_offset, pmem_recv_size);
 //			PMEMMMAP_INFO_PRINT("UNDO page is recoverd !!!!\n");
 //      	pm_mmap_recv_flush_buffer();
@@ -2809,6 +2812,8 @@ files_checked:
 #ifdef UNIV_NVDIMM_CACHE
   if (is_pmem_recv) {
     ib::info() << "Now we finished the recovery, change as normal state";
+    ib::info() << "Re-initialize mtrlogbuf";
+    pm_mmap_mtrlogbuf_init(1024*1024*1024*1UL); // 1GB for test
     is_pmem_recv = false;
   }
 #endif

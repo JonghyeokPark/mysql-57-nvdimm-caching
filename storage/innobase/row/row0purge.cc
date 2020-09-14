@@ -152,14 +152,12 @@ row_purge_remove_clust_if_poss_low(
   if (is_pmem_recv) {
   //buf_block_t* tmp_block = btr_pcur_get_block(&node->pcur);
   if (index) {
-    
     //page_id_t page_id = tmp_block->page.id;
     //fprintf(stderr, "page2: %lu:%lu\n", page_id.space(), page_id.page_no());
     //if (pm_mmap_recv_nc_page_validate(page_id.space(), page_id.page_no())) {
-    fprintf(stderr, "index is NOT NULL!\n");
-    fprintf(stderr, "page2 : %lu:%lu\n", index->space, index->page);
     if (pm_mmap_recv_nc_page_validate(index->space, index->page)) {
       fprintf(stderr, "THIS IS NC PAGE at purge!\n");
+      // jhpark-recovery-2
       goto func_exit;
     }
   } else {

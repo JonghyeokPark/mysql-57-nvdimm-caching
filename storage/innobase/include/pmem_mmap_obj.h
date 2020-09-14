@@ -81,6 +81,11 @@ typedef struct __pmem_mmap_mtrlog_hdr PMEM_MMAP_MTRLOG_HDR;
 struct __pmem_mmap_mtrlog_fileheader;
 typedef struct __pmem_mmap_mtrlog_fileheader PMEM_MMAP_MTRLOGFILE_HDR;
 
+// jhpark: for validate NC page
+struct __pmem_mmap_mtrlog_placeholder;
+typedef struct __pmem_mmap_mtrlog_placeholder PMEM_MMAP_PLACEHOLDER;
+#define PMEM_MMAP_PLACEHODER_SZ sizeof(PMEM_MMAP_PLACEHOLDER)
+
 // buffer
 struct __pmem_mmap_buf_sys;
 typedef struct __pmem_mmap_buf_sys PMEM_MMAP_BUF_SYS;
@@ -129,12 +134,9 @@ void pm_mmap_free(const uint64_t pool_size);
 struct __pmem_mmap_mtrlog_buf {
   pthread_mutex_t mtrMutex; // mutex protecting writing to mtr log region
   bool need_recv;       // recovery flag
-  
-//  ib_uint64_t  mtr_sys_lsn;   // global lsn for mtr_lsn (monotically increased) (stale)
-//  ib_uint64_t last_ckpt_lsn;  // checkpoint_lsn (oldest page LSN in NVDIMM caching
-                        // flsuher list (stale)
-	
 	size_t ckpt_offset; 	// we can remove mtr log up to this offset 
+  size_t min_invalid_offset; // minimum ckpt_offset 
+  size_t max_invalid_offset; // maximum ckpt_offset
 
 	size_t size;          // total size of mtr log region
 	size_t cur_offset;    // current offset of mtr log region
@@ -168,6 +170,14 @@ struct __pmem_mmap_mtrlog_hdr {
 	unsigned long int page_no;		 // undo page page_no
 };
 
+// for validation
+struct __pmem_mmap_mtrlog_placeholder {
+  uint64_t is_valid;
+  unsigned long space_id;
+  unsigned long page_no;
+  uint64_t  trx_id;
+};
+
 // logging? 
 int pm_mmap_mtrlogbuf_init(const size_t size);
 void pm_mmap_mtrlogbuf_mem_free();
@@ -183,6 +193,13 @@ ssize_t pm_mmap_mtrlogbuf_write(const uint8_t* buf,
 
 bool pm_mmap_mtrlogbuf_identify(size_t offset, unsigned long space, unsigned long page_no);
 void pm_mmap_mtrlogbuf_unset_recv_flag(size_t offset);
+
+// jhpark-validation
+void pm_mmap_mtrlogbuf_record(unsigned long space, unsigned long page_no, uint64_t trx_id);
+void pm_mmap_mtrlogbuf_log_commit(unsigned long space, unsigned long page_no, uint64_t trx_id);
+void pm_mmap_mtrlogbuf_check();
+bool pm_mmap_mtrlogbuf_validate(unsigned long space_id, unsigned long page_no);
+
 void pm_mmap_mtrlogbuf_commit(unsigned char* rec, unsigned long cur_rec_size, unsigned long space, unsigned long page_no);
 void pm_mmap_mtrlogbuf_commit_v1(unsigned long space, unsigned long page_no);
 

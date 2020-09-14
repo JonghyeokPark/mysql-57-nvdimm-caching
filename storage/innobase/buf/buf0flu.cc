@@ -1125,6 +1125,11 @@ buf_flush_write_block_low(
             << " dst = " << &(((buf_block_t *)nvdimm_page)->frame) << " src = " << &(((buf_block_t *)bpage)->frame)
             << " flush-type = " << bpage->flush_type;
 
+        // jhpark-recovery-3
+        // (jhaprk): for buffer -> NC case, this page is also NVDIMM page
+        //           that means this page could be non-"page-action consistency" status.
+        pm_mmap_mtrlogbuf_record(bpage->id.space(), bpage->id.page_no(), 0);
+
         memcpy(((buf_block_t *)nvdimm_page)->frame, ((buf_block_t *)bpage)->frame, UNIV_PAGE_SIZE);
 
         /* Set the oldest LSN of the NVDIMM page to the previous newest LSN. */
@@ -1149,7 +1154,6 @@ buf_flush_write_block_low(
           ut_error;
         }
        
-
         int tmp_check = pm_mmap_memcmp(tmp_buf, (unsigned char *)( ((buf_block_t *)bpage)->frame), UNIV_PAGE_SIZE);
         if (tmp_check !=0) {
            ib::error()
@@ -1219,8 +1223,14 @@ normal:
                     frame, bpage); 
 
             // jhpark: write oldest_modification_lsn of current NVDIMM-caching page
-            pm_mmap_write_logfile_header_lsn(bpage->oldest_modification);
-
+            //pm_mmap_write_logfile_header_lsn(bpage->oldest_modification);
+            // jhpark-recovery-3
+            // (jhpark): NVDIMM->BUFFER case we need to mark this page is not the NC page anymore
+            if (bpage->cached_in_nvdimm) {
+              ib::info() << "THIS IS NC to DISK case! IT IS NOT NC PAGE ANYMORE!\n";
+              pm_mmap_mtrlogbuf_log_commit(bpage->id.space(), bpage->id.page_no(), 0);
+            }
+            ////////////////////////////////////////////////////////////////////////////////////////
         } else if (flush_type == BUF_FLUSH_SINGLE_PAGE) {
             buf_dblwr_write_single_page(bpage, sync);
         } else {

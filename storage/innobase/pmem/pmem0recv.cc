@@ -102,7 +102,9 @@ uint64_t pm_mmap_recv_check(PMEM_MMAP_MTRLOGFILE_HDR* log_fil_hdr) {
   return -1;
 }
 
-bool pm_mmap_recv(uint64_t start_offset, uint64_t end_offset) {
+///////////// backup ////////////////
+/*
+  bool pm_mmap_recv(uint64_t start_offset, uint64_t end_offset) {
 
 	mtr_t mtr;
 	size_t tmp_offset = start_offset;
@@ -193,6 +195,62 @@ bool pm_mmap_recv(uint64_t start_offset, uint64_t end_offset) {
       free(mlog_data);
 
 		}
+
+    tmp_offset += (PMEM_MMAP_MTRLOG_HDR_SIZE + recv_mmap_hdr->len);
+    free(recv_mmap_hdr);
+	}
+
+  return true;
+}
+
+
+
+*/
+
+
+bool pm_mmap_recv(uint64_t start_offset, uint64_t end_offset) {
+
+	mtr_t mtr;
+	size_t tmp_offset = start_offset;
+
+	while (true) {
+		fprintf(stderr, "current tmp_offset: %lu:(%lu)\n", tmp_offset, end_offset);
+
+		if (tmp_offset >= end_offset) {
+			break;
+		}
+
+		PMEM_MMAP_MTRLOG_HDR *recv_mmap_hdr = (PMEM_MMAP_MTRLOG_HDR *) malloc(PMEM_MMAP_MTRLOG_HDR_SIZE);
+		memcpy(recv_mmap_hdr, gb_pm_mmap + tmp_offset, PMEM_MMAP_MTRLOG_HDR_SIZE);
+		ut_ad(recv_mmap_hdr == NULL);
+
+		fprintf(stderr, "[recovery] need_recv: %d len: %lu lsn: %lu prev_offset: %lu space: %lu page_no: %lu\n"
+										,recv_mmap_hdr->need_recv, recv_mmap_hdr->len, recv_mmap_hdr->lsn,
+										recv_mmap_hdr->prev_offset,
+										recv_mmap_hdr->space, recv_mmap_hdr->page_no);
+
+    /*
+    if (recv_mmap_hdr->need_recv == false) {
+      fprintf(stderr, "current log doesn't need to recvoery!\n");
+      tmp_offset += (PMEM_MMAP_MTRLOG_HDR_SIZE + recv_mmap_hdr->len);
+      free(recv_mmap_hdr);
+      continue;
+    }
+    */
+  
+		// page generation
+		bool found;
+		const page_size_t& page_size 
+			= fil_space_get_page_size(recv_mmap_hdr->space, &found);
+		
+		if (!found) {
+			fprintf(stderr, "This tablespace with that id (%lu) page (page_no: %lu) does not exist.\n"
+			,	recv_mmap_hdr->space, recv_mmap_hdr->page_no);
+		}	
+
+		const page_id_t   page_id(recv_mmap_hdr->space, recv_mmap_hdr->page_no);
+    fprintf(stderr, "[MTR LOG] space : %lu page_no : %lu\n", recv_mmap_hdr->space
+                                                           , recv_mmap_hdr->page_no);
 
     tmp_offset += (PMEM_MMAP_MTRLOG_HDR_SIZE + recv_mmap_hdr->len);
     free(recv_mmap_hdr);

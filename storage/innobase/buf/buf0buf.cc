@@ -6252,10 +6252,11 @@ corrupt:
 
       // jhpark-recvoery !!!!
 #ifdef UNIV_NVDIMM_CACHE
+      // (jhpark): ignore recoverying NC page via normal vanilla InnoDB recovery process
       if (!pm_mmap_recv_nc_page_validate(bpage->id.space(), bpage->id.page_no())) {
         recv_recover_page(TRUE, (buf_block_t*) bpage);
       } else {
-        recv_sys->n_addrs--;
+       recv_sys->n_addrs--;
       }
 #else
 		  recv_recover_page(TRUE, (buf_block_t*) bpage);

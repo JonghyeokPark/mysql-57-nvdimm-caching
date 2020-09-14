@@ -757,7 +757,7 @@ page_cur_search_with_match_bytes(
 
   page = buf_block_get_frame(block); 
   //jhpark-recovery
-  fprintf(stderr, "[RECOVERY!!!] frame address: %p gb_pm_buf address: %p\n", page , gb_pm_buf );
+  //fprintf(stderr, "[RECOVERY!!!] frame address: %p gb_pm_buf address: %p\n", page , gb_pm_buf );
 
 #ifdef UNIV_ZIP_DEBUG
 	ut_a(!page_zip || page_zip_validate(page_zip, page, index));
@@ -1585,6 +1585,21 @@ use_heap:
         if (nvm_bpage->cached_in_nvdimm) {
           // skip generating REDO log for nvm-page
           pm_mmap_mtrlogbuf_commit(nvm_block->frame, UNIV_PAGE_SIZE, space_id, page_no);
+           
+          //if (dict_index_is_clust(index)) {
+            //ulint trx_id_col; 
+            //ulint trx_id_offs;
+            //trx_id_col = dict_index_get_sys_col_pos(index, DATA_TRX_ID);
+            //ut_ad(trx_id_col > 0);
+            //ut_ad(trx_id_col != ULINT_UNDEFINED);
+            //const byte* db_trx_id = rec_get_nth_field();
+            // jhpark-recovery-3
+            // TODO(jhpark): fix this problem; how to get the trxid ?
+            pm_mmap_mtrlogbuf_log_commit(space_id, page_no, 0);
+          //} else {
+          //  ut_error;
+          //}
+
 					//pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, space_id, page_no);
         } else {
           // original : 
@@ -2004,6 +2019,10 @@ page_cur_insert_rec_zip(
                         // skip generating REDO log for nvm-page
                         pm_mmap_mtrlogbuf_commit(nvm_block->frame, UNIV_PAGE_SIZE, nvm_bpage->id.space(), nvm_bpage->id.page_no());
 
+                        // jhpark-recovery-3
+                       pm_mmap_mtrlogbuf_log_commit(nvm_bpage->id.space(),
+                           nvm_bpage->id.page_no(), 0);
+
                         //pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
                     } else {
                         page_cur_insert_rec_write_log(
@@ -2304,6 +2323,11 @@ use_heap:
 					// persist records
             pm_mmap_mtrlogbuf_commit(nvm_block->frame, UNIV_PAGE_SIZE, nvm_bpage->id.space(), nvm_bpage->id.page_no());
 
+            // jhpark-recovery-3
+            pm_mmap_mtrlogbuf_log_commit(nvm_bpage->id.space(), 
+                nvm_bpage->id.page_no(), 0);
+
+
           //pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
         } else {
             page_cur_insert_rec_write_log(insert_rec, rec_size,
@@ -2550,6 +2574,11 @@ page_copy_rec_list_end_to_created_page(
             // skip generating REDO logs for nvm-page
 						//pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
 						pm_mmap_mtrlogbuf_commit(nvm_block->frame, UNIV_PAGE_SIZE, nvm_bpage->id.space(), nvm_bpage->id.page_no());
+
+            // jhpark-recovery-3
+            pm_mmap_mtrlogbuf_log_commit(nvm_bpage->id.space()
+                , nvm_bpage->id.page_no(), 0);
+
         } else {
             page_cur_insert_rec_write_log(insert_rec, rec_size, prev_rec,
                               index, mtr);

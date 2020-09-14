@@ -5514,17 +5514,23 @@ fil_io(
 
 #ifdef UNIV_NVDIMM_CACHE
   
-  if (is_pmem_recv) {  
+  if (is_pmem_recv) {
     // jhpark-recovery
     fprintf(stderr, "fio_io called !!!! space: %lu page: %lu\n", page_id.space(), page_id.page_no());
-    // copy only for valid page
-  
+   
+    if (pm_mmap_mtrlogbuf_validate(page_id.space(), page_id.page_no())) {
+      fprintf(stderr, "[MTR_FIL_IO] WARNING !!! THIS IS NC PAGE MTRLOG ACTIVE\n");
+    } else {
+
+    // copy only for valid page 
     if (pm_mmap_recv_nc_page_validate(page_id.space(), page_id.page_no())) {
       fprintf(stderr, "WARNING !!! IT IS NC PAGE !!!!!! space: %lu page_no: %lu\n", page_id.space(), page_id.page_no());
       if (pm_mmap_recv_nc_page_copy(page_id.space(), page_id.page_no(), buf)) {
         return DB_SUCCESS;
       }
-    }
+    } // end of if (nc_page_validate)
+
+    } // end of if (mtrlogbuf_validate)
   }
 
 #endif
