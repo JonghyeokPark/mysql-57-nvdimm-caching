@@ -29,7 +29,7 @@ elif [ "$1" = "--nc-monitor" ]; then
     BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_LOG_HEADER -DUNIV_FLUSH_MONITOR"
 else
     # Cache hot LB pages (default)
-    BUILD_FLAGS="-DUNIV_NVDIMM_CACHE"
+    BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_LOG_HEADER"
 fi
 
 echo "Start build using $BUILD_FLAGS"

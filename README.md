@@ -31,14 +31,12 @@ $ ./build.sh
 
 The above command will compile and build the source code with the default option (i.e., caching new-orders and order-line pages). The available options are:
 
-| Option     | Description |
-| :--------- | :---------- |
-| --origin   | No caching (Vanilla version)                        										 |
-| --origin-monitor |  No caching but monitoring the flush status                                         |
-| --nc       | Caching New-Orders and Order-Line pages (`default`) 										 |
-| --nc-st    | Caching New-Orders, Order-Line and Stock pages                  							 |
-| --nc-st-od | Caching New-Orders, Order-Line, Stock and Orders pages      					    		 |
-| --mtr 	 | Caching New-Orders, Order-Line, Stock and Orders pages with mtr logging enabled           |
+| Option           | Description |
+| :--------------- | :---------- |
+| --origin         | No caching (Vanilla version)                 		      |
+| --origin-monitor | No caching but monitoring the flush status               |
+| --nc             | Caching hot NVDIMM pages (`default`)                     |
+| --nc-monitor     | Caching hot NVDIMM pages and monitoring the flush status |
 
 If you want the vanilla version, you can run the script as follows:
 
