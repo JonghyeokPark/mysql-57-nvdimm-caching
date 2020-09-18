@@ -242,9 +242,6 @@ trx_rseg_mem_create(
 		rseg->last_page_no = node_addr.page;
 		rseg->last_offset = node_addr.boffset;
 
-    //debug
-    //fprintf(stderr, "[JONGQ] trx_rseg_mem_create space: %lu page_no: %lu\n", rseg->space, node_addr.page);
-
 		undo_log_hdr = trx_undo_page_get(
 			page_id_t(rseg->space, node_addr.page),
 			rseg->page_size, mtr) + node_addr.boffset;
@@ -352,9 +349,7 @@ trx_rseg_create_instance(
 
 			ut_a(!trx_rseg_get_on_id(i, true));
 
-      //fprintf(stderr, "[JONGQ] page_no != FIL_NULL page_no: %lu \n", page_no);
 			space = trx_sysf_rseg_get_space(sys_header, i, &mtr);
-      //fprintf(stderr, "[JONGQ] space : %lu\n", space);
 
 			bool			found = true;
 			const page_size_t&	page_size

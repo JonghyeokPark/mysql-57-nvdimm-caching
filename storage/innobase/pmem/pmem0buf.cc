@@ -49,7 +49,6 @@ pm_mmap_buf_write(unsigned long len, void* buf) {
 	size_t offset = mmap_buf_sys->cur_offset;
 	memcpy_persist(gb_pm_buf + offset, buf, len);
 	mmap_buf_sys->cur_offset += len;
-	//fprintf(stderr, "[JONGQ] pm_mmap_buf_write finished! len: %lu\n", len);
 }
 
 

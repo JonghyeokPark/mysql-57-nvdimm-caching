@@ -121,24 +121,16 @@ bool pm_mmap_recv(uint64_t start_offset, uint64_t end_offset) {
 			mtr_start(&mtr); 
 			buf_block_t* block = buf_page_get( page_id, page_size, RW_X_LATCH, &mtr);
       byte* page = block->frame;
-			if (page == NULL) {
-				fprintf(stderr,"[JOGNQ] Tried to undo page but it is NULL!\n");
-			} else {
-				fprintf(stderr,"[JONGQ] YES!!! UNDO is right!!!\n");
-			}
      	mtr_commit(&mtr); 
 
       switch(type) {
         case MLOG_UNDO_INSERT:
           ptr = trx_undo_parse_add_undo_rec(ptr, end_ptr, page);
-					fprintf(stderr, "[JONGQ] success!\n");
 					IORequest write_request(IORequest::WRITE);
 					write_request.disable_compression(); // stil needed?
-					fprintf(stderr, "[JONGQ] perform fil_io write!!!\n");
 					int check = 0;
 					check = fil_io(write_request, true, page_id, 
 					univ_page_size, 0, univ_page_size.physical(), (void*) page, NULL);
-					fprintf(stderr, "[JONGQ] fio_io result: %d\n", check);
       };
       // free mlog data
       free(mlog_data);
@@ -184,25 +176,6 @@ void pm_mmap_recv_flush_buffer() {
 		unsigned long space_id = mach_read_from_4(buf + FIL_PAGE_SPACE_ID);
 		unsigned long page_no = mach_read_from_4(buf + FIL_PAGE_OFFSET);  			
 		
-		fprintf(stderr, "[JONGQ] cur_offset: %lu, space_id: %lu, page_no: %lu\n"
-		,cur_offset, space_id, page_no);		
-
-		if (space_id == 28 || space_id == 30) {
-			//&& page_no == 0)) {
-			// perform fil_io
-			IORequest write_request(IORequest::WRITE);
-			write_request.disable_compression(); // stil needed?
-
-			// similar process, partila updates! 
-			write_request.dblwr_recover();
-			fprintf(stderr, "[JONGQ] perform fil_io write!!!\n");
-			int check = 0;
-			check = fil_io(write_request, true, page_id_t(space_id, page_no), 
-					univ_page_size, 0 ,univ_page_size.physical(), (void*) buf, NULL);
-
-			fprintf(stderr, "[JONGQ] fil_io check: %d!\n", check);
-		}
-
 		cur_offset += (4096*1024);
 		free(buf);
 	}

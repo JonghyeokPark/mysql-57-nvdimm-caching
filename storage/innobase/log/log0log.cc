@@ -1486,12 +1486,6 @@ bool
 log_preflush_pool_modified_pages(
 	lsn_t			new_oldest)
 {
-/*#ifdef UNIV_NVDIMM_CACHE
-    if (srv_use_nvdimm_buf) {
-        return(true);    
-    }
-#endif*/ /* UNIV_NVDIMM_CACHE */
-
 	bool	success;
 
 	if (recv_recovery_on) {

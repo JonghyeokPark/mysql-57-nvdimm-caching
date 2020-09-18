@@ -4019,8 +4019,6 @@ buf_flush_nvdimm_LRU_list_batch(
 		buf_page_t* prev = UT_LIST_GET_PREV(LRU, bpage);
 		buf_pool->lru_hp.set(prev);
 
-        //if (bpage->id.space() == 28)  continue;
-
 		BPageMutex*	block_mutex = buf_page_get_mutex(bpage);
 
 		mutex_enter(block_mutex);

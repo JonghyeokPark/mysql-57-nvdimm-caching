@@ -2371,10 +2371,6 @@ recv_recover_page_func(
 		    recv_addr->space, recv_addr->page_no));
 #endif /* !UNIV_HOTBACKUP */
 
-#ifdef UNIV_NVDIMM_CACHE
-  // debug
-  fprintf(stderr, "[JONGQ] state changed : !!! before: %d after: %d\n", recv_addr->state, RECV_BEING_PROCESSED);
-#endif /* UNIV_NVDIMM_CACHE */
 	recv_addr->state = RECV_BEING_PROCESSED;
 
 	mutex_exit(&(recv_sys->mutex));
@@ -2595,10 +2591,7 @@ recv_read_in_area(
 		const page_id_t	cur_page_id(page_id.space(), page_no);
 
 		if (recv_addr && !buf_page_peek(cur_page_id)) {
-			//debug
-			fprintf(stderr, "[JONGQ] recv-before-mutex i: %lu\n", page_no);
 			mutex_enter(&(recv_sys->mutex));
-			fprintf(stderr, "[JONGQ] recv-after-mutex i: %lu\n", page_no);  
 
 			if (recv_addr->state == RECV_NOT_PROCESSED) {
 				recv_addr->state = RECV_BEING_READ;
@@ -2611,9 +2604,7 @@ recv_read_in_area(
 			mutex_exit(&(recv_sys->mutex));
 		}
 	}
-	fprintf(stderr, "[JONGQ] call buf_read_recv_pages\n"); 
 	buf_read_recv_pages(FALSE, page_id.space(), page_nos, n);
- 	fprintf(stderr, "[JONGQ] Recv pages at %lu n %lu\n", page_nos[0], n);
 
 	/*
 	fprintf(stderr, "Recv pages at %lu n %lu\n", page_nos[0], n);
@@ -2704,10 +2695,6 @@ loop:
 					has_printed = TRUE;
 				}
 				
-				// debug
-				fprintf(stderr, "[JONGQ] i=%d recv_sys->n_addrs: %lu\n"
-											,i, recv_sys->n_addrs);
-
 				mutex_exit(&(recv_sys->mutex));
 
 				if (buf_page_peek(page_id)) {
@@ -2725,7 +2712,6 @@ loop:
 					recv_recover_page(FALSE, block);
 					mtr_commit(&mtr);
 				} else {
-					fprintf(stderr, "[JONGQ] check-11!\n");
 					recv_read_in_area(page_id);
 				}
 
@@ -2743,8 +2729,6 @@ loop:
 				 / hash_get_n_cells(recv_sys->addr_hash)));
 		}
 	}
-	// debug
-	fprintf(stderr, "[JONGQ] escape for loop!\n");
 
 	/* Wait until all the pages have been processed */
 
@@ -2757,17 +2741,11 @@ loop:
 		mutex_enter(&(recv_sys->mutex));
 	}
 
-	fprintf(stderr, "[JONGQ] check-1!\n");
-
 	if (has_printed) {
-
 		fprintf(stderr, "\n");
 	}
 
 	if (!allow_ibuf) {
-
-		fprintf(stderr, "[JONGQ] check-3!\n"); 
-
 		/* Flush all the file pages to disk and invalidate them in
 		the buffer pool */
 
@@ -2807,8 +2785,6 @@ loop:
 	if (has_printed) {
 		ib::info() << "Apply batch completed";
 	}
-
-	fprintf(stderr, "[JONGQ] finish apply\n"); 
 
 	mutex_exit(&(recv_sys->mutex));
 }

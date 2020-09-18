@@ -357,21 +357,10 @@ ssize_t pm_mmap_mtrlogbuf_write(
 		// At this point, we can remove mtr log for this undo page
 		if (state >= TRX_UNDO_CACHED) {
 			ut_ad(state != TRX_UNDO_PREPARED);
-
-			// debug commit mtr log
-			//fprintf(stderr, "[mtr-write] call commit state: %lu cur_space: %lu cur_page: %lu cur_offset: %lu\n"
-			//				,state, cur_space, cur_page, org_offset);
 			pm_mmap_log_commit(cur_space, cur_page, offset+n);
 		} 
-	} else {
-		//fprintf(stderr, "[mtr-write] not commit cur_space: %lu cur_page: %lu cur_offset: %lu\n"
-		//				 ,cur_space, cur_page, org_offset);
 	}
 	
-  // debug
-  //fprintf(stderr, "[JONGQ] offset: %lu size: %lu lsn: %lu\n", 
-  //   offset, n, lsn);
-
   // persistent barrier
   flush_cache(gb_pm_mmap+org_offset, (size_t)(PMEM_MMAP_MTRLOG_HDR_SIZE + n));
 
@@ -413,10 +402,6 @@ void pm_mmap_mtrlogbuf_commit(unsigned char* rec, unsigned long cur_rec_size ,ul
 	// For current mtr logging version, we jsut ignore this function
 	//return;
 	flush_cache(rec, cur_rec_size);
-	//fprintf(stderr,"[JONGQ] flush_cach called after page modification rec_size:%lu \n", cur_rec_size);
-	//fprintf(stderr,"[JONGQ] space :%lu, page_no: %lu\n", space, page_no);
-	//fprintf(stderr,"[JONGQ] buf_start_address: %p rec address: %p\n",gb_pm_buf, rec);
-
 /*
 	if (mmap_mtrlogbuf == NULL) return;
 	
