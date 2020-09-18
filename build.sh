@@ -2,7 +2,6 @@
 
 BASE_DIR=`pwd -P`
 BUILD_DIR=$BASE_DIR/bld
-PASSWD="sudo-passwd"
 
 # Make a directory for build
 if [ ! -d "$BUILD_DIR" ]; then
@@ -13,7 +12,7 @@ fi
 cd $BUILD_DIR
 
 rm -rf CMakeCache.txt
-echo $PASSWD | sudo -S rm -rf CMakeFiles/*
+echo "vldb#7988" | sudo -S rm -rf CMakeFiles/*
 
 # Build and install the source code
 if [ "$1" = "--origin" ]; then
@@ -23,22 +22,13 @@ elif [ "$1" = "--origin-monitor" ]; then
     # No caching but monitor the flush status
     BUILD_FLAGS="-DUNIV_FLUSH_MONITOR"
 elif [ "$1" = "--nc" ]; then
-    # Cache New-Orders and Order-Line pages
-    BUILD_FLAGS="-DUNIV_NVDIMM_CACHE"
-elif [ "$1" = "--nc-st" ]; then
-    # Cache New-Orders, Order-Line and Stock pages
-    BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_NVDIMM_CACHE_ST"
-elif [ "$1" = "--nc-st-od" ]; then
-    # Cache New-Orders, Order-Line, Stock and Orders pages
-    BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_NVDIMM_CACHE_ST -DUNIV_NVDIMM_CACHE_OD"
-elif [ "$1" = "--mtr" ]; then
-    # Cache New-Orders, Order-Line, Stock and Orders pages with mtr-logging enabled
-    BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_NVDIMM_CACHE_ST -DUNIV_NVDIMM_CACHE_OD -DUNIV_LOG_HEADER"
-elif [ "$1" = "--mtr-monitor" ]; then
-    # Cache New-Orders, Order-Line, Stock and Orders pages with mtr-logging/monitoring enabled
-    BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_NVDIMM_CACHE_ST -DUNIV_NVDIMM_CACHE_OD -DUNIV_LOG_HEADER -DUNIV_FLUSH_MONITOR"
+    # Cache hot LB pages
+    BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_LOG_HEADER"
+elif [ "$1" = "--nc-monitor" ]; then
+    # Cache hot LB pages with mtr-logging/monitoring enabled
+    BUILD_FLAGS="-DUNIV_NVDIMM_CACHE -DUNIV_LOG_HEADER -DUNIV_FLUSH_MONITOR"
 else
-    # Cache New-Orders and Order-Line pages (default)
+    # Cache hot LB pages (default)
     BUILD_FLAGS="-DUNIV_NVDIMM_CACHE"
 fi
 
@@ -51,4 +41,4 @@ cmake -DWITH_DEBUG=0 -DCMAKE_C_FLAGS="$BUILD_FLAGS" -DCMAKE_CXX_FLAGS="$BUILD_FL
 -DCMAKE_INSTALL_PREFIX=$BUILD_DIR
 
 make -j8
-echo $PASSWD | sudo -S make install
+echo "vldb#7988" | sudo -S make install

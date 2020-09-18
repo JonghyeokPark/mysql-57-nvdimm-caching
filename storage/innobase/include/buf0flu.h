@@ -48,10 +48,6 @@ extern os_event_t	buf_flush_event;
 #ifdef UNIV_NVDIMM_CACHE
 extern os_event_t buf_flush_nvdimm_event;
 extern bool buf_nvdimm_page_cleaner_is_active;
-#ifdef UNIV_NVDIMM_CACHE_ST
-extern os_event_t buf_flush_nvdimm_stock_event;
-extern bool buf_nvdimm_stock_page_cleaner_is_active;
-#endif /* UNIV_NVDIMM_CACHE_ST */
 #endif /* UNIV_NVDIMM_CACHE */
 
 class ut_stage_alter_t;
@@ -246,18 +242,6 @@ DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
 /*===============================================*/
 	void*	arg);		/*!< in: a dummy parameter required by
 				os_thread_create */
-
-#ifdef UNIV_NVDIMM_CACHE_ST
-/******************************************************************//**
-page_cleaner thread tasked with flushing dirty STOCK pages from the
-NVDIMM buffer pools. */
-extern "C"
-os_thread_ret_t
-DECLARE_THREAD(buf_flush_nvdimm_stock_cleaner_thread)(
-/*===============================================*/
-	void*	arg);		/*!< in: a dummy parameter required by
-				os_thread_create */
-#endif /* UNIV_NVDIMM_CACHE_ST */
 
 /*********************************************************************//**
 Wait for any possible LRU flushes that are in progress to end. */

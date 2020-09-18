@@ -316,9 +316,6 @@ DECLARE_THREAD(io_handler_thread)(
 	       || buf_page_cleaner_is_active
 #ifdef UNIV_NVDIMM_CACHE
 	       || buf_nvdimm_page_cleaner_is_active
-#ifdef UNIV_NVDIMM_CACHE_ST
-	       || buf_nvdimm_stock_page_cleaner_is_active
-#endif /* UNIV_NVDIMM_CACHE_ST */
 #endif /* UNIV_NVDIMM_CACHE */
 	       || !os_aio_all_slots_free()) {
 		fil_aio_wait(segment);
@@ -1302,17 +1299,11 @@ srv_shutdown_all_bg_threads()
 			os_event_set(buf_flush_event);
 #ifdef UNIV_NVDIMM_CACHE
             os_event_set(buf_flush_nvdimm_event);
-#ifdef UNIV_NVDIMM_CACHE_ST
-            os_event_set(buf_flush_nvdimm_stock_event);
-#endif /* UNIV_NVDIMM_CACHE_ST */
 #endif /* UNIV_NVDIMM_CACHE */
 
 			if (!buf_page_cleaner_is_active
 #ifdef UNIV_NVDIMM_CACHE
                 && !buf_nvdimm_page_cleaner_is_active
-#ifdef UNIV_NVDIMM_CACHE_ST
-                && !buf_nvdimm_stock_page_cleaner_is_active
-#endif /* UNIV_NVDIMM_CACHE_ST */
 #endif /* UNIV_NVDIMM_CACHE */
 			    && os_aio_all_slots_free()) {
 				os_aio_wake_all_threads_at_shutdown();
@@ -1700,9 +1691,6 @@ innobase_start_or_create_for_mysql(void)
 			    + srv_n_page_cleaners
 #ifdef UNIV_NVDIMM_CACHE
                 + 1 /* a NVDIMM page cleaner*/
-#ifdef UNIV_NVDIMM_CACHE_ST
-                + 1 /* a NVDIMM stock page cleaner */
-#endif /* UNIV_NVDIMM_CACHE_ST */
 #endif /* UNIV_NVDIMM_CACHE */
 			    /* FTS Parallel Sort */
 			    + fts_sort_pll_degree * FTS_NUM_AUX_INDEX
@@ -1951,9 +1939,6 @@ innobase_start_or_create_for_mysql(void)
 
 #ifdef UNIV_NVDIMM_CACHE
     os_thread_create(buf_flush_nvdimm_page_cleaner_thread, NULL, NULL);
-#ifdef UNIV_NVDIMM_CACHE_ST
-    os_thread_create(buf_flush_nvdimm_stock_cleaner_thread, NULL, NULL);
-#endif /* UNIV_NVDIMM_CACHE_ST */
 #endif /* UNIV_NVDIMM_CACHE */
 
 	for (i = 1; i < srv_n_page_cleaners; ++i) {
@@ -1971,13 +1956,6 @@ innobase_start_or_create_for_mysql(void)
 	while (!buf_nvdimm_page_cleaner_is_active) {
 		os_thread_sleep(10000);
 	}
-
-#ifdef UNIV_NVDIMM_CACHE_ST
-    /* Make sure page cleaner is active. */
-	while (!buf_nvdimm_stock_page_cleaner_is_active) {
-		os_thread_sleep(10000);
-	}
-#endif /* UNIV_NVDIMM_CACHE_ST */
 #endif /* UNIV_NVDIMM_CACHE */
 
 	srv_start_state_set(SRV_START_STATE_IO);
@@ -2705,9 +2683,6 @@ files_checked:
 
 #ifdef UNIV_NVDIMM_CACHE
     os_event_set(buf_flush_nvdimm_event);
-#ifdef UNIV_NVDIMM_CACHE_ST
-    os_event_set(buf_flush_nvdimm_stock_event);
-#endif /* UNIV_NVDIMM_CACHE_ST */
 #endif /* UNIV_NVDIMM_CACHE */
 
 	sum_of_data_file_sizes = srv_sys_space.get_sum_of_sizes();
