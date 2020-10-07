@@ -1312,16 +1312,9 @@ buf_flush_page(
 #ifdef UNIV_NVDIMM_CACHE
         if (bpage->flush_type == BUF_FLUSH_LIST /* Flush list flushing */
             && (bpage->id.space() == 28 || bpage->id.space() == 30 || bpage->id.space() == 32) /* TPC-C tablespaces */
-        //    && bpage->buf_fix_count == 0 /* Not fixed */
+            && bpage->buf_fix_count == 0 /* Not fixed */
             && !bpage->cached_in_nvdimm) { /* Not cached in NVDIMM */
-            if (bpage->buf_fix_count == 0) /* Not fixed */ {
                 bpage->moved_to_nvdimm = true;
-                ib::info() << "[CACHED] " << bpage->id.space() << ", " << bpage->id.page_no()
-                        << " with fix count = " << bpage->buf_fix_count;
-            } else {
-                ib::info() << "[BUFFER-FIXED] " << bpage->id.space() << ", " << bpage->id.page_no()
-                        << " with fix count = " << bpage->buf_fix_count;
-            }
         }
 #endif /* UNIV_NVDIMM_CACHE */
 		
