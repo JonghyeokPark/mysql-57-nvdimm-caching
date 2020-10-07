@@ -1493,7 +1493,7 @@ innobase_start_or_create_for_mysql(void)
 
 #ifdef UNIV_NVDIMM_CACHE
   sprintf(PMEM_FILE_PATH, "%s/%s", srv_nvdimm_home_dir, NVDIMM_MMAP_FILE_NAME);
-  size_t srv_pmem_pool_size = 8 * 1024;
+  size_t srv_pmem_pool_size = 3 * 1024;
   uint64_t pool_size = srv_pmem_pool_size * 1024 * 1024UL;
   gb_pm_mmap = pm_mmap_create(PMEM_FILE_PATH, pool_size);
   if (!gb_pm_mmap) {
@@ -2682,7 +2682,7 @@ files_checked:
 	os_event_set(buf_flush_event);
 
 #ifdef UNIV_NVDIMM_CACHE
-    os_event_set(buf_flush_nvdimm_event);
+    //os_event_set(buf_flush_nvdimm_event);
 #endif /* UNIV_NVDIMM_CACHE */
 
 	sum_of_data_file_sizes = srv_sys_space.get_sum_of_sizes();

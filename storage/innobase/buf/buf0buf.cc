@@ -78,6 +78,7 @@ my_bool  srv_numa_interleave = FALSE;
 #ifdef UNIV_NVDIMM_CACHE
 #include "buf0nvdimm.h"
 ulint nvdimm_pc_threshold;
+bool wakeup_nvdimm_cleaner = FALSE;
 /** The NVDIMM buffer pools of the database */
 buf_pool_t *nvdimm_buf_pool_ptr;
 
@@ -6229,6 +6230,10 @@ corrupt:
 	buf_page_set_io_fix(bpage, BUF_IO_NONE);
 	buf_page_monitor(bpage, io_type);
 
+#ifdef UNIV_NVDIMM_CACHE
+    ulint remains = 0;
+#endif /* UNIV_NVDIMM_CACHE */
+
 	switch (io_type) {
 	case BUF_IO_READ:
 		/* NOTE that the call to ibuf may have moved the ownership of
@@ -6247,6 +6252,15 @@ corrupt:
 #ifdef UNIV_NVDIMM_CACHE
         if (bpage->cached_in_nvdimm) {
             srv_stats.nvdimm_pages_stored.inc();
+        }
+
+        remains = UT_LIST_GET_LEN(buf_pool->free);
+
+        if (!wakeup_nvdimm_cleaner
+            && buf_pool->instance_no == 8
+            && remains < nvdimm_pc_threshold) {
+            os_event_set(buf_flush_nvdimm_event);
+            wakeup_nvdimm_cleaner = TRUE;
         }
 #endif /* UNIV_NVDIMM_CACHE */
 		

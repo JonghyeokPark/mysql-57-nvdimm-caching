@@ -1310,14 +1310,17 @@ buf_flush_page(
 		++buf_pool->n_flush[flush_type];
 
 #ifdef UNIV_NVDIMM_CACHE
-        if (bpage->buf_fix_count == 0 /* Not fixed */
+        if (bpage->flush_type == BUF_FLUSH_LIST /* Flush list flushing */
+            && (bpage->id.space() == 28 || bpage->id.space() == 30 || bpage->id.space() == 32) /* TPC-C tablespaces */
+        //    && bpage->buf_fix_count == 0 /* Not fixed */
             && !bpage->cached_in_nvdimm) { /* Not cached in NVDIMM */
-            lsn_t before_lsn = mach_read_from_8(reinterpret_cast<const buf_block_t *>(bpage)->frame + FIL_PAGE_LSN);
-            lsn_t lsn_gap = bpage->oldest_modification - before_lsn;
-
-            /* FIXME: Ad-hoc method */
-            if (0 < lsn_gap && lsn_gap < 4000000000) {
+            if (bpage->buf_fix_count == 0) /* Not fixed */ {
                 bpage->moved_to_nvdimm = true;
+                ib::info() << "[CACHED] " << bpage->id.space() << ", " << bpage->id.page_no()
+                        << " with fix count = " << bpage->buf_fix_count;
+            } else {
+                ib::info() << "[BUFFER-FIXED] " << bpage->id.space() << ", " << bpage->id.page_no()
+                        << " with fix count = " << bpage->buf_fix_count;
             }
         }
 #endif /* UNIV_NVDIMM_CACHE */
@@ -4201,6 +4204,9 @@ DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
     int64_t sig_count = os_event_reset(buf_flush_nvdimm_event);
 
     while (srv_shutdown_state == SRV_SHUTDOWN_NONE) {
+        os_event_wait_low(buf_flush_nvdimm_event, sig_count);
+        sig_count = os_event_reset(buf_flush_nvdimm_event);
+        #if 0
         if (srv_check_activity(last_activity) || n_flushed == 0) {
             ret_sleep = pc_sleep_nvdimm_cleaner_if_needed(next_loop_time,
                                     sig_count, buf_flush_nvdimm_event);
@@ -4238,16 +4244,17 @@ DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
 
             next_loop_time = curr_time + 1000;
         }
+        #endif
 
         /* TODO: Need to fix for shutdown */
         if (!page_cleaner->is_running) {
             break;
         }
         
-        if (srv_check_activity(last_activity)) {
+        //if (srv_check_activity(last_activity)) {
             /* Flush pages from end of LRU */
             buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
-        }
+        //}
     }
 
     if (srv_fast_shutdown == 2
