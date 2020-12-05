@@ -61,14 +61,9 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
     if (gb_pm_mmap == MAP_FAILED) {
       PMEMMMAP_ERROR_PRINT("pm_mmap mmap() faild recovery failed\n");
     }
-    is_pmem_recv=true;
-
-    // jhpark: validate the pmmtrlogbuf 
-    //pm_mmap_mtrlogbuf_check();
-	
-    pm_mmap_recv_flush_buffer();
-
-		// get file construct
+    is_pmem_recv=true;	
+		
+    // get file construct
 		PMEM_MMAP_MTRLOGFILE_HDR* recv_mmap_mtrlog_fil_hdr = (PMEM_MMAP_MTRLOGFILE_HDR*) 
 																													malloc(PMEM_MMAP_LOGFILE_HEADER_SZ);
 		pm_mmap_read_logfile_header(recv_mmap_mtrlog_fil_hdr);	
@@ -78,12 +73,14 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
 						recv_mmap_mtrlog_fil_hdr->size, recv_mmap_mtrlog_fil_hdr->flushed_lsn, 
 						recv_mmap_mtrlog_fil_hdr->ckpt_lsn, recv_mmap_mtrlog_fil_hdr->ckpt_offset);
 
-		// recvoery check
+		// recvoery check : read from checkpoint offset
     PMEM_MMAP_MTRLOG_HDR* recv_mmap_mtrlog_hdr = (PMEM_MMAP_MTRLOG_HDR*) malloc(PMEM_MMAP_MTRLOG_HDR_SIZE);
     memcpy(recv_mmap_mtrlog_hdr, gb_pm_mmap+recv_mmap_mtrlog_fil_hdr->ckpt_offset, PMEM_MMAP_MTRLOG_HDR_SIZE);
-		
-		if (recv_mmap_mtrlog_fil_hdr->size == PMEM_MMAP_MTR_FIL_HDR_SIZE 
-				|| recv_mmap_mtrlog_hdr->need_recv == false) {
+		 
+		//if (recv_mmap_mtrlog_fil_hdr->size == PMEM_MMAP_MTR_FIL_HDR_SIZE 
+		//		|| recv_mmap_mtrlog_hdr->need_recv == false) {
+
+    if (recv_mmap_mtrlog_fil_hdr->size == PMEM_MMAP_MTR_FIL_HDR_SIZE) {
 			PMEMMMAP_INFO_PRINT("Normal Shutdown case, don't need to recveory; Recovery process is terminated\n");
 		} else {
 			// TODO(jhpark): real recovery process
@@ -94,21 +91,21 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
 			//pm_mmap_recv_flush_buffer();
 			PMEMMMAP_INFO_PRINT("recovery offset: %lu\n", pmem_recv_offset);
 		} 
+    
 
 		// step1. allocate mtr_recv_sys
 		// step2. 1) get header infor mation and 2) get info from mtr log region
 		// step3. reconstruct undo page
 
     // Get header information from exsiting nvdimm log file
-    //size_t recv_prev_offset = recv_mmap_mtrlog_hdr->prev;
-    //memset(recv_mmap_mtrlog_hdr, 0x00, PMEM_MMAP_MTRLOG_HDR_SIZE);
-    //memcpy(recv_mmap_mtrlog_hdr, gb_pm_mmap+recv_prev_offset, PMEM_MMAP_MTRLOG_HDR_SIZE);
+    size_t recv_prev_offset = recv_mmap_mtrlog_hdr->prev_offset;
+    memset(recv_mmap_mtrlog_hdr, 0x00, PMEM_MMAP_MTRLOG_HDR_SIZE);
+    memcpy(recv_mmap_mtrlog_hdr, gb_pm_mmap+recv_prev_offset, PMEM_MMAP_MTRLOG_HDR_SIZE);
 
     // debug
-    //fprintf(stderr, "size: %lu\n", recv_size);
-    //fprintf(stderr, "len: %lu\n", recv_mmap_mtrlog_hdr->len);
-    //fprintf(stderr, "lsn: %lu\n", recv_mmap_mtrlog_hdr->lsn);
-    //fprintf(stderr, "need_recovery: %d\n", recv_mmap_mtrlog_hdr->need_recv);
+    fprintf(stderr, "len: %lu\n", recv_mmap_mtrlog_hdr->len);
+    fprintf(stderr, "lsn: %lu\n", recv_mmap_mtrlog_hdr->lsn);
+    fprintf(stderr, "need_recovery: %d\n", recv_mmap_mtrlog_hdr->need_recv);
     
 		free(recv_mmap_mtrlog_fil_hdr);
     free(recv_mmap_mtrlog_hdr);
@@ -217,7 +214,7 @@ void pm_mmap_log_commit(ulint cur_space, ulint cur_page, ulint cur_offset) {
 			break;
 		}	
 	
-		if(tmp_mmap_hdr->need_recv == false) {
+		if(tmp_mmap_hdr->need_recv == 0) {
 			mmap_mtrlogbuf->ckpt_offset = offset;
 			offset += PMEM_MMAP_MTRLOG_HDR_SIZE + tmp_mmap_hdr->len;
 			continue;
@@ -296,7 +293,7 @@ ssize_t pm_mmap_mtrlogbuf_write(
 	// prev hdr offset
 	mmap_mtr_hdr->prev_offset = mmap_mtrlogbuf->prev_offset;
 	// set recv_flag
-	mmap_mtr_hdr->need_recv = true;
+	mmap_mtr_hdr->need_recv = 1;
 
 #ifdef UNIV_LOG_HEADER
 	// log << header << persist(log) << payload << persist(log)
@@ -421,7 +418,7 @@ void pm_mmap_mtrlogbuf_commit_v1(ulint space, ulint page_no) {
 		PMEM_MMAP_MTRLOG_HDR mmap_mtr_hdr;
 		memcpy(&mmap_mtr_hdr, gb_pm_mmap + offset, (size_t) PMEM_MMAP_MTRLOG_HDR_SIZE);
 		uint64_t data_len = mmap_mtr_hdr.len;
-		bool need_recv = mmap_mtr_hdr.need_recv;
+		unsigned int need_recv = mmap_mtr_hdr.need_recv;
 	
 		fprintf(stderr, "[mtr info] data_len : %lu lsn: %lu need_recv : %d\n", 
 						data_len, mmap_mtr_hdr.lsn, need_recv);

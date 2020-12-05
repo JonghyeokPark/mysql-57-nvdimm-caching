@@ -72,7 +72,11 @@ void pm_mmap_recv_show_trx_list() {
 }
 
 uint64_t pm_mmap_recv_check(PMEM_MMAP_MTRLOGFILE_HDR* log_fil_hdr) {
-	size_t tmp_offset = log_fil_hdr->ckpt_offset;
+	//size_t tmp_offset = log_fil_hdr->ckpt_offset;
+
+  // TODO(jhpark): add checkpoint process
+  size_t tmp_offset = PMEM_MMAP_MTR_FIL_HDR_SIZE; 
+
 	while (true) {
 		fprintf(stderr, "current tmp_offset: %lu:(%lu)\n", tmp_offset, log_fil_hdr->size);
 		if (tmp_offset >= log_fil_hdr->size) {
@@ -88,7 +92,7 @@ uint64_t pm_mmap_recv_check(PMEM_MMAP_MTRLOGFILE_HDR* log_fil_hdr) {
 										recv_mmap_hdr->prev_offset,
 										recv_mmap_hdr->space, recv_mmap_hdr->page_no);
 
-    if (recv_mmap_hdr->need_recv == false) {
+    if (recv_mmap_hdr->need_recv == 0) {
       fprintf(stderr, "Hmm? current log doesn't need to recvoery!\n");
       tmp_offset += recv_mmap_hdr->len;
       free(recv_mmap_hdr);

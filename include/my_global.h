@@ -17,6 +17,14 @@
 #ifndef MY_GLOBAL_INCLUDED
 #define MY_GLOBAL_INCLUDED
 
+#ifdef UNIV_NVDIMM_CACHE
+/* 
+  PMDK library
+*/
+#include <libpmem.h>
+#include <libpmemobj.h>
+#endif 
+
 /*
   This include file should be included first in every header file.
 

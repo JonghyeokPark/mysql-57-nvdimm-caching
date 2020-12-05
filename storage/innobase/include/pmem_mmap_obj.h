@@ -119,6 +119,7 @@ typedef struct __pmem_mmap_buf_sys PMEM_MMAP_BUF_SYS;
 
 extern PMEM_MMAP_MTRLOG_BUF* mmap_mtrlogbuf;
 
+
 // buffer
 extern PMEM_MMAP_BUF_SYS* mmap_buf_sys;
 
@@ -133,7 +134,7 @@ void pm_mmap_free(const uint64_t pool_size);
 // data structure in pmem_obj
 struct __pmem_mmap_mtrlog_buf {
   pthread_mutex_t mtrMutex; // mutex protecting writing to mtr log region
-  bool need_recv;       // recovery flag
+  unsigned int need_recv;       // recovery flag
 	size_t ckpt_offset; 	// we can remove mtr log up to this offset 
   size_t min_invalid_offset; // minimum ckpt_offset 
   size_t max_invalid_offset; // maximum ckpt_offset
@@ -160,7 +161,7 @@ struct __pmem_mmap_mtrlog_fileheader {
 };
 
 struct __pmem_mmap_mtrlog_hdr {
-	bool need_recv;								 // true if need recovery
+	unsigned int need_recv;								 // true if need recovery
 	unsigned long int len;    		 // length of mtr log payload
 	unsigned long int lsn;      	 // lsn from global log_sys
   unsigned long int mtr_lsn;  	 // mtr log lsn
@@ -231,18 +232,44 @@ void pm_mmap_recv_show_trx_list();
 bool pm_mmap_recv_nc_page_copy(unsigned long space_id, unsigned long page_no, void* buf);
 void pm_for_debug();
 
-//struct recv_sys_t{
-//  ib_mutex_t    mutex;
-	/*!< mutex protecting the fields apply_log_recs,
-	n_addrs, and the state field in each recv_addr struct */
-//  ib_mutex_t    writer_mutex; 
-	/*!< mutex coordinating 
-	flushing between recv_writer_thread and the recovery thread. */
-//  ibool   apply_log_recs;
-	/*!< this is TRUE when log rec application to pages is allowed; this flag tells the
-  i/o-handler if it should do log record application */
-//  byte*   buf;  /*!< buffer for parsing log records */
-//  ulint   len;  /*!< amount of data in buf */
-//};
+//=======================================================================================================
+
+/* Hello */
+
+
+struct __pmem_log_buf;
+typedef struct __pmem_log_buf PMEM_LOG_BUF;
+#define PMEM_LOG_BUF_SZ sizeof(PMEM_LOG_BUF)
+
+struct __pmem_log_hdr;
+typedef struct __pmem_log_hdr PMEM_LOG_HDR;
+#define PMEM_LOG_HDR_SZ sizeof(PMEM_LOG_HDR)
+
+extern PMEM_LOG_BUF* mmap_logbuf;
+
+struct __pmem_log_buf {
+  pthread_mutex_t logMutex; 
+  size_t        size;              // log size
+  unsigned char*         data;     // actual log data
+  uint64_t      lsn;               // log sequence number
+  unsigned int          need_recv;         // for recovery
+  uint64_t      cur_offset;        // current offset
+};
+
+struct __pmem_log_hdr {
+	unsigned int need_recv;								 // true if need recovery
+	unsigned long int len;    		 // length of mtr log payload
+	unsigned long int lsn;      	 // lsn from global log_sys
+  // still needed?
+	unsigned long int space;			 // undo page space id
+	unsigned long int page_no;		 // undo page page_no
+};
+
+
+// allocate log buffer on NVM
+void pmem_log_init(const size_t size);
+ssize_t pmem_log_write(unsigned char *buf, unsigned long int len, unsigned long int lsn,
+                    unsigned long int space, unsigned long int page_no);
+bool pmem_log_validate(unsigned char *check);
 
 #endif  /* __PMEMMAPOBJ_H__ */

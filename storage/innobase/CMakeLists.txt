@@ -18,6 +18,8 @@
 INCLUDE(innodb.cmake)
 
 SET(INNOBASE_SOURCES
+#  pmem/pmem0list.cc
+  pmem/pmem0log.cc
 	pmem/pmem0mmap.cc
 	pmem/pmem0buf.cc
 	pmem/pmem0recv.cc

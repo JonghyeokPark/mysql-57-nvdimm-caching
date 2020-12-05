@@ -11,6 +11,9 @@ extern bool is_pmem_recv;
 extern unsigned char* gb_pm_mmap;
 unsigned char* gb_pm_buf;
 
+// (jhpark)
+extern PMEM_LOG_BUF* mmap_logbuf;
+
 PMEM_MMAP_BUF_SYS* mmap_buf_sys = NULL;
 
 void
@@ -27,11 +30,12 @@ pm_mmap_buf_init(const uint64_t size) {
 	
 		// TODO(jhpark): support idempotent recovery!!
     // 1024*1024*1024*1UL 
-    gb_pm_buf = gb_pm_mmap + (1024*1024*1024*1UL);
+    gb_pm_buf = gb_pm_mmap + (1024*1024*1024*2UL);
     PMEMMMAP_INFO_PRINT("[recv] pm_mmap_buf initialization finished!\n");
 
   } else {	
-  	gb_pm_buf = gb_pm_mmap + mmap_mtrlogbuf->size;
+  	//gb_pm_buf = gb_pm_mmap + mmap_mtrlogbuf->size;
+    gb_pm_buf = gb_pm_mmap + mmap_logbuf->size;
   	PMEMMMAP_INFO_PRINT("pm_mmap_buf initialization finished! size: %lu address: %p\n", size, gb_pm_buf);
   }
 }

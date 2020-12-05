@@ -155,17 +155,17 @@ buf_read_page_low(
 	}
 
   // debug
- fprintf(stderr, "[JONGQ] read page %u:%u size=%u unzip=%u, sync=%d\n"
-                , (unsigned) page_id.space(),
-                  (unsigned) page_id.page_no(),
-                  (unsigned) page_size.physical(), (unsigned) unzip, sync);
+// fprintf(stderr, "[JONGQ] read page %u:%u size=%u unzip=%u, sync=%d\n"
+//                , (unsigned) page_id.space(),
+//                  (unsigned) page_id.page_no(),
+//                  (unsigned) page_size.physical(), (unsigned) unzip, sync);
 
 #ifdef UNIV_NVDIMM_CACHE
- if (is_pmem_recv) {
-  if (pm_mmap_recv_nc_page_validate(page_id.space(), page_id.page_no())) {
-    fprintf(stderr, "[JONGQ] this is NC page!!!! %lu:%lu\n", page_id.space(), page_id.page_no());   
-  }
- }
+// if (is_pmem_recv) {
+//  if (pm_mmap_recv_nc_page_validate(page_id.space(), page_id.page_no())) {
+//    fprintf(stderr, "[JONGQ] this is NC page!!!! %lu:%lu\n", page_id.space(), page_id.page_no());   
+//  }
+// }
 #endif
 
 	DBUG_PRINT("ib_buf", ("read page %u:%u size=%u unzip=%u,%s",
@@ -211,9 +211,9 @@ buf_read_page_low(
 		dst, bpage);
 
 #ifdef UNIV_NVDIMM_CACHE
-  if (!is_pmem_recv && pm_mmap_recv_nc_page_validate(page_id.space(), page_id.page_no())) {
-    fprintf(stderr, "[JONGQ] this is NC page!!!! fil_io work?: %d %lu:%lu\n", *err, page_id.space(), page_id.page_no());
-  }
+//  if (!is_pmem_recv && pm_mmap_recv_nc_page_validate(page_id.space(), page_id.page_no())) {
+//    fprintf(stderr, "[JONGQ] this is NC page!!!! fil_io work?: %d %lu:%lu\n", *err, page_id.space(), page_id.page_no());
+//  }
 #endif
 
 	if (sync) {

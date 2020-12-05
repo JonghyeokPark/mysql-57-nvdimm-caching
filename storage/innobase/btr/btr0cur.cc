@@ -73,6 +73,7 @@ Created 10/16/1994 Heikki Tuuri
 
 #ifdef UNIV_NVDIMM_CACHE
 #include "pmem_mmap_obj.h"
+extern unsigned char* gb_pm_mmap;
 #endif
 
 /** Buffered B-tree operation types, introduced as part of delete buffering. */
@@ -3580,6 +3581,238 @@ btr_cur_upd_lock_and_undo(
 #endif /* UNIV_NVDIMM_CACHE */
 }
 
+#ifdef UNIV_NVDIMM_CACHE
+/***********************************************************//**
+Writes a redo log record of updating a record in-place. */
+void
+pmem_cur_update_in_place_log(
+/*========================*/
+	ulint		flags,		/*!< in: flags */
+	const rec_t*	rec,		/*!< in: record */
+	dict_index_t*	index,		/*!< in: index of the record */
+	const upd_t*	update,		/*!< in: update vector */
+	trx_id_t	trx_id,		/*!< in: transaction id */
+	roll_ptr_t	roll_ptr,	/*!< in: roll ptr */
+	mtr_t*		mtr)		/*!< in: mtr */
+{
+	byte*		log_ptr;
+	const page_t*	page	= page_align(rec);
+	ut_ad(flags < 256);
+	ut_ad(!!page_is_comp(page) == dict_table_is_comp(index->table));
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////
+
+  ulint incr_offset = 0;
+	ulint size = 1 + DATA_ROLL_PTR_LEN + 14 + 2 + MLOG_BUF_MARGIN;
+	mlog_id_t type = page_is_comp(page) ? MLOG_COMP_REC_UPDATE_IN_PLACE : MLOG_REC_UPDATE_IN_PLACE;
+
+  // step1. fill log header
+  pthread_mutex_lock(&mmap_logbuf->logMutex);
+  PMEM_LOG_HDR* mmap_log_hdr = (PMEM_LOG_HDR*)malloc(sizeof(PMEM_LOG_HDR)); 
+  mmap_log_hdr->need_recv = 1;
+  uint64_t org_offset = mmap_logbuf->cur_offset;
+
+  // step2. write log header
+  memcpy(gb_pm_mmap + org_offset, mmap_log_hdr, (size_t) PMEM_LOG_HDR_SZ);
+
+  // step3. persist log header
+  flush_cache(gb_pm_mmap+org_offset, (size_t)PMEM_LOG_HDR_SZ);
+
+  // debugging
+  fprintf(stderr, "[JHPARK] : pmem_cur_update_in_place_log works! org_ffset: %lu\n", org_offset);
+
+  // step4. free log header
+  free(mmap_log_hdr);
+
+  // mlog_open_and_write_index
+  const byte* log_start;
+  const byte* log_end;
+  if (!page_rec_is_comp(rec)) {
+    log_start = log_ptr = gb_pm_mmap + mmap_logbuf->cur_offset;
+    // mlog_write_initial_log_record_fast
+    const byte *page_tmp;
+    ulint space;
+    ulint offset;
+    page_tmp = (const byte*) ut_align_down(log_ptr, UNIV_PAGE_SIZE);
+    space = mach_read_from_4(page_tmp + FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID);
+    offset = mach_read_from_4(page_tmp + FIL_PAGE_OFFSET);
+
+   if (space == TRX_SYS_SPACE
+        && offset >= FSP_EXTENT_SIZE && offset < 3 * FSP_EXTENT_SIZE) {
+      if (buf_dblwr_being_created) {
+        /* Do nothing: we only come to this branch in an
+        InnoDB database creation. We do not redo log 
+        anything for the doublewrite buffer pages. */
+        //return(log_ptr);
+      } else {
+        ut_ad(0);
+      }    
+  } // end of if
+
+  mach_write_to_1(log_ptr, type);
+  log_ptr++;
+  log_ptr +=  mach_write_compressed(log_ptr, space);
+  log_ptr += mach_write_compressed(log_ptr, offset);
+	log_end = log_ptr + 11 + size; 
+
+  // jhpark: keep increased offset 
+  incr_offset = 11 + size;
+
+  } else {
+	
+		ulint i;
+		ulint n = dict_index_get_n_fields(index);
+		ulint total = 11 + size + (n+2) * 2;
+		ulint alloc = total;
+
+		if (alloc > mtr_buf_t::MAX_DATA_SIZE) {
+			alloc = mtr_buf_t::MAX_DATA_SIZE;
+		}
+
+		log_start = log_ptr = gb_pm_mmap + mmap_logbuf->cur_offset;
+		log_end = log_ptr + alloc;
+		
+    // mlog_write_initial_log_record_fast
+    ///////////////////////////////////////////////////////////////////////////////
+    const byte *page_tmp;
+    ulint space;
+    ulint offset;
+    page_tmp = (const byte*) ut_align_down(log_ptr, UNIV_PAGE_SIZE);
+    space = mach_read_from_4(page_tmp + FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID);
+    offset = mach_read_from_4(page_tmp + FIL_PAGE_OFFSET);
+
+   if (space == TRX_SYS_SPACE
+        && offset >= FSP_EXTENT_SIZE && offset < 3 * FSP_EXTENT_SIZE) {
+      if (buf_dblwr_being_created) {
+        /* Do nothing: we only come to this branch in an
+        InnoDB database creation. We do not redo log 
+        anything for the doublewrite buffer pages. */
+        //return(log_ptr);
+      } else {
+        ut_ad(0);
+      }    
+  } // end of if
+  ////////////////////////////////////////////////////////////////////////////////
+  mach_write_to_1(log_ptr, type);
+  log_ptr++;
+  log_ptr +=  mach_write_compressed(log_ptr, space);
+  log_ptr += mach_write_compressed(log_ptr, offset);
+  ///////////////////////////////////////////////////////////////////////////////
+
+	mach_write_to_2(log_ptr, n);
+	log_ptr += 2;
+	if (page_is_leaf(page_align(rec))) {
+		mach_write_to_2(
+			log_ptr, dict_index_get_n_unique_in_tree(index));
+	} else {
+		mach_write_to_2(
+			log_ptr,
+			dict_index_get_n_unique_in_tree_nonleaf(index));	
+	}
+
+	log_ptr += 2;
+	
+	for (i=0; i<n; i++) {
+		dict_field_t* field;
+		const dict_col_t* col;
+		ulint len;
+
+		field = dict_index_get_nth_field(index, i);
+		col = dict_field_get_col(field);
+		len = field->fixed_len;
+		ut_ad(len < 0x7fff);
+		
+		if (len == 0
+				&& (DATA_BIG_COL(col))) {
+			len = 0x7fff;
+		}
+  	if (col->prtype & DATA_NOT_NULL) {
+        len |= 0x8000;
+    }
+    if (log_ptr + 2 > log_end) {
+    	//mlog_close(mtr, log_ptr);
+      ut_a(total > (ulint) (log_ptr - log_start));
+      total -= log_ptr - log_start;
+      alloc = total;
+
+      if (alloc > mtr_buf_t::MAX_DATA_SIZE) {
+      	alloc = mtr_buf_t::MAX_DATA_SIZE;
+      }
+
+      log_start = log_ptr = gb_pm_mmap + mmap_logbuf->cur_offset;
+        //mlog_open(mtr, alloc);
+      if (!log_ptr) {
+      	return; /* logging is disabled */
+      }
+      log_end = log_ptr + alloc;
+    }
+    mach_write_to_2(log_ptr, len);
+    log_ptr += 2;
+	}
+  
+  // jhpark: keep increased offset 
+  incr_offset = total;
+
+	} // end-of-else
+
+	if (size == 0) {
+		log_ptr = NULL;
+	}
+
+//	log_ptr = mlog_open_and_write_index(mtr, rec, index, page_is_comp(page)
+//					    ? MLOG_COMP_REC_UPDATE_IN_PLACE
+//					    : MLOG_REC_UPDATE_IN_PLACE,
+//					    1 + DATA_ROLL_PTR_LEN + 14 + 2
+//					    + MLOG_BUF_MARGIN);
+
+	if (!log_ptr) {
+		/* Logging in mtr is switched off during crash recovery */
+		return;
+	}
+
+	/* For secondary indexes, we could skip writing the dummy system fields
+	to the redo log but we have to change redo log parsing of
+	MLOG_REC_UPDATE_IN_PLACE/MLOG_COMP_REC_UPDATE_IN_PLACE or we have to add
+	new redo log record. For now, just write dummy sys fields to the redo
+	log if we are updating a secondary index record.
+	*/
+	mach_write_to_1(log_ptr, flags);
+	log_ptr++;
+
+	if (dict_index_is_clust(index)) {
+		log_ptr = row_upd_write_sys_vals_to_log(
+				index, trx_id, roll_ptr, log_ptr, mtr);
+	} else {
+		/* Dummy system fields for a secondary index */
+		/* TRX_ID Position */
+		log_ptr += mach_write_compressed(log_ptr, 0);
+		/* ROLL_PTR */
+		trx_write_roll_ptr(log_ptr, 0);
+		log_ptr += DATA_ROLL_PTR_LEN;
+		/* TRX_ID */
+		log_ptr += mach_u64_write_compressed(log_ptr, 0);
+	}
+
+	mach_write_to_2(log_ptr, page_offset(rec));
+	log_ptr += 2;
+
+	row_upd_index_write_log(update, log_ptr, mtr);
+
+  // step5. persist log payload
+  flush_cache(gb_pm_mmap+org_offset+PMEM_LOG_HDR_SZ, incr_offset);
+
+  // (jhpark): increase the cur_offset
+  mmap_logbuf->cur_offset += incr_offset;
+
+  // (jhpark): do we need to flush cache?
+  pm_mmap_write_logfile_header_size(org_offset);
+
+  // step6. unlock mutex
+  pthread_mutex_unlock(&mmap_logbuf->logMutex);
+}
+#endif
+//////////////////////////////////////////////////////////////
+
 /***********************************************************//**
 Writes a redo log record of updating a record in-place. */
 void
@@ -3935,13 +4168,10 @@ btr_cur_update_in_place(
 				// write NC page on NVDIMM
         pm_mmap_mtrlogbuf_commit(nvm_block->frame, UNIV_PAGE_SIZE, nvm_bpage->id.space(), nvm_bpage->id.page_no());
 
-        // NC mtrlog commit
-        pm_mmap_mtrlogbuf_log_commit(nvm_bpage->id.space(), 
-            nvm_bpage->id.page_no(), trx_id); 
+        // NC REDO
+        pmem_cur_update_in_place_log(flags, rec, index, update,
+                        trx_id, roll_ptr, mtr);
  
-				// persist records
-				//ulint cur_rec_size = rec_offs_size(offsets);
-			//pm_mmap_mtrlogbuf_commit(rec, cur_rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
     } else {
         btr_cur_update_in_place_log(flags, rec, index, update,
                         trx_id, roll_ptr, mtr);
@@ -4718,6 +4948,219 @@ return_after_reservations:
 
 /*==================== B-TREE DELETE MARK AND UNMARK ===============*/
 
+#ifdef UNIV_NVDIMM_CACHE
+
+/****************************************************************//**
+Writes the redo log record for delete marking or unmarking of an index
+record. */
+UNIV_INLINE
+void
+pmem_cur_del_mark_set_clust_rec_log(
+/*===============================*/
+	rec_t*		rec,	/*!< in: record */
+	dict_index_t*	index,	/*!< in: index of the record */
+	trx_id_t	trx_id,	/*!< in: transaction id */
+	roll_ptr_t	roll_ptr,/*!< in: roll ptr to the undo log record */
+	mtr_t*		mtr)	/*!< in: mtr */
+{
+	byte*	log_ptr;
+
+	ut_ad(!!page_rec_is_comp(rec) == dict_table_is_comp(index->table));
+	ut_ad(mtr->is_named_space(index->space));
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////////
+  ulint incr_offset = 0;
+	ulint size = 1 + 1 + DATA_ROLL_PTR_LEN + 14 + 2;
+	mlog_id_t type = page_is_comp(rec) ? MLOG_COMP_REC_CLUST_DELETE_MARK : MLOG_REC_CLUST_DELETE_MARK;
+
+  // step1. fill log header
+  pthread_mutex_lock(&mmap_logbuf->logMutex);
+  PMEM_LOG_HDR* mmap_log_hdr = (PMEM_LOG_HDR*)malloc(sizeof(PMEM_LOG_HDR)); 
+  mmap_log_hdr->need_recv = 1;
+  uint64_t org_offset = mmap_logbuf->cur_offset;
+
+  // step2. write log header
+  memcpy(gb_pm_mmap + org_offset, mmap_log_hdr, (size_t) PMEM_LOG_HDR_SZ);
+
+  // step3. persist log header
+  flush_cache(gb_pm_mmap+org_offset, (size_t)PMEM_LOG_HDR_SZ);
+
+  // step4. free log header
+  free(mmap_log_hdr);
+
+  const byte* log_start;
+  const byte* log_end;
+  if (!page_rec_is_comp(rec)) {
+    log_start = log_ptr = gb_pm_mmap + mmap_logbuf->cur_offset;
+    const byte *page_tmp;
+    ulint space;
+    ulint offset;
+    page_tmp = (const byte*) ut_align_down(log_ptr, UNIV_PAGE_SIZE);
+    space = mach_read_from_4(page_tmp + FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID);
+    offset = mach_read_from_4(page_tmp + FIL_PAGE_OFFSET);
+
+   if (space == TRX_SYS_SPACE
+        && offset >= FSP_EXTENT_SIZE && offset < 3 * FSP_EXTENT_SIZE) {
+      if (buf_dblwr_being_created) {
+        /* Do nothing: we only come to this branch in an
+        InnoDB database creation. We do not redo log 
+        anything for the doublewrite buffer pages. */
+        //return(log_ptr);
+      } else {
+        ut_ad(0);
+      }    
+  } // end of if
+
+  mach_write_to_1(log_ptr, type);
+  log_ptr++;
+
+  log_ptr +=  mach_write_compressed(log_ptr, space);
+  log_ptr += mach_write_compressed(log_ptr, offset);
+	log_end = log_ptr + 11 + size;
+
+  incr_offset = 11 + size;
+
+  } else {
+	
+		ulint i;
+		ulint n = dict_index_get_n_fields(index);
+		ulint total = 11 + size + (n+2) * 2;
+		ulint alloc = total;
+
+		if (alloc > mtr_buf_t::MAX_DATA_SIZE) {
+			alloc = mtr_buf_t::MAX_DATA_SIZE;
+		}
+
+		log_start = log_ptr = gb_pm_mmap + mmap_logbuf->cur_offset;
+		log_end = log_ptr + alloc;
+
+    // mlog_write_initial_log_record_fast
+    //////////////////////////////////////////////////////////////////////
+    const byte *page_tmp;
+    ulint space;
+    ulint offset;
+    page_tmp = (const byte*) ut_align_down(log_ptr, UNIV_PAGE_SIZE);
+    space = mach_read_from_4(page_tmp + FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID);
+    offset = mach_read_from_4(page_tmp + FIL_PAGE_OFFSET);
+
+   if (space == TRX_SYS_SPACE
+        && offset >= FSP_EXTENT_SIZE && offset < 3 * FSP_EXTENT_SIZE) {
+      if (buf_dblwr_being_created) {
+        /* Do nothing: we only come to this branch in an
+        InnoDB database creation. We do not redo log 
+        anything for the doublewrite buffer pages. */
+        //return(log_ptr);
+      } else {
+        ut_ad(0);
+      }    
+    } // end of if
+   /////////////////////////////////////////////////////////////////////////
+
+  mach_write_to_1(log_ptr, type);
+  log_ptr++;
+  
+  log_ptr += mach_write_compressed(log_ptr, space);
+  log_ptr += mach_write_compressed(log_ptr, offset);
+  
+  //////////////////////////////////////////////////////////////////////////
+  // end of mlog_write_initial_log_record_fast
+
+	mach_write_to_2(log_ptr, n);
+	log_ptr += 2;
+
+	if (page_is_leaf(page_align(rec))) {
+		mach_write_to_2(
+			log_ptr, dict_index_get_n_unique_in_tree(index));
+	} else {
+		mach_write_to_2(
+			log_ptr,
+			dict_index_get_n_unique_in_tree_nonleaf(index));	
+	}
+
+	log_ptr += 2;
+
+	for (i=0; i<n; i++) {
+		dict_field_t* field;
+		const dict_col_t* col;
+		ulint len;
+
+		field = dict_index_get_nth_field(index, i);
+		col = dict_field_get_col(field);
+		len = field->fixed_len;
+		ut_ad(len < 0x7fff);
+		
+		if (len == 0
+				&& (DATA_BIG_COL(col))) {
+			len = 0x7fff;
+		}
+  	if (col->prtype & DATA_NOT_NULL) {
+        len |= 0x8000;
+    }
+    if (log_ptr + 2 > log_end) {
+    	//mlog_close(mtr, log_ptr);
+      
+      ut_a(total > (ulint) (log_ptr - log_start));
+      total -= log_ptr - log_start;
+      alloc = total;
+
+      if (alloc > mtr_buf_t::MAX_DATA_SIZE) {
+      	alloc = mtr_buf_t::MAX_DATA_SIZE;
+      }
+
+      log_start = log_ptr = gb_pm_mmap + mmap_logbuf->cur_offset; 
+        //mlog_open(mtr, alloc);
+      
+      if (!log_ptr) {
+      	return; /* logging is disabled */
+      }
+      log_end = log_ptr + alloc;
+    }
+    mach_write_to_2(log_ptr, len);
+    log_ptr += 2;
+	}
+  incr_offset = total;
+	} // end-of-else
+
+	if (size == 0) {
+		log_ptr = NULL;
+	}
+////////////////////////////////////////////////////////////
+
+//	log_ptr = mlog_open_and_write_index(mtr, rec, index,
+//					    page_rec_is_comp(rec)
+//					    ? MLOG_COMP_REC_CLUST_DELETE_MARK
+//					    : MLOG_REC_CLUST_DELETE_MARK,
+//					    1 + 1 + DATA_ROLL_PTR_LEN
+//					    + 14 + 2);
+
+	if (!log_ptr) {
+		/* Logging in mtr is switched off during crash recovery */
+		return;
+	}
+
+	*log_ptr++ = 0;
+	*log_ptr++ = 1;
+
+	log_ptr = row_upd_write_sys_vals_to_log(
+		index, trx_id, roll_ptr, log_ptr, mtr);
+  mach_write_to_2(log_ptr, page_offset(rec));
+	log_ptr += 2;
+
+  // step5. persist log payload
+  flush_cache(gb_pm_mmap+org_offset+PMEM_LOG_HDR_SZ, incr_offset);
+
+  // (jhpark) : increase the cur_offset;
+  mmap_logbuf->cur_offset += incr_offset;
+
+  pm_mmap_write_logfile_header_size(org_offset);
+
+  // step6. unlock mutex
+  pthread_mutex_unlock(&mmap_logbuf->logMutex);
+}
+
+#endif
+
+
 /****************************************************************//**
 Writes the redo log record for delete marking or unmarking of an index
 record. */
@@ -4950,10 +5393,9 @@ btr_cur_del_mark_set_clust_rec(
 			ulint cur_rec_size = rec_offs_size(offsets); 
             pm_mmap_mtrlogbuf_commit(block->frame, UNIV_PAGE_SIZE, nvm_bpage->id.space(), nvm_bpage->id.page_no());
 
-             pm_mmap_mtrlogbuf_log_commit(nvm_bpage->id.space(),
-                        nvm_bpage->id.page_no(), trx->id);
+      pmem_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
+            roll_ptr, mtr);
 
-			//pm_mmap_mtrlogbuf_commit(rec, cur_rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
     } else {
         btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
             roll_ptr, mtr);

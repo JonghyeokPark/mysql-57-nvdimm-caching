@@ -43,6 +43,7 @@ Created 10/4/1994 Heikki Tuuri
 
 #ifdef UNIV_NVDIMM_CACHE
 #include "pmem_mmap_obj.h"
+extern unsigned char* gb_pm_mmap;
 #endif
 
 
@@ -978,6 +979,270 @@ page_cur_open_on_rnd_user_rec(
 	} while (rnd--);
 }
 
+#ifdef UNIV_NVDIMM_CACHE
+/********************************
+Writes the log record of a record insert on a page. */
+static
+void
+pmem_cur_insert_rec_write_log(
+/*==========================*/
+	rec_t*		insert_rec,	/*!< in: inserted physical record */
+	ulint		rec_size,	/*!< in: insert_rec size */
+	rec_t*		cursor_rec,	/*!< in: record the
+					cursor is pointing to */
+	dict_index_t*	index,		/*!< in: record descriptor */
+	mtr_t*		mtr)		/*!< in: mini-transaction handle */
+{
+	ulint	cur_rec_size;
+	ulint	extra_size;
+	ulint	cur_extra_size;
+	const byte* ins_ptr;
+	const byte* log_end;
+	ulint	i;
+
+  ulint incr_offset = 0;
+  
+  // step1. fill log header
+  pthread_mutex_lock(&mmap_logbuf->logMutex);
+  PMEM_LOG_HDR* mmap_log_hdr = (PMEM_LOG_HDR*)malloc(sizeof(PMEM_LOG_HDR));
+  mmap_log_hdr->need_recv = 1;
+  uint64_t org_offset = mmap_logbuf->cur_offset;
+
+  // step2. write log header
+  memcpy(gb_pm_mmap + org_offset, mmap_log_hdr, (size_t) PMEM_LOG_HDR_SZ);
+
+  // step3. persist log header
+  flush_cache(gb_pm_mmap+org_offset, (size_t)PMEM_LOG_HDR_SZ);
+
+  // step4. free log header
+  free(mmap_log_hdr);
+
+
+	/* Avoid REDO logging to save on costly IO because
+	temporary tables are not recovered during crash recovery. */
+	if (dict_table_is_temporary(index->table)) {
+	  // no-op	
+	}
+
+	ut_a(rec_size < UNIV_PAGE_SIZE);
+	ut_ad(mtr->is_named_space(index->space));
+	ut_ad(page_align(insert_rec) == page_align(cursor_rec));
+	ut_ad(!page_rec_is_comp(insert_rec)
+	      == !dict_table_is_comp(index->table));
+
+	{
+		mem_heap_t*	heap		= NULL;
+		ulint		cur_offs_[REC_OFFS_NORMAL_SIZE];
+		ulint		ins_offs_[REC_OFFS_NORMAL_SIZE];
+
+		ulint*		cur_offs;
+		ulint*		ins_offs;
+
+		rec_offs_init(cur_offs_);
+		rec_offs_init(ins_offs_);
+
+		cur_offs = rec_get_offsets(cursor_rec, index, cur_offs_,
+					   ULINT_UNDEFINED, &heap);
+		ins_offs = rec_get_offsets(insert_rec, index, ins_offs_,
+					   ULINT_UNDEFINED, &heap);
+
+		extra_size = rec_offs_extra_size(ins_offs);
+		cur_extra_size = rec_offs_extra_size(cur_offs);
+		ut_ad(rec_size == rec_offs_size(ins_offs));
+		cur_rec_size = rec_offs_size(cur_offs);
+
+		if (UNIV_LIKELY_NULL(heap)) {
+			mem_heap_free(heap);
+		}
+	}
+
+	ins_ptr = insert_rec - extra_size;
+
+	i = 0;
+
+	if (cur_extra_size == extra_size) {
+		ulint		min_rec_size = ut_min(cur_rec_size, rec_size);
+
+		const byte*	cur_ptr = cursor_rec - cur_extra_size;
+
+		/* Find out the first byte in insert_rec which differs from
+		cursor_rec; skip the bytes in the record info */
+
+		do {
+			if (*ins_ptr == *cur_ptr) {
+				i++;
+				ins_ptr++;
+				cur_ptr++;
+			} else if ((i < extra_size)
+				   && (i >= extra_size
+				       - page_rec_get_base_extra_size
+				       (insert_rec))) {
+				i = extra_size;
+				ins_ptr = insert_rec;
+				cur_ptr = cursor_rec;
+			} else {
+				break;
+			}
+		} while (i < min_rec_size);
+	}
+
+	byte*	log_ptr;
+  byte* log_start;
+
+	if (mtr_get_log_mode(mtr) != MTR_LOG_SHORT_INSERTS) {
+/*
+		if (page_rec_is_comp(insert_rec)) {
+			log_ptr = mlog_open_and_write_index(
+				mtr, insert_rec, index, MLOG_COMP_REC_INSERT,
+				2 + 5 + 1 + 5 + 5 + MLOG_BUF_MARGIN);
+			if (UNIV_UNLIKELY(!log_ptr)) {
+				// Logging in mtr is switched off
+				//during crash recovery: in that case
+				//mlog_open returns NULL
+				return;
+			}
+		} else {
+			log_ptr = mlog_open(mtr, 11
+					    + 2 + 5 + 1 + 5 + 5
+					    + MLOG_BUF_MARGIN);
+			if (UNIV_UNLIKELY(!log_ptr)) {
+				// Logging in mtr is switched off
+				//during crash recovery: in that case
+				//mlog_open returns NULL
+				return;
+			}
+			log_ptr = mlog_write_initial_log_record_fast(
+				insert_rec, MLOG_REC_INSERT, log_ptr, mtr);
+		}
+*/
+
+  // (jhpark): take out the implementation 
+  // of mlog_write_initial_log_record_fast()
+///////////////////////////////////////////////////////////////////////////////////
+  log_ptr = gb_pm_mmap + mmap_logbuf->cur_offset;
+  log_start = log_ptr;
+
+    const byte *page;
+    ulint space;
+    ulint offset;
+    page = (const byte*) ut_align_down(log_ptr, UNIV_PAGE_SIZE);
+    space = mach_read_from_4(page + FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID);
+    offset = mach_read_from_4(page + FIL_PAGE_OFFSET);
+
+	 if (space == TRX_SYS_SPACE
+  	    && offset >= FSP_EXTENT_SIZE && offset < 3 * FSP_EXTENT_SIZE) {
+    	if (buf_dblwr_being_created) {
+      	/* Do nothing: we only come to this branch in an
+	      InnoDB database creation. We do not redo log 
+  	    anything for the doublewrite buffer pages. */
+    	  //return(log_ptr);
+    	} else {
+        ut_ad(0);
+    	}   
+  } // end of if
+
+	mlog_id_t type = MLOG_REC_INSERT;
+
+	mach_write_to_1(log_ptr, type);
+	log_ptr++;
+	log_ptr +=  mach_write_compressed(log_ptr, space);
+	log_ptr += mach_write_compressed(log_ptr, offset);
+//////////////////////////////////////////////////////////////////////////////////
+
+		log_end = &log_ptr[2 + 5 + 1 + 5 + 5 + MLOG_BUF_MARGIN];
+		/* Write the cursor rec offset as a 2-byte ulint */
+		mach_write_to_2(log_ptr, page_offset(cursor_rec));
+		log_ptr += 2;
+	} else {
+		//log_ptr = mlog_open(mtr, 5 + 1 + 5 + 5 + MLOG_BUF_MARGIN);
+		// (jhpark): take out the implementation of mlog_open
+		log_ptr = gb_pm_mmap + mmap_logbuf->cur_offset;
+		log_end = &log_ptr[5 + 1 + 5 + 5 + MLOG_BUF_MARGIN];
+	}
+
+	if (page_rec_is_comp(insert_rec)) {
+		if (UNIV_UNLIKELY
+		    (rec_get_info_and_status_bits(insert_rec, TRUE)
+		     != rec_get_info_and_status_bits(cursor_rec, TRUE))) {
+
+			goto need_extra_info;
+		}
+	} else {
+		if (UNIV_UNLIKELY
+		    (rec_get_info_and_status_bits(insert_rec, FALSE)
+		     != rec_get_info_and_status_bits(cursor_rec, FALSE))) {
+
+			goto need_extra_info;
+		}
+	}
+
+	if (extra_size != cur_extra_size || rec_size != cur_rec_size) {
+need_extra_info:
+		/* Write the record end segment length
+		and the extra info storage flag */
+		log_ptr += mach_write_compressed(log_ptr,
+						 2 * (rec_size - i) + 1);
+
+		/* Write the info bits */
+		mach_write_to_1(log_ptr,
+				rec_get_info_and_status_bits(
+					insert_rec,
+					page_rec_is_comp(insert_rec)));
+		log_ptr++;
+
+		/* Write the record origin offset */
+		log_ptr += mach_write_compressed(log_ptr, extra_size);
+
+		/* Write the mismatch index */
+		log_ptr += mach_write_compressed(log_ptr, i);
+
+		ut_a(i < UNIV_PAGE_SIZE);
+		ut_a(extra_size < UNIV_PAGE_SIZE);
+	} else {
+		/* Write the record end segment length
+		and the extra info storage flag */
+		log_ptr += mach_write_compressed(log_ptr, 2 * (rec_size - i));
+	}
+
+	/* Write to the log the inserted index record end segment which
+	differs from the cursor record */
+
+	rec_size -= i;
+
+	if (log_ptr + rec_size <= log_end) {
+		memcpy(log_ptr, ins_ptr, rec_size);
+		//mlog_close(mtr, log_ptr + rec_size);
+	} else {
+		fprintf(stderr,"======================= NONO =======================\n");
+		//mlog_close(mtr, log_ptr);
+		ut_a(rec_size < UNIV_PAGE_SIZE);
+		memcpy(log_ptr, ins_ptr, rec_size);
+		//mlog_catenate_string(mtr, ins_ptr, rec_size);
+	}
+
+  // (jhpark): increase the cur_offse
+  if (mtr_get_log_mode(mtr) != MTR_LOG_SHORT_INSERTS) {    
+    incr_offset = 2 + 5 + 1 + 5 + 5 + MLOG_BUF_MARGIN;
+  } else {
+    incr_offset = 5 + 1 + 5 + 5 + MLOG_BUF_MARGIN;
+  }
+
+  // step5. persist log payload
+  flush_cache(gb_pm_mmap+org_offset+PMEM_LOG_HDR_SZ, incr_offset);
+
+  mmap_logbuf->cur_offset += incr_offset;
+
+  pm_mmap_write_logfile_header_size(org_offset);
+
+  // step6. unlock mutex
+  pthread_mutex_unlock(&mmap_logbuf->logMutex);
+
+}
+
+
+/********************************/
+#endif
+
 /***********************************************************//**
 Writes the log record of a record insert on a page. */
 static
@@ -1584,23 +1849,13 @@ use_heap:
 
         if (nvm_bpage->cached_in_nvdimm) {
           // skip generating REDO log for nvm-page
+          // persist data page (guaranteed)
           pm_mmap_mtrlogbuf_commit(nvm_block->frame, UNIV_PAGE_SIZE, space_id, page_no);
-           
-          //if (dict_index_is_clust(index)) {
-            //ulint trx_id_col; 
-            //ulint trx_id_offs;
-            //trx_id_col = dict_index_get_sys_col_pos(index, DATA_TRX_ID);
-            //ut_ad(trx_id_col > 0);
-            //ut_ad(trx_id_col != ULINT_UNDEFINED);
-            //const byte* db_trx_id = rec_get_nth_field();
-            // jhpark-recovery-3
-            // TODO(jhpark): fix this problem; how to get the trxid ?
-            pm_mmap_mtrlogbuf_log_commit(space_id, page_no, 0);
-          //} else {
-          //  ut_error;
-          //}
 
-					//pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, space_id, page_no);
+          // NC REDO LOGGING !
+          pmem_cur_insert_rec_write_log(insert_rec, rec_size,
+                                        current_rec, index, mtr);
+          
         } else {
           // original : 
           page_cur_insert_rec_write_log(insert_rec, rec_size,
@@ -2018,12 +2273,11 @@ page_cur_insert_rec_zip(
                     if (nvm_bpage->cached_in_nvdimm) {
                         // skip generating REDO log for nvm-page
                         pm_mmap_mtrlogbuf_commit(nvm_block->frame, UNIV_PAGE_SIZE, nvm_bpage->id.space(), nvm_bpage->id.page_no());
+                        // NC REDO LOGGING !
+                        pmem_cur_insert_rec_write_log(
+                            insert_rec, rec_size,
+                            cursor->rec, index, mtr);
 
-                        // jhpark-recovery-3
-                       pm_mmap_mtrlogbuf_log_commit(nvm_bpage->id.space(),
-                           nvm_bpage->id.page_no(), 0);
-
-                        //pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
                     } else {
                         page_cur_insert_rec_write_log(
                             insert_rec, rec_size,
@@ -2321,12 +2575,10 @@ use_heap:
         if (nvm_bpage->cached_in_nvdimm) {
           // skip generating REDO logs for nvm-page
 					// persist records
-            pm_mmap_mtrlogbuf_commit(nvm_block->frame, UNIV_PAGE_SIZE, nvm_bpage->id.space(), nvm_bpage->id.page_no());
-
-            // jhpark-recovery-3
-            pm_mmap_mtrlogbuf_log_commit(nvm_bpage->id.space(), 
-                nvm_bpage->id.page_no(), 0);
-
+          pm_mmap_mtrlogbuf_commit(nvm_block->frame, UNIV_PAGE_SIZE, nvm_bpage->id.space(), nvm_bpage->id.page_no());
+          // NC REDO LOGGING !
+          pmem_cur_insert_rec_write_log(insert_rec, rec_size,
+                              cursor->rec, index, mtr);
 
           //pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
         } else {
@@ -2574,10 +2826,9 @@ page_copy_rec_list_end_to_created_page(
             // skip generating REDO logs for nvm-page
 						//pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
 						pm_mmap_mtrlogbuf_commit(nvm_block->frame, UNIV_PAGE_SIZE, nvm_bpage->id.space(), nvm_bpage->id.page_no());
-
-            // jhpark-recovery-3
-            pm_mmap_mtrlogbuf_log_commit(nvm_bpage->id.space()
-                , nvm_bpage->id.page_no(), 0);
+            // NC REDO LOGGING !
+            pmem_cur_insert_rec_write_log(insert_rec, rec_size,
+                                        prev_rec, index, mtr);
 
         } else {
             page_cur_insert_rec_write_log(insert_rec, rec_size, prev_rec,

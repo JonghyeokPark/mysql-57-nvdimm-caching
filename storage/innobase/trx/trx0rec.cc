@@ -2080,10 +2080,6 @@ trx_undo_report_row_operation(
      if (is_nvm_page) {
 				ulint space = index->space;
 				ulint page = index->page;
-        // (jhpark): record the trx_id and page_id info. on NVM
-        fprintf(stderr, "[MTR_RECORD] space : %lu page : %lu trx_id: %lu\n", space, page, trx->id);
-        pm_mmap_mtrlogbuf_record(space, page_no, trx->id); 
-
 				mtr_commit_no_nvm(&mtr);
 		 } else {
       	mtr_commit(&mtr);

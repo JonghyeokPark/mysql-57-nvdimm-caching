@@ -397,7 +397,9 @@ DTRACE_INSTRUMENT(sql)
 TARGET_LINK_LIBRARIES(sql ${MYSQLD_STATIC_PLUGIN_LIBS} 
   mysys mysys_ssl dbug strings vio regex binlogevents_static
   ${LIBWRAP} ${LIBCRYPT} ${LIBDL}
-  ${SSL_LIBRARIES})
+  ${SSL_LIBRARIES} ${NVM_LIBS}) 
+# (jhpark) : pmem lib
+#  ${SSL_LIBRARIES})
 
 #
 # On Windows platform we compile in the clinet-side Windows Native Authentication

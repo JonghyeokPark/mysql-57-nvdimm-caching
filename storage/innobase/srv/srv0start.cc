@@ -1502,7 +1502,7 @@ innobase_start_or_create_for_mysql(void)
 
 #ifdef UNIV_NVDIMM_CACHE
   sprintf(PMEM_FILE_PATH, "%s/%s", srv_nvdimm_home_dir, NVDIMM_MMAP_FILE_NAME);
-  size_t srv_pmem_pool_size = 8 * 1024;
+  size_t srv_pmem_pool_size = 6 * 1024;
   uint64_t pool_size = srv_pmem_pool_size * 1024 * 1024UL;
   gb_pm_mmap = pm_mmap_create(PMEM_FILE_PATH, pool_size);
   if (!gb_pm_mmap) {
@@ -1513,14 +1513,13 @@ innobase_start_or_create_for_mysql(void)
 	if (!is_pmem_recv) {
 		// for debugging : chagne the mtr log region size
 		// original : 1024*1024*1024*8UL (8GB)
-		pm_mmap_mtrlogbuf_init(1024*1024*1024*1UL); // 1GB for test
+		//pm_mmap_mtrlogbuf_init(1024*1024*1024*1UL); // 1GB for test
+    pmem_log_init(1024*1024*1024*2UL);
 
 		// TODO(jhpark): change buffer pool recovery policy
 		// buffer retion initialization (2GB)
 		pm_mmap_buf_init(1024*1024*1024*2UL);
 	} else {
-    // jhpark-debug
-    pm_mmap_mtrlogbuf_check();
     pm_mmap_buf_init(1024*1024*1024*2UL);
   }
   //pm_mmap_buf_init(1024*1024*1024*3UL);
@@ -2364,8 +2363,10 @@ files_checked:
 		if (is_pmem_recv)  {
 			PMEMMMAP_INFO_PRINT("YES!!!! recovery!!!! start_offset: %lu end_offset: %lu\n"
 				,pmem_recv_offset, pmem_recv_size);
-      // (jharpk): just check current mtr logs
 
+      pm_mmap_recv(pmem_recv_offset, pmem_recv_size);
+
+// (jharpk): just check current mtr logs
 //			pm_mmap_recv(pmem_recv_offset, pmem_recv_size);
 //			PMEMMMAP_INFO_PRINT("UNDO page is recoverd !!!!\n");
 //      	pm_mmap_recv_flush_buffer();

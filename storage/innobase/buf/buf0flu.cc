@@ -1120,15 +1120,10 @@ buf_flush_write_block_low(
         if (nvdimm_page == NULL)    goto normal;
         
         // jhpark-recovery
-        ib::info() << "page_id = " << bpage->id.space()
-            << " offset = " << bpage->id.page_no() 
-            << " dst = " << &(((buf_block_t *)nvdimm_page)->frame) << " src = " << &(((buf_block_t *)bpage)->frame)
-            << " flush-type = " << bpage->flush_type;
-
-        // jhpark-recovery-3
-        // (jhaprk): for buffer -> NC case, this page is also NVDIMM page
-        //           that means this page could be non-"page-action consistency" status.
-        pm_mmap_mtrlogbuf_record(bpage->id.space(), bpage->id.page_no(), 0);
+//        ib::info() << "page_id = " << bpage->id.space()
+//            << " offset = " << bpage->id.page_no() 
+//            << " dst = " << &(((buf_block_t *)nvdimm_page)->frame) << " src = " << &(((buf_block_t *)bpage)->frame)
+//            << " flush-type = " << bpage->flush_type;
 
         memcpy(((buf_block_t *)nvdimm_page)->frame, ((buf_block_t *)bpage)->frame, UNIV_PAGE_SIZE);
 
@@ -1193,7 +1188,8 @@ normal:
                 << " with oldest: " << bpage->oldest_modification
                 << " newest: " << bpage->newest_modification
                 << " lsn-gap: " << bpage->newest_modification - bpage->oldest_modification;
-*/
+        */
+
         if (!srv_use_doublewrite_buf
             || buf_dblwr == NULL
             || srv_read_only_mode
@@ -1222,15 +1218,6 @@ normal:
                     sync, bpage->id, bpage->size, 0, bpage->size.physical(),
                     frame, bpage); 
 
-            // jhpark: write oldest_modification_lsn of current NVDIMM-caching page
-            //pm_mmap_write_logfile_header_lsn(bpage->oldest_modification);
-            // jhpark-recovery-3
-            // (jhpark): NVDIMM->BUFFER case we need to mark this page is not the NC page anymore
-            if (bpage->cached_in_nvdimm) {
-              ib::info() << "THIS IS NC to DISK case! IT IS NOT NC PAGE ANYMORE!\n";
-              pm_mmap_mtrlogbuf_log_commit(bpage->id.space(), bpage->id.page_no(), 0);
-            }
-            ////////////////////////////////////////////////////////////////////////////////////////
         } else if (flush_type == BUF_FLUSH_SINGLE_PAGE) {
             buf_dblwr_write_single_page(bpage, sync);
         } else {
