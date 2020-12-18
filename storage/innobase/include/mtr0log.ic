@@ -50,6 +50,27 @@ mlog_open(
 	return(mtr->get_log()->open(size));
 }
 
+// @jhpark-REDO
+#ifdef UNIV_NVDIMM_CACHE
+byte*
+mlog_open_nvm(
+/*======*/
+	mtr_t*	mtr,	/*!< in: mtr */
+	ulint	size)	/*!< in: buffer size in bytes; MUST be
+			smaller than mtr_t::buf_t::MAX_DATA_SIZE! */
+{
+	mtr->set_modified();
+
+	if (mtr_get_log_mode(mtr) == MTR_LOG_NONE
+	    || mtr_get_log_mode(mtr) == MTR_LOG_NO_REDO) {
+
+		return(NULL);
+	}
+
+	return(mtr->get_log_nvm()->open(size));
+}
+#endif
+
 /********************************************************//**
 Closes a buffer opened to mlog. */
 UNIV_INLINE
@@ -64,6 +85,24 @@ mlog_close(
 
 	mtr->get_log()->close(ptr);
 }
+
+//@jhpark-REDO
+#ifdef UNIV_NVDIMM_CACHE
+UNIV_INLINE
+void
+mlog_close_nvm(
+/*=======*/
+	mtr_t*	mtr,	/*!< in: mtr */
+	byte*	ptr)	/*!< in: buffer space from ptr up was not used */
+{
+	ut_ad(mtr_get_log_mode(mtr) != MTR_LOG_NONE);
+	ut_ad(mtr_get_log_mode(mtr) != MTR_LOG_NO_REDO);
+
+	mtr->get_log_nvm()->close(ptr);
+}
+
+#endif
+
 
 #ifndef UNIV_HOTBACKUP
 /********************************************************//**

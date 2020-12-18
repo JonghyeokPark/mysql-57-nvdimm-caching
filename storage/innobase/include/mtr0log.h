@@ -110,6 +110,17 @@ mlog_catenate_string(
 	mtr_t*		mtr,	/*!< in: mtr */
 	const byte*	str,	/*!< in: string to write */
 	ulint		len);	/*!< in: string length */
+
+#ifdef UNIV_NVDIMM_CACHE
+//@jhpark-REDO
+void
+mlog_catenate_string_nvm(
+/*=================*/
+	mtr_t*		mtr,	/*!< in: mtr */
+	const byte*	str,	/*!< in: string to write */
+	ulint		len);	/*!< in: string length */
+#endif
+
 /********************************************************//**
 Catenates a compressed ulint to mlog. */
 UNIV_INLINE
@@ -136,6 +147,18 @@ mlog_open(
 	mtr_t*		mtr,	/*!< in: mtr */
 	ulint		size);	/*!< in: buffer size in bytes; MUST be
 				smaller than DYN_ARRAY_DATA_SIZE! */
+
+//@jhpark-REDO
+#ifdef UNIV_NVDIMM_CACHE
+UNIV_INLINE
+byte*
+mlog_open_nvm(
+/*======*/
+	mtr_t*		mtr,	/*!< in: mtr */
+	ulint		size);	/*!< in: buffer size in bytes; MUST be
+				smaller than DYN_ARRAY_DATA_SIZE! */
+#endif
+
 /********************************************************//**
 Closes a buffer opened to mlog. */
 UNIV_INLINE
@@ -233,6 +256,21 @@ mlog_open_and_write_index(
 	ulint			size);	/*!< in: requested buffer size in bytes
 					(if 0, calls mlog_close() and
 					returns NULL) */
+
+//@jhpark-REDO
+byte*
+mlog_open_and_write_index_nvm(
+/*======================*/
+	mtr_t*			mtr,	/*!< in: mtr */
+	const byte*		rec,	/*!< in: index record or page */
+	const dict_index_t*	index,	/*!< in: record descriptor */
+	mlog_id_t		type,	/*!< in: log item type */
+	ulint			size);	/*!< in: requested buffer size in bytes
+					(if 0, calls mlog_close() and
+					returns NULL) */
+
+
+
 #endif /* !UNIV_HOTBACKUP */
 
 /********************************************************//**

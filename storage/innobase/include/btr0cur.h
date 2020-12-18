@@ -415,6 +415,19 @@ pmem_cur_update_in_place_log(
 	roll_ptr_t	roll_ptr,	/*!< in: roll ptr */
 	mtr_t*		mtr);		/*!< in: mtr */
 
+// TODO(jhpark) remove stale function
+void
+pmem_cur_update_in_place_log_old(
+/*========================*/
+	ulint		flags,		/*!< in: flags */
+	const rec_t*	rec,		/*!< in: record */
+	dict_index_t*	index,		/*!< in: index of the record */
+	const upd_t*	update,		/*!< in: update vector */
+	trx_id_t	trx_id,		/*!< in: transaction id */
+	roll_ptr_t	roll_ptr,	/*!< in: roll ptr */
+	mtr_t*		mtr);		/*!< in: mtr */
+
+
 #endif
 //////////////////////////////////////////////////////////////////
 

@@ -117,6 +117,11 @@ savepoint. */
 @return	log */
 #define mtr_get_log(m)		(m)->get_log()
 
+//@jhpark-REDO
+#ifdef UNIV_NVDIMM_CACHE
+#define mtr_get_log_nvm(m)  (m)->get_log_nvm()  
+#endif
+
 /** Push an object to an mtr memo stack. */
 #define mtr_memo_push(m, o, t)	(m)->memo_push(o, t)
 
@@ -579,6 +584,15 @@ struct mtr_t {
 		return(&m_impl.m_log);
 	}
 
+  //@jhpark-REDO
+#ifdef UNIV_NVDIMM_CACHE
+  mtr_buf_t* get_log_nvm()
+	{
+		ut_ad(m_impl.m_magic_n == MTR_MAGIC_N);
+		return(&m_impl_nvm.m_log);
+	}
+#endif
+
 	/** Get the buffered redo log of this mini-transaction.
 	@return	redo log */
 	mtr_buf_t* get_log()
@@ -612,6 +626,11 @@ private:
 
 private:
 	Impl			m_impl;
+
+  //@jhpark-REDO
+#ifdef UNIV_NVDIMM_CACHE
+  Impl      m_impl_nvm;
+#endif
 
 	/** LSN at commit time */
 	volatile lsn_t		m_commit_lsn;

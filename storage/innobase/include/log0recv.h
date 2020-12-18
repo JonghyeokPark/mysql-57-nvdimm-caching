@@ -80,6 +80,18 @@ UNIV_INLINE
 bool
 recv_recovery_is_on(void);
 /*=====================*/
+
+#ifdef UNIV_NVDIMM_CACHE
+void
+pmem_recv_recover_page_func(
+ mlog_id_t type,
+ uint64_t mtr_len,
+ uint64_t offset,
+ unsigned long int space,
+ unsigned long int page_no,
+ buf_block_t*  block);
+#endif
+
 /************************************************************************//**
 Applies the hashed log records to the page, if the page lsn is less than the
 lsn of a log record. This can be called when a buffer page has just been
@@ -102,6 +114,7 @@ read in, or also for a page already in the buffer pool.
 a freshly read page)
 @param block in/out: the buffer block
 */
+
 # define recv_recover_page(jri, block)	recv_recover_page_func(jri, block)
 #else /* !UNIV_HOTBACKUP */
 /** Wrapper for recv_recover_page_func().
@@ -198,6 +211,12 @@ recv_apply_hashed_log_recs(
 				disk and invalidated in buffer pool: this
 				alternative means that no new log records
 				can be generated during the application */
+
+#ifdef UNIV_NVDIMM_CACHE
+void
+pmem_recv_apply_hashed_log_recs(uint64_t size);
+#endif
+
 #ifdef UNIV_HOTBACKUP
 /*******************************************************************//**
 Applies log records in the hash table to a backup. */

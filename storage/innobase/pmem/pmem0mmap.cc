@@ -74,12 +74,12 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
 						recv_mmap_mtrlog_fil_hdr->ckpt_lsn, recv_mmap_mtrlog_fil_hdr->ckpt_offset);
 
 		// recvoery check : read from checkpoint offset
-    PMEM_MMAP_MTRLOG_HDR* recv_mmap_mtrlog_hdr = (PMEM_MMAP_MTRLOG_HDR*) malloc(PMEM_MMAP_MTRLOG_HDR_SIZE);
-    memcpy(recv_mmap_mtrlog_hdr, gb_pm_mmap+recv_mmap_mtrlog_fil_hdr->ckpt_offset, PMEM_MMAP_MTRLOG_HDR_SIZE);
+    PMEM_LOG_HDR* recv_mmap_mtrlog_hdr = (PMEM_LOG_HDR*) malloc(PMEM_LOG_HDR_SZ);
+    memcpy(recv_mmap_mtrlog_hdr, gb_pm_mmap+recv_mmap_mtrlog_fil_hdr->ckpt_offset, PMEM_LOG_HDR_SZ);
 		 
-		//if (recv_mmap_mtrlog_fil_hdr->size == PMEM_MMAP_MTR_FIL_HDR_SIZE 
-		//		|| recv_mmap_mtrlog_hdr->need_recv == false) {
-
+//		if (recv_mmap_mtrlog_fil_hdr->size == PMEM_MMAP_MTR_FIL_HDR_SIZE 
+//				|| recv_mmap_mtrlog_hdr->need_recv == 0) {
+   
     if (recv_mmap_mtrlog_fil_hdr->size == PMEM_MMAP_MTR_FIL_HDR_SIZE) {
 			PMEMMMAP_INFO_PRINT("Normal Shutdown case, don't need to recveory; Recovery process is terminated\n");
 		} else {
@@ -87,20 +87,24 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
 			is_pmem_recv = true;
 			pmem_recv_offset = pm_mmap_recv_check(recv_mmap_mtrlog_fil_hdr);
 			pmem_recv_size = recv_mmap_mtrlog_fil_hdr->size;		
-			// jhpark: check buffer!!!!!
+
+      // jhpark: GUESS, before flush NC page , need to recovery first !!!
 			//pm_mmap_recv_flush_buffer();
 			PMEMMMAP_INFO_PRINT("recovery offset: %lu\n", pmem_recv_offset);
 		} 
-    
+  
+    // DEBUG 
+    pm_for_debug_REDO(recv_mmap_mtrlog_fil_hdr->size);
 
 		// step1. allocate mtr_recv_sys
 		// step2. 1) get header infor mation and 2) get info from mtr log region
 		// step3. reconstruct undo page
 
     // Get header information from exsiting nvdimm log file
-    size_t recv_prev_offset = recv_mmap_mtrlog_hdr->prev_offset;
-    memset(recv_mmap_mtrlog_hdr, 0x00, PMEM_MMAP_MTRLOG_HDR_SIZE);
-    memcpy(recv_mmap_mtrlog_hdr, gb_pm_mmap+recv_prev_offset, PMEM_MMAP_MTRLOG_HDR_SIZE);
+    // need to check NC logs from checkpoint offset 
+    // TODO(jhaprk): consider using prev_offset
+    //memset(recv_mmap_mtrlog_hdr, 0x00, PMEM_MMAP_MTRLOG_HDR_SIZE);
+    //memcpy(recv_mmap_mtrlog_hdr, gb_pm_mmap+recv_prev_offset, PMEM_MMAP_MTRLOG_HDR_SIZE);
 
     // debug
     fprintf(stderr, "len: %lu\n", recv_mmap_mtrlog_hdr->len);
@@ -109,7 +113,8 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
     
 		free(recv_mmap_mtrlog_fil_hdr);
     free(recv_mmap_mtrlog_hdr);
-  }
+  
+  } // end-of-else
 
   // Force to set NVIMMM
   setenv("PMEM_IS_PMEM_FORCE", "1", 1);

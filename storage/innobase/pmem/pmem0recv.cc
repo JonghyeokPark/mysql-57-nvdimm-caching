@@ -24,10 +24,70 @@ extern uint64_t pmem_recv_size;
 std::map<std::pair<unsigned long, unsigned long>, uint64_t> nc_page_map;
 std::set<unsigned long> nc_active_trx_ids;
 
-void pm_for_debug() {
-  fprintf(stderr, "catch the debug point!\n");
+/* Hello */
+
+uint64_t pm_mmap_recv_check(PMEM_MMAP_MTRLOGFILE_HDR* log_fil_hdr) {
+  // TODO(jhpark): add checkpoint process
+  size_t tmp_offset = PMEM_MMAP_MTR_FIL_HDR_SIZE;
+
+	while (true) {
+		fprintf(stderr, "current tmp_offset: %lu:(%lu)\n", tmp_offset, log_fil_hdr->size);
+		if (tmp_offset >= log_fil_hdr->size) {
+			break;
+		}
+
+		PMEM_LOG_HDR *recv_mmap_hdr = (PMEM_LOG_HDR *) malloc(PMEM_LOG_HDR_SZ);
+		memcpy(recv_mmap_hdr, gb_pm_mmap + tmp_offset, PMEM_LOG_HDR_SZ);
+		ut_ad(recv_mmap_hdr == NULL);
+
+		fprintf(stderr, "[recovery] need_recv: %d len: %lu lsn: %lu space: %lu page_no: %lu\n"
+										,recv_mmap_hdr->need_recv, recv_mmap_hdr->len, recv_mmap_hdr->lsn,
+										recv_mmap_hdr->space, recv_mmap_hdr->page_no);
+
+    if (recv_mmap_hdr->need_recv == 0) {
+      fprintf(stderr, "Hmm? current log doesn't need to recvoery!\n");
+      tmp_offset += recv_mmap_hdr->len;
+      free(recv_mmap_hdr);
+      continue;
+    } else {
+			free(recv_mmap_hdr);
+			return tmp_offset;
+		}
+	}
+	// no need to recovery
+  return -1;
+}
+
+void pm_for_debug_REDO(uint64_t size) {
+  //fprintf(stderr, "catch the debug point!\n");
+  // looking thru whole NC REDO logs ...
+  size_t tmp_offset = PMEM_MMAP_MTR_FIL_HDR_SIZE;
+  while (true) {
+    if (tmp_offset >= size) {
+      break;
+    }
+
+    PMEM_LOG_HDR *recv_mmap_hdr = (PMEM_LOG_HDR *) malloc(PMEM_LOG_HDR_SZ);
+    memcpy(recv_mmap_hdr, gb_pm_mmap + tmp_offset, PMEM_LOG_HDR_SZ);
+    ut_ad(recv_mmap_hdr == NULL);
+
+    fprintf(stderr, "=================================================================\n");
+    fprintf(stderr, "[recovery] need_recv: %d len: %lu lsn: %lu space: %lu page_no: %lu\n"
+										,recv_mmap_hdr->need_recv, recv_mmap_hdr->len, recv_mmap_hdr->lsn,
+										recv_mmap_hdr->space, recv_mmap_hdr->page_no);
+    fprintf(stderr, "[recovery] current tmp_offset: %lu\n", tmp_offset);
+    fprintf(stderr, "=================================================================\n");
+
+    tmp_offset += recv_mmap_hdr->len + PMEM_LOG_HDR_SZ;
+    free(recv_mmap_hdr);
+  }
+
   return;
 }
+
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 bool pm_mmap_recv_nc_page_copy(unsigned long space_id, unsigned long page_no, void* buf) {
   std::map<std::pair<unsigned long, unsigned long>, uint64_t>::iterator iter;
@@ -71,40 +131,7 @@ void pm_mmap_recv_show_trx_list() {
 	fprintf(stderr, "\n============================================= \n");
 }
 
-uint64_t pm_mmap_recv_check(PMEM_MMAP_MTRLOGFILE_HDR* log_fil_hdr) {
-	//size_t tmp_offset = log_fil_hdr->ckpt_offset;
 
-  // TODO(jhpark): add checkpoint process
-  size_t tmp_offset = PMEM_MMAP_MTR_FIL_HDR_SIZE; 
-
-	while (true) {
-		fprintf(stderr, "current tmp_offset: %lu:(%lu)\n", tmp_offset, log_fil_hdr->size);
-		if (tmp_offset >= log_fil_hdr->size) {
-			break;
-		}
-
-		PMEM_MMAP_MTRLOG_HDR *recv_mmap_hdr = (PMEM_MMAP_MTRLOG_HDR *) malloc(PMEM_MMAP_MTRLOG_HDR_SIZE);
-		memcpy(recv_mmap_hdr, gb_pm_mmap + tmp_offset, PMEM_MMAP_MTRLOG_HDR_SIZE);
-		ut_ad(recv_mmap_hdr == NULL);
-
-		fprintf(stderr, "[recovery] need_recv: %d len: %lu lsn: %lu prev_offset: %lu space: %lu page_no: %lu\n"
-										,recv_mmap_hdr->need_recv, recv_mmap_hdr->len, recv_mmap_hdr->lsn,
-										recv_mmap_hdr->prev_offset,
-										recv_mmap_hdr->space, recv_mmap_hdr->page_no);
-
-    if (recv_mmap_hdr->need_recv == 0) {
-      fprintf(stderr, "Hmm? current log doesn't need to recvoery!\n");
-      tmp_offset += recv_mmap_hdr->len;
-      free(recv_mmap_hdr);
-      continue;
-    } else {
-			free(recv_mmap_hdr);
-			return tmp_offset;
-		}
-	}
-	// no need to recovery
-  return -1;
-}
 
 ///////////// backup ////////////////
 /*

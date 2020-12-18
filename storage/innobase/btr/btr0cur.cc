@@ -3585,7 +3585,7 @@ btr_cur_upd_lock_and_undo(
 /***********************************************************//**
 Writes a redo log record of updating a record in-place. */
 void
-pmem_cur_update_in_place_log(
+pmem_cur_update_in_place_log_old(
 /*========================*/
 	ulint		flags,		/*!< in: flags */
 	const rec_t*	rec,		/*!< in: record */
@@ -3805,6 +3805,132 @@ pmem_cur_update_in_place_log(
   mmap_logbuf->cur_offset += incr_offset;
 
   // (jhpark): do we need to flush cache?
+  pm_mmap_write_logfile_header_size(org_offset);
+
+  // step6. unlock mutex
+  pthread_mutex_unlock(&mmap_logbuf->logMutex);
+}
+
+
+
+/* Writes a redo log record of updating a record in-place. */
+void
+pmem_cur_update_in_place_log(
+/*========================*/
+	ulint		flags,		/*!< in: flags */
+	const rec_t*	rec,		/*!< in: record */
+	dict_index_t*	index,		/*!< in: index of the record */
+	const upd_t*	update,		/*!< in: update vector */
+	trx_id_t	trx_id,		/*!< in: transaction id */
+	roll_ptr_t	roll_ptr,	/*!< in: roll ptr */
+	mtr_t*		mtr)		/*!< in: mtr */
+{
+
+  uintptr_t start_log_ptr;
+  uintptr_t end_log_ptr;
+
+	byte*		log_ptr;
+
+  const page_t*	page	= page_align(rec);
+	ut_ad(flags < 256);
+	ut_ad(!!page_is_comp(page) == dict_table_is_comp(index->table));
+
+	log_ptr = mlog_open_and_write_index_nvm(mtr, rec, index, page_is_comp(page)
+					    ? MLOG_COMP_REC_UPDATE_IN_PLACE
+					    : MLOG_REC_UPDATE_IN_PLACE,
+					    1 + DATA_ROLL_PTR_LEN + 14 + 2
+					    + MLOG_BUF_MARGIN);
+
+  start_log_ptr = reinterpret_cast<uintptr_t>(log_ptr);
+
+	if (!log_ptr) {
+		/* Logging in mtr is switched off during crash recovery */
+    pthread_mutex_unlock(&mmap_logbuf->logMutex);
+		return;
+	}
+
+	/* For secondary indexes, we could skip writing the dummy system fields
+	to the redo log but we have to change redo log parsing of
+	MLOG_REC_UPDATE_IN_PLACE/MLOG_COMP_REC_UPDATE_IN_PLACE or we have to add
+	new redo log record. For now, just write dummy sys fields to the redo
+	log if we are updating a secondary index record.
+	*/
+	mach_write_to_1(log_ptr, flags);
+	log_ptr++;
+
+	if (dict_index_is_clust(index)) {
+		log_ptr = row_upd_write_sys_vals_to_log(
+				index, trx_id, roll_ptr, log_ptr, mtr);
+	} else {
+		/* Dummy system fields for a secondary index */
+		/* TRX_ID Position */
+		log_ptr += mach_write_compressed(log_ptr, 0);
+		/* ROLL_PTR */
+		trx_write_roll_ptr(log_ptr, 0);
+		log_ptr += DATA_ROLL_PTR_LEN;
+		/* TRX_ID */
+		log_ptr += mach_u64_write_compressed(log_ptr, 0);
+	}
+
+	mach_write_to_2(log_ptr, page_offset(rec));
+	log_ptr += 2;
+
+	row_upd_index_write_log(update, log_ptr, mtr);
+
+  end_log_ptr = reinterpret_cast<uintptr_t>(log_ptr);
+
+  // check checkpoint !!!
+  if (!pmem_log_checkpoint()) {
+    fprintf(stderr, "[ERROR] checkpoint failed!\n");
+  }
+  
+  // step1. fill log header
+  pthread_mutex_lock(&mmap_logbuf->logMutex);
+  PMEM_LOG_HDR* mmap_log_hdr = (PMEM_LOG_HDR*)malloc(sizeof(PMEM_LOG_HDR)); 
+  mmap_log_hdr->need_recv = 1;
+  uint64_t org_offset = mmap_logbuf->cur_offset;
+  uint64_t cur_offset = org_offset;
+  uint64_t log_length = mtr->get_log_nvm()->front()->used();
+
+  // store log size
+  mmap_log_hdr->len = log_length;
+
+  // store page_lsn
+  //const lsn_t page_lsn = mach_read_from_8(page + FIL_PAGE_LSN);
+  //mmap_log_hdr->lsn = page_lsn;
+  bool found;
+  const page_size_t& page_size = fil_space_get_page_size(index->space, &found);
+  if (!found) {
+    fprintf(stderr, "[DEBUG-jhpark] error !!!!!\n");
+  }
+  const page_id_t page_id(index->space, dict_index_get_page(index));
+  buf_block_t *cur_block = buf_page_get(
+      page_id, page_size, RW_NO_LATCH, mtr);
+  const lsn_t page_lsn = cur_block->page.newest_modification;
+  mmap_log_hdr->lsn = page_lsn;
+
+  // store block information
+  mmap_log_hdr->space = index->space;
+  mmap_log_hdr->page_no = index->page;
+
+  // step2. write log header
+  memcpy(gb_pm_mmap + cur_offset, mmap_log_hdr, (size_t) PMEM_LOG_HDR_SZ);
+  // step3. persist log header
+  flush_cache(gb_pm_mmap+org_offset, (size_t)PMEM_LOG_HDR_SZ);
+  cur_offset +=  (size_t) PMEM_LOG_HDR_SZ;
+  free(mmap_log_hdr);
+
+  // 실제로 DRAM -> NVM 복사해야함 !!!
+  byte *log_start = mtr->get_log_nvm()->front()->begin();
+  memcpy(gb_pm_mmap + cur_offset, log_start, (size_t) mtr->get_log_nvm()->front()->used());
+  flush_cache(gb_pm_mmap+cur_offset, mtr->get_log_nvm()->front()->used());
+  cur_offset += log_length;
+
+  // update global cur_offset 
+  mmap_logbuf->cur_offset = cur_offset; 
+  fprintf(stderr, "[pmem_cur_update] log_legnth: %ld global_cur_offset: %ld after-mtr_used: %ld size: %ld lsn: %ld\n", log_length, mmap_logbuf->cur_offset, mtr->get_log_nvm()->front()->used(), org_offset, page_lsn);
+
+  // update log file size
   pm_mmap_write_logfile_header_size(org_offset);
 
   // step6. unlock mutex
@@ -4955,7 +5081,7 @@ Writes the redo log record for delete marking or unmarking of an index
 record. */
 UNIV_INLINE
 void
-pmem_cur_del_mark_set_clust_rec_log(
+pmem_cur_del_mark_set_clust_rec_log_old(
 /*===============================*/
 	rec_t*		rec,	/*!< in: record */
 	dict_index_t*	index,	/*!< in: index of the record */
@@ -5158,6 +5284,117 @@ pmem_cur_del_mark_set_clust_rec_log(
   pthread_mutex_unlock(&mmap_logbuf->logMutex);
 }
 
+//@jhpark-REDO
+UNIV_INLINE
+void
+pmem_cur_del_mark_set_clust_rec_log(
+/*===============================*/
+	rec_t*		rec,	/*!< in: record */
+	dict_index_t*	index,	/*!< in: index of the record */
+	trx_id_t	trx_id,	/*!< in: transaction id */
+	roll_ptr_t	roll_ptr,/*!< in: roll ptr to the undo log record */
+	mtr_t*		mtr)	/*!< in: mtr */
+{
+	byte*	log_ptr;
+
+  uintptr_t start_log_ptr;
+  uintptr_t end_log_ptr;
+
+
+	ut_ad(!!page_rec_is_comp(rec) == dict_table_is_comp(index->table));
+	ut_ad(mtr->is_named_space(index->space));
+
+	log_ptr = mlog_open_and_write_index_nvm(mtr, rec, index,
+					    page_rec_is_comp(rec)
+					    ? MLOG_COMP_REC_CLUST_DELETE_MARK
+					    : MLOG_REC_CLUST_DELETE_MARK,
+					    1 + 1 + DATA_ROLL_PTR_LEN
+					    + 14 + 2);
+
+	if (!log_ptr) {
+		/* Logging in mtr is switched off during crash recovery */
+    pthread_mutex_unlock(&mmap_logbuf->logMutex);
+		return;
+	}
+
+  start_log_ptr = reinterpret_cast<uintptr_t>(log_ptr);
+
+	*log_ptr++ = 0;
+	*log_ptr++ = 1;
+
+	log_ptr = row_upd_write_sys_vals_to_log(
+		index, trx_id, roll_ptr, log_ptr, mtr);
+	mach_write_to_2(log_ptr, page_offset(rec));
+	log_ptr += 2;
+
+	mlog_close_nvm(mtr, log_ptr);
+
+  end_log_ptr = reinterpret_cast<uintptr_t>(log_ptr);
+//  uint64_t log_length = reinterpret_cast<uint64_t>(end_log_ptr - start_log_ptr);
+
+  if (!pmem_log_checkpoint()) {
+    fprintf(stderr, "[ERROR] pmem_log_checkpoint is failed!\n");
+  }
+
+  // step1. fill log header
+  pthread_mutex_lock(&mmap_logbuf->logMutex);
+  PMEM_LOG_HDR* mmap_log_hdr = (PMEM_LOG_HDR*)malloc(sizeof(PMEM_LOG_HDR));
+  mmap_log_hdr->need_recv = 1;
+  uint64_t org_offset = mmap_logbuf->cur_offset;
+  uint64_t cur_offset = org_offset;
+  uint64_t log_length = mtr->get_log_nvm()->front()->used();
+  // store log length
+  mmap_log_hdr->len = log_length;
+
+  // store lsn 
+  // TODO(jhpark): need to check LATCH problem ???
+
+  bool found;
+  const page_size_t& page_size = fil_space_get_page_size(index->space, &found);
+  if (!found) {
+    fprintf(stderr, "[DEBUG-jhpark] error !!!!!\n");
+  }
+  const page_id_t page_id(index->space, dict_index_get_page(index));
+
+  // may triger the deadlock (self)
+//  buf_block_t *cur_block = buf_page_get(
+//      page_id, page_size, RW_NO_LATCH, mtr);
+//  page_t* page = buf_block_get_frame(cur_block);
+//  const lsn_t page_lsn = mach_read_from_8(page + FIL_PAGE_LSN);
+
+  buf_block_t *cur_block = buf_page_get(
+      page_id, page_size, RW_NO_LATCH, mtr);
+  const lsn_t page_lsn = cur_block->page.newest_modification;
+  mmap_log_hdr->lsn = page_lsn;
+
+  // store block information
+  mmap_log_hdr->space = index->space;
+  mmap_log_hdr->page_no = index->page;
+
+  // step2. write log header
+  memcpy(gb_pm_mmap + cur_offset, mmap_log_hdr, (size_t) PMEM_LOG_HDR_SZ);
+
+  // step3. persist log header
+  flush_cache(gb_pm_mmap+org_offset, (size_t)PMEM_LOG_HDR_SZ);
+  cur_offset +=  (size_t) PMEM_LOG_HDR_SZ;
+
+  free(mmap_log_hdr);
+
+  byte *log_start = mtr->get_log_nvm()->front()->begin();
+  memcpy(gb_pm_mmap + cur_offset, log_start, (size_t) mtr->get_log_nvm()->front()->used());
+  flush_cache(gb_pm_mmap+cur_offset, mtr->get_log_nvm()->front()->used());
+  cur_offset += log_length;
+
+  // update global cur_offset 
+  mmap_logbuf->cur_offset = cur_offset;
+  fprintf(stderr, "[pmem_cur_del_mark_set] log_legnth: %ld global_cur_offset: %ld after-mtr_size: %ld mtr_begin: %p size: %ld, lsn :%ld\n", log_length, mmap_logbuf->cur_offset, mtr->get_log_nvm()->front()->used(), mtr->get_log_nvm()->front()->begin(), org_offset, page_lsn);
+  
+  // update log file size
+  pm_mmap_write_logfile_header_size(org_offset);
+ 
+  // step6. unlock mutex
+  pthread_mutex_unlock(&mmap_logbuf->logMutex);
+}
 #endif
 
 

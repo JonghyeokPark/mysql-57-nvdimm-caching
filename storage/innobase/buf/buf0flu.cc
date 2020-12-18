@@ -1166,7 +1166,7 @@ buf_flush_write_block_low(
           free(tmp_buf);
         }
 #endif
-
+ 
         /* Remove the target page from the original buffer pool. */
         buf_page_io_complete(bpage, true);
         buf_page_io_complete(nvdimm_page);
@@ -1360,6 +1360,8 @@ buf_flush_page(
 		++buf_pool->n_flush[flush_type];
 
 // jhpark-recovery
+// for recvoery, we need to flush page to disk not NVDIMM
+#ifdef UNIV_NVDIMM_CACHE
 /////////////////////////////////////////////////////////////////////////////////////////
     if (is_pmem_recv) {
       mutex_exit(block_mutex);
@@ -1386,6 +1388,7 @@ buf_flush_page(
       return(flush);
     }
 ////////////////////////////////////////////////////////////////////////////////////////
+#endif
 
 #ifdef UNIV_NVDIMM_CACHE
         /* Separate Order-Line leaf page from the other pages. */
@@ -4138,12 +4141,20 @@ buf_flush_nvdimm_LRU_list_batch(
 
 		mutex_enter(block_mutex);
 
+    // jhpark : this NC page is flushed to DISK, thus we don't need to apply REDO log for this page
+    //          set `need_recv` as 2 and fill out space_id and page_no.
+    // TODO(jhaprk): mark sure buf_page_io is complelted !!!! -- using lock ???
+    pmem_log_flush(bpage->id.space(), bpage->id.page_no());
+
+
 		if (buf_flush_ready_for_replace(bpage)) {
 			/* block is ready for eviction i.e., it is
 			clean and is not IO-fixed or buffer fixed. */
 			mutex_exit(block_mutex);
 			if (buf_LRU_free_page(bpage, true)) {
 				++evict_count;
+        // TODO(jhpark)
+        pmem_log_flush(bpage->id.space(), bpage->id.page_no());
 			}
 		} else if (buf_flush_ready_for_flush(bpage, BUF_FLUSH_LRU)) {
 			/* Block is ready for flush. Dispatch an IO
@@ -4152,6 +4163,10 @@ buf_flush_nvdimm_LRU_list_batch(
 			mutex_exit(block_mutex);
 			buf_flush_page_and_try_neighbors(
 				bpage, BUF_FLUSH_LRU, max, &count);
+
+      // TODO(jhpark)
+      pmem_log_flush(bpage->id.space(), bpage->id.page_no());
+
 		} else {
 			/* Can't evict or dispatch this block. Go to
 			previous. */

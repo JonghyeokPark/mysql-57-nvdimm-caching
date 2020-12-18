@@ -2355,23 +2355,41 @@ files_checked:
 
 			return(srv_init_abort(DB_ERROR));
 		}
-		
-		purge_queue = trx_sys_init_at_db_start();
 
     // TODO(jhpark): NC recovery check !!!!!
 #ifdef UNIV_NVDIMM_CACHE
 		if (is_pmem_recv)  {
 			PMEMMMAP_INFO_PRINT("YES!!!! recovery!!!! start_offset: %lu end_offset: %lu\n"
 				,pmem_recv_offset, pmem_recv_size);
+  
+       // (jhpark): vanilla REDO first and then apply NVM REDO
+       // step1. read data page (using block information) -- pmem_recv_apply_hashed_recs() function
+       // step2. apply NVM redo logs -- pmem_recv_apply_log_rec_body() 
+      fprintf(stderr, "GREAT !!! call pmem_recv_apply_hashed_log_recs !!!!\n");
+      pmem_recv_apply_hashed_log_recs(pmem_recv_size);
+      fprintf(stderr, "GREAT !!! pmem_recv_apply_hashed_log_recs end !!!!\n");
 
-      pm_mmap_recv(pmem_recv_offset, pmem_recv_size);
-
-// (jharpk): just check current mtr logs
-//			pm_mmap_recv(pmem_recv_offset, pmem_recv_size);
-//			PMEMMMAP_INFO_PRINT("UNDO page is recoverd !!!!\n");
-//      	pm_mmap_recv_flush_buffer();
 		}
 #endif
+
+		purge_queue = trx_sys_init_at_db_start();
+
+    // DEBUG -- old position
+    // TODO(jhpark): NC recovery check !!!!!
+//#ifdef UNIV_NVDIMM_CACHE
+//		if (is_pmem_recv)  {
+//			PMEMMMAP_INFO_PRINT("YES!!!! recovery!!!! start_offset: %lu end_offset: %lu\n"
+//				,pmem_recv_offset, pmem_recv_size);
+  
+       // (jhpark): vanilla REDO first and then apply NVM REDO
+       // step1. read data page (using block information) -- pmem_recv_apply_hashed_recs() function
+       // step2. apply NVM redo logs -- pmem_recv_apply_log_rec_body() 
+
+//      fprintf(stderr, "GREAT !!! call pmem_recv_apply_hashed_log_recs !!!!\n");
+//      pmem_recv_apply_hashed_log_recs(pmem_recv_size);
+//      fprintf(stderr, "GREAT !!! pmem_recv_apply_hashed_log_recs end !!!!\n");
+//		}
+//#endif
 
 
 		if (srv_force_recovery < SRV_FORCE_NO_LOG_REDO) {
@@ -2385,6 +2403,11 @@ files_checked:
 			if (recv_needed_recovery) {
 				trx_sys_print_mysql_binlog_offset();
 			}
+
+#ifdef UNIV_NVDIMM_CACHE
+
+#endif
+
 		}
 
 		if (recv_sys->found_corrupt_log) {

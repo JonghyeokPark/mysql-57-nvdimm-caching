@@ -230,13 +230,11 @@ bool pm_mmap_recv_nc_page_validate(unsigned long space_id, unsigned long page_no
 void pm_mmap_recv_add_active_trx_list(unsigned long trx_id);
 void pm_mmap_recv_show_trx_list();
 bool pm_mmap_recv_nc_page_copy(unsigned long space_id, unsigned long page_no, void* buf);
-void pm_for_debug();
+void pm_for_debug_REDO(uint64_t size);
 
 //=======================================================================================================
 
 /* Hello */
-
-
 struct __pmem_log_buf;
 typedef struct __pmem_log_buf PMEM_LOG_BUF;
 #define PMEM_LOG_BUF_SZ sizeof(PMEM_LOG_BUF)
@@ -257,7 +255,7 @@ struct __pmem_log_buf {
 };
 
 struct __pmem_log_hdr {
-	unsigned int need_recv;								 // true if need recovery
+	unsigned int need_recv;				 // 0: none 1: need recovery 2: flush (don't need to apply)
 	unsigned long int len;    		 // length of mtr log payload
 	unsigned long int lsn;      	 // lsn from global log_sys
   // still needed?
@@ -271,5 +269,11 @@ void pmem_log_init(const size_t size);
 ssize_t pmem_log_write(unsigned char *buf, unsigned long int len, unsigned long int lsn,
                     unsigned long int space, unsigned long int page_no);
 bool pmem_log_validate(unsigned char *check);
+
+// flush log
+void pmem_log_flush(unsigned long int space, unsigned long int page_no);
+
+// checkpoint 
+bool pmem_log_checkpoint();
 
 #endif  /* __PMEMMAPOBJ_H__ */
