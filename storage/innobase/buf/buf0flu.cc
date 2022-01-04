@@ -1316,7 +1316,7 @@ buf_flush_page(
 
 #ifdef UNIV_NVDIMM_CACHE
         /* Separate Order-Line leaf page from the other pages. */
-        if (bpage->id.space() == 30 /* Order-Line tablespace */
+        if (bpage->id.space() == 29 /* Order-Line tablespace */
             && bpage->buf_fix_count == 0 /* Not fixed */
             && !bpage->cached_in_nvdimm) { /* Not cached in NVDIMM */
             
@@ -4064,7 +4064,7 @@ buf_flush_nvdimm_LRU_list_batch(
 		buf_page_t* prev = UT_LIST_GET_PREV(LRU, bpage);
 		buf_pool->lru_hp.set(prev);
 
-        //if (bpage->id.space() == 28)  continue;
+        //if (bpage->id.space() == 27)  continue;
 
 		BPageMutex*	block_mutex = buf_page_get_mutex(bpage);
 

@@ -1034,7 +1034,7 @@ buf_pool_get(
         return(&nvdimm_buf_pool_ptr[0]);
     } 
 
-    if ((page_id.space() == 30
+    if ((page_id.space() == 29
 #ifdef UNIV_NVDIMM_CACHE_OD
         || page_id.space() == 29
 #endif /* UNIV_NVDIMM_CACHE_OD */        

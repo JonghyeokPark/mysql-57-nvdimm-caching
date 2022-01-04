@@ -1018,7 +1018,7 @@ mtr_t::Command::prepare_write()
 	log_mutex_enter();
 
 	// debug : this must not happen !!!!
-	//if (space != NULL && space->id == 28) {
+	//if (space != NULL && space->id == 27) {
 	//	print_trace();
 	//	fprintf(stderr, "[JONGQ] WRONG prepare_write(): m_log_mode: %d space_id: %lu\n"
 	//									,m_impl->m_log_mode, space->id);

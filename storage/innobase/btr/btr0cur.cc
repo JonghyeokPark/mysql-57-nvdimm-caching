@@ -4947,7 +4947,7 @@ btr_cur_del_mark_set_clust_rec(
 
 			//pm_mmap_mtrlogbuf_commit(rec, cur_rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
     } else {
-        if ( nvm_bpage->id.space() == 28) {
+        if ( nvm_bpage->id.space() == 27) {
           fprintf(stderr, "[JONGQ] WATCH-OUT-2\n");
           exit(-1);
         }
@@ -5062,7 +5062,7 @@ btr_cur_del_mark_set_sec_rec(
 
 #ifdef UNIV_NVDIMM_CACHE
   fprintf(stderr,"[JONGQ] btr_cur_del_mark_set_sec_rec! space: %lu\n", block->page.id.space());
-  if (block->page.id.space() == 28) {
+  if (block->page.id.space() == 27) {
     fprintf(stderr, "[JONGQ] WRONG!!!\n");
   }
 #endif /* UNIV_NVDIMM_CACHE	*/
