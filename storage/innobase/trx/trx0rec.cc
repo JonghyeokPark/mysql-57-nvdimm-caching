@@ -2078,10 +2078,6 @@ trx_undo_report_row_operation(
      //                just release the mtr structure.
 #ifdef UNIV_NVDIMM_CACHE
      if (is_nvm_page) {
-				//ulint space = index->space;
-				//ulint page = index->page;
-				//fprintf(stderr, "[mtr-commit] space : %lu page : %lu\n", space, page);
-				//mtr_commit_nvm(&mtr, space, page);
 				mtr_commit_no_nvm(&mtr);
 		 } else {
       	mtr_commit(&mtr);

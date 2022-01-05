@@ -153,12 +153,6 @@ buf_read_page_low(
 		return(0);
 	}
 
-  // debug
-// fprintf(stderr, "[JONGQ] read page %u:%u size=%u unzip=%u, sync=%d\n"
-//                , (unsigned) page_id.space(),
-//                  (unsigned) page_id.page_no(),
-//                  (unsigned) page_size.physical(), (unsigned) unzip, sync);
-
 	DBUG_PRINT("ib_buf", ("read page %u:%u size=%u unzip=%u,%s",
 			      (unsigned) page_id.space(),
 			      (unsigned) page_id.page_no(),

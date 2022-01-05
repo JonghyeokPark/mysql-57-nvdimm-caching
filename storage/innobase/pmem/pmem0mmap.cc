@@ -77,6 +77,7 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
 		if (recv_mmap_mtrlog_fil_hdr->size == PMEM_MMAP_MTR_FIL_HDR_SIZE 
 				|| recv_mmap_mtrlog_hdr->need_recv == false) {
 			PMEMMMAP_INFO_PRINT("Normal Shutdown case, don't need to recveory; Recovery process is terminated\n");
+      is_pmem_recv = true;
 		} else {
 			// TODO(jhpark): real recovery process
 			is_pmem_recv = true;
@@ -308,19 +309,13 @@ ssize_t pm_mmap_mtrlogbuf_write(
 	}
 
 	// Fill the mmap_mtr log header info.
-  PMEM_MMAP_MTRLOG_HDR* mmap_mtr_hdr = (PMEM_MMAP_MTRLOG_HDR*) malloc(PMEM_MMAP_MTRLOG_HDR_SIZE);
-  mmap_mtr_hdr->len = n;
-  // lsn from log_sys
-  mmap_mtr_hdr->lsn = lsn;
-  // lsn from mtr_log_sys
-  //mmap_mtr_hdr->mtr_lsn = mmap_mtrlogbuf->mtr_sys_lsn+1;
-	//mmap_mtrlogbuf->mtr_sys_lsn++;
-	// prev hdr offset
-	mmap_mtr_hdr->prev_offset = mmap_mtrlogbuf->prev_offset;
-	// set recv_flag
-	mmap_mtr_hdr->need_recv = true;
-
-#ifdef UNIV_LOG_HEADER
+  
+  PMEM_MMAP_MTRLOG_HDR mtr_hdr;
+  mtr_hdr.len = n;
+  mtr_hdr.lsn = lsn;
+  mtr_hdr.prev_offset = mmap_mtrlogbuf->prev_offset;
+  mtr_hdr.need_recv = true;
+ 
 	// log << header << persist(log) << payload << persist(log)
  	// (jhpark) : header version brought from 
  	//            [Persistent Memory I/O Primitives](https://arxiv.org/pdf/1904.01614.pdf)
@@ -336,71 +331,30 @@ ssize_t pm_mmap_mtrlogbuf_write(
 	cur_space = mach_parse_compressed(&ptr, end_ptr);
 	if (ptr != NULL) {
 		cur_page = mach_parse_compressed(&ptr, end_ptr);
-		//fprintf(stderr, "mtr log type: %lu space: %lu page: %lu\n", type, cur_space, cur_page);
+		fprintf(stderr, "mtr log type: %lu space: %lu page: %lu\n", type, cur_space, cur_page);
 	}
 
-	mmap_mtr_hdr->space = cur_space;
-	mmap_mtr_hdr->page_no = cur_page;
+	mtr_hdr.space = cur_space;
+	mtr_hdr.page_no = cur_page;
  
-  // write header + payload
+  // write header
   uint64_t org_offset = offset;
-  memcpy(gb_pm_mmap+offset, mmap_mtr_hdr, (size_t)PMEM_MMAP_MTRLOG_HDR_SIZE);
-  offset += PMEM_MMAP_MTRLOG_HDR_SIZE;
-  memcpy(gb_pm_mmap+offset, buf, n);
-
-	// add space_id and page_no in the header
-	if (type == MLOG_2BYTES) {
-		ulint page_off = mach_read_from_2(ptr);
-		ptr += 2;
-		ulint state = mach_parse_compressed(&ptr, end_ptr);
-		
-		// At this point, we can remove mtr log for this undo page
-		if (state >= TRX_UNDO_CACHED) {
-			ut_ad(state != TRX_UNDO_PREPARED);
-
-			// debug commit mtr log
-			//fprintf(stderr, "[mtr-write] call commit state: %lu cur_space: %lu cur_page: %lu cur_offset: %lu\n"
-			//				,state, cur_space, cur_page, org_offset);
-			pm_mmap_log_commit(cur_space, cur_page, offset+n);
-		} 
-	} else {
-		//fprintf(stderr, "[mtr-write] not commit cur_space: %lu cur_page: %lu cur_offset: %lu\n"
-		//				 ,cur_space, cur_page, org_offset);
-	}
-	
-  // debug
-  //fprintf(stderr, "[JONGQ] offset: %lu size: %lu lsn: %lu\n", 
-  //   offset, n, lsn);
-
+  memcpy(gb_pm_mmap+offset, &mtr_hdr, sizeof(PMEM_MMAP_MTRLOG_HDR));
   // persistent barrier
-  flush_cache(gb_pm_mmap+org_offset, (size_t)(PMEM_MMAP_MTRLOG_HDR_SIZE + n));
+  flush_cache(gb_pm_mmap+org_offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
 
+  // write payload
+  offset += sizeof(PMEM_MMAP_MTRLOG_HDR);
+  memcpy(gb_pm_mmap+offset, buf, n);
+  // persistent barrier
+  flush_cache(gb_pm_mmap+offset, n);
+	
   // jhpark: ALWAYS write offset of current mtr log.
 	//				 In recovery, we must starts to read from this offset.
 	//				 Also, maintain cur_offset in mtr_sys object to track the "next_write_to_offset"
   pm_mmap_write_logfile_header_size(org_offset);
 	mmap_mtrlogbuf->prev_offset = mmap_mtrlogbuf->cur_offset;
   mmap_mtrlogbuf->cur_offset = offset + n;
-  free(mmap_mtr_hdr);
-#endif
-
-/*
-#elif UNIV_LOG_ZERO
-  	// log << header << cnt << payload << persist(log)
-  	volatile int org_offset = offset;
-  	memcpy(pdata+offset, mmap_mtr_hdr, (size_t)PMEM_MMAP_MTRLOG_HDR_SIZE);
-  	offset += PMEM_MMAP_MTRLOG_HDR_SIZE;
-  	int cnt = __builtin_popcount((uint64_t)buf);
-  	memcpy(pdata+offset, &cnt, sizeof(cnt));
-  	offset += sizeof(cnt);
-  	memcpy(pdata+offset, buf, (size_t)n);
-  	// persistent barrier
-  	flush_cache(pdata+org_offset, (size_t)(PMEM_MMAP_MTRLOG_HDR_SIZE+sizeof(cnt)+n));
-  	mmap_mtrlogbuf->cur_offset = offset + n;
-  	// persistent barrier (for now, just ignore)
-  	//flush_cache(&mmap_mtrlogbuf->cur_offset, sizeof(mmap_mtrlogbuf->cur_offset));
-#endif
-*/
 
 	pthread_mutex_unlock(&mmap_mtrlogbuf->mtrMutex);
   ret = n;
@@ -498,4 +452,3 @@ void pm_mmap_mtrlogbuf_commit_v1(ulint space, ulint page_no) {
 	}
 	fprintf(stderr, "break out ! ckpt_offset: %lu\n", mmap_mtrlogbuf->ckpt_offset);
 }
-

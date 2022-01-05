@@ -1510,7 +1510,8 @@ innobase_start_or_create_for_mysql(void)
     assert(gb_pm_mmap);
   }
 
-	if (!is_pmem_recv) {
+// TODO(jhpark): we fix the recovery protocol
+//	if (!is_pmem_recv) {
 		// for debugging : chagne the mtr log region size
 		// original : 1024*1024*1024*8UL (8GB)
 		pm_mmap_mtrlogbuf_init(1024*1024*1024*1UL); // 1GB for test
@@ -1518,7 +1519,7 @@ innobase_start_or_create_for_mysql(void)
 		// TODO(jhpark): change buffer pool recovery policy
 		// buffer retion initialization (2GB)
 		pm_mmap_buf_init(1024*1024*1024*2UL);
-	}
+//	}
 	
 	//pm_mmap_buf_init(1024*1024*1024*3UL);
 

@@ -4938,21 +4938,10 @@ btr_cur_del_mark_set_clust_rec(
 
 #ifdef UNIV_NVDIMM_CACHE
     if (is_nvm_page) {
-    	// skip generating REDO logs for nvm-page
-			// Instead, write commit log in mtr log
-			// TODO(jhpark): flush only modified region not whole records 
-			// persist records
-			ulint cur_rec_size = rec_offs_size(offsets); 
-            pm_mmap_mtrlogbuf_commit(block->frame, UNIV_PAGE_SIZE, nvm_bpage->id.space(), nvm_bpage->id.page_no());
-
-			//pm_mmap_mtrlogbuf_commit(rec, cur_rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
-    } else {
-        if ( nvm_bpage->id.space() == 27) {
-          fprintf(stderr, "[JONGQ] WATCH-OUT-2\n");
-          exit(-1);
-        }
-        btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
-					    roll_ptr, mtr);
+    	// (XXX) skip REDO log for delete operation
+		} else {
+      btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
+          roll_ptr, mtr);
     }
 #else
 	btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
@@ -5060,13 +5049,6 @@ btr_cur_del_mark_set_sec_rec(
 	block = btr_cur_get_block(cursor);
 	rec = btr_cur_get_rec(cursor);
 
-#ifdef UNIV_NVDIMM_CACHE
-  fprintf(stderr,"[JONGQ] btr_cur_del_mark_set_sec_rec! space: %lu\n", block->page.id.space());
-  if (block->page.id.space() == 27) {
-    fprintf(stderr, "[JONGQ] WRONG!!!\n");
-  }
-#endif /* UNIV_NVDIMM_CACHE	*/
-	
   err = lock_sec_rec_modify_check_and_lock(flags,
 						 btr_cur_get_block(cursor),
 						 rec, cursor->index, thr, mtr);

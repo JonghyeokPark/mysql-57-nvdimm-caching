@@ -1542,6 +1542,12 @@ use_heap:
         buf_page_t* nvm_bpage = &nvm_block->page;
 
         if (nvm_bpage->cached_in_nvdimm) {
+          // HOT DEBUG //
+//          if (!is_pmem_recv) {
+//          fprintf(stderr, "[DEBUG] debug !!!\n");
+//          exit(1);
+//          }
+          // HOT DEBUG //
           // skip generating REDO log for nvm-page
           pm_mmap_mtrlogbuf_commit(nvm_block->frame, UNIV_PAGE_SIZE, space_id, page_no);
 					//pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, space_id, page_no);

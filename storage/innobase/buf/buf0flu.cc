@@ -1136,6 +1136,13 @@ buf_flush_write_block_low(
                 << nvdimm_page->buf_pool_index << " from " << bpage->buf_pool_index;*/
     } else {
 normal:
+        // HOT DEBUG//
+        // (jhpark): this section will detect the NVDIMM -> DISK pages
+        if (bpage->moved_to_nvdimm || bpage->cached_in_nvdimm) {
+          fprintf(stderr, "[DEBUG] (%lu:%lu) this page is flushed to disk !!!!\n", bpage->id.space(), bpage->id.page_no());
+        }
+        // HOT DEBUG// 
+
         bpage->moved_to_nvdimm = false;
 
         /*ib::info() << bpage->id.space() << " " << bpage->id.page_no()
@@ -4063,8 +4070,6 @@ buf_flush_nvdimm_LRU_list_batch(
 
 		buf_page_t* prev = UT_LIST_GET_PREV(LRU, bpage);
 		buf_pool->lru_hp.set(prev);
-
-        //if (bpage->id.space() == 27)  continue;
 
 		BPageMutex*	block_mutex = buf_page_get_mutex(bpage);
 
