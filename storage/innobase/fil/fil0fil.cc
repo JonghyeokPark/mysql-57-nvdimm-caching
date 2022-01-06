@@ -372,6 +372,7 @@ fil_write(
 
 /*******************************************************************//**
 Returns the table space by a given id, NULL if not found. */
+#include "ut0lst.h"
 UNIV_INLINE
 fil_space_t*
 fil_space_get_by_id(
@@ -4144,6 +4145,8 @@ fil_ibd_open(
 
 skip_validate:
 	if (err == DB_SUCCESS) {
+    fprintf(stderr, "[DEBUG] fil_ibd_open %s!!!\n", space_name);
+
 		fil_space_t*	space = fil_space_create(
 			space_name, id, flags, purpose);
 
@@ -7552,3 +7555,4 @@ fil_space_t::release_free_extents(ulint	n_reserved)
 	ut_a(n_reserved_extents >= n_reserved);
 	n_reserved_extents -= n_reserved;
 }
+

@@ -873,7 +873,7 @@ buf_read_recv_pages(
 		/* The tablespace is missing: do nothing */
 		return;
 	}
-  
+ 
 	fil_space_open_if_needed(space);
 
 	const page_size_t	page_size(space->flags);
@@ -922,3 +922,33 @@ buf_read_recv_pages(
 			      unsigned(n_stored)));
 }
 
+// (jhpark): RECOVERY
+#include "dict0crea.h"
+void nc_fil_io_test() {
+  
+  dberr_t err;
+
+  // (jhpark): we need to construct the fil_space list first
+
+  dict_check_tablespaces_and_store_max_id(false);   
+  fprintf(stderr, "[DEBUG] err:%lu\n", err);
+  ulint id = (ulint)27;
+  fil_space_t* space = fil_space_get(id);
+  if (space == NULL) {
+    fprintf(stderr, "[DEBUG] space is NULL what?!\n");
+  }
+  fil_space_open_if_needed(space);
+
+  const page_size_t page_size(space->flags);
+  const page_id_t cur_page_id(27, 736);
+  buf_pool_t* buf_pool;
+  buf_pool = buf_pool_get(cur_page_id);
+
+	buf_read_page_low(
+			&err, true,
+			0,
+			BUF_READ_ANY_PAGE,
+			cur_page_id, page_size, true);
+
+	fprintf(stderr, "read page successs?! err: %d\n", err);
+}

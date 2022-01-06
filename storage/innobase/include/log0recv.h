@@ -417,4 +417,28 @@ extern ulint	recv_n_pool_free_frames;
 #include "log0recv.ic"
 #endif
 
+// (jhpark): RECOVERY
+#ifdef UNIV_NVDIMM_CACHE
+ulint
+wrap_recv_parse_log_rec(
+    mlog_id_t*  type,
+    byte*   ptr,
+    byte*   end_ptr,
+    ulint*    space,
+    ulint*    page_no,
+    bool    apply,
+    byte**    body);
+#endif
+
+byte*
+recv_parse_or_apply_log_rec_body(
+    mlog_id_t type,
+    byte* ptr,
+    byte* end_ptr,
+    ulint space_id,
+    ulint page_no,
+    buf_block_t* block,
+    mtr_t* mtr);
+
+
 #endif

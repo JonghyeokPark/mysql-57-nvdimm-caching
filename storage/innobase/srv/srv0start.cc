@@ -2384,6 +2384,8 @@ files_checked:
 			recv_apply_hashed_log_recs(TRUE);
 			DBUG_PRINT("ib_log", ("apply completed"));
 
+nc_fil_io_test();
+
 			if (recv_needed_recovery) {
 				trx_sys_print_mysql_binlog_offset();
 			}
@@ -2409,10 +2411,14 @@ files_checked:
 
 		trx_purge_sys_create(srv_n_purge_threads, purge_queue);
 
+    PMEMMMAP_INFO_PRINT("JONGQ recovery-6\n"); 
+
 		/* recv_recovery_from_checkpoint_finish needs trx lists which
 		are initialized in trx_sys_init_at_db_start(). */
 
 		recv_recovery_from_checkpoint_finish();
+
+    PMEMMMAP_INFO_PRINT("JONGQ recovery-7\n"); 
 
 		/* Fix-up truncate of tables in the system tablespace
 		if server crashed while truncate was active. The non-
@@ -2422,12 +2428,16 @@ files_checked:
 		can do updates to pages in the system tablespace.*/
 		err = truncate_t::fixup_tables_in_system_tablespace();
 
+    PMEMMMAP_INFO_PRINT("JONGQ recovery-7-1\n"); 
+
 		if (srv_force_recovery < SRV_FORCE_NO_IBUF_MERGE) {
 			/* Open or Create SYS_TABLESPACES and SYS_DATAFILES
 			so that tablespace names and other metadata can be
 			found. */
 			srv_sys_tablespaces_open = true;
 			err = dict_create_or_check_sys_tablespace();
+      PMEMMMAP_INFO_PRINT("JONGQ recovery-7-2\n"); 
+
 			if (err != DB_SUCCESS) {
 				return(srv_init_abort(err));
 			}
@@ -2458,7 +2468,10 @@ files_checked:
 				&& srv_force_recovery == 0;
 
 			dict_check_tablespaces_and_store_max_id(validate);
+      PMEMMMAP_INFO_PRINT("JONGQ recovery-7-3\n"); 
 		}
+
+    PMEMMMAP_INFO_PRINT("JONGQ recovery-8\n"); 
 
 		/* Rotate the encryption key for recovery. It's because
 		server could crash in middle of key rotation. Some tablespace
@@ -2534,7 +2547,11 @@ files_checked:
 				logfile0);
 		}
 
+    PMEMMMAP_INFO_PRINT("JONGQ recovery-9\n"); 
+
 		recv_recovery_rollback_active();
+
+		 PMEMMMAP_INFO_PRINT("JONGQ recovery-10\n"); 
 
 		/* It is possible that file_format tag has never
 		been set. In this case we initialize it to minimum
@@ -2558,6 +2575,8 @@ files_checked:
 
 		log_buffer_flush_to_disk();
 	}
+
+  PMEMMMAP_INFO_PRINT("JONGQ recovery-11\n"); 
 
 	/* Open temp-tablespace and keep it open until shutdown. */
 

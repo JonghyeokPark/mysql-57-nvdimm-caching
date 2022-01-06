@@ -807,6 +807,9 @@ dict_get_first_path(
 	mtr_commit(&mtr);
 	mem_heap_free(heap);
 
+  // (jhpark): RECOVERY
+  fprintf(stderr, "[DEBUG] dict_get_first_path called: %s space_id: %lu\n", filepath, space_id);
+
 	return(filepath);
 }
 

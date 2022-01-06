@@ -1667,7 +1667,7 @@ or if it is a MLOG_FILE_ operation
 @param[in,out]	mtr		mini-transaction, or NULL if
 a page log record should not be applied
 @return log record end, NULL if not a complete record */
-static
+//static
 byte*
 recv_parse_or_apply_log_rec_body(
 	mlog_id_t	type,
@@ -2495,6 +2495,9 @@ recv_recover_page_func(
 				    recv_addr->space,
 				    recv_addr->page_no));
 
+      // (jhpark): RECOVERY
+      fprintf(stderr, "[DEBUG] recovery apply log records!\n");
+
 			recv_parse_or_apply_log_rec_body(
 				recv->type, buf, buf + recv->len,
 				recv_addr->space, recv_addr->page_no,
@@ -2605,9 +2608,6 @@ recv_read_in_area(
 	}
 	buf_read_recv_pages(FALSE, page_id.space(), page_nos, n);
 
-	/*
-	fprintf(stderr, "Recv pages at %lu n %lu\n", page_nos[0], n);
-	*/
 	return(n);
 }
 
@@ -2782,6 +2782,12 @@ loop:
 
 		recv_no_ibuf_operations = false;
 	}
+
+  // (jhpark): we finished normal page recovery (applying REDO logs)
+  //  now, we recover the NC page redo logging
+  fprintf(stderr, "Normal page applyging REDO log finished!\n");
+  //nc_fil_io_test(); 
+
 
 	recv_sys->apply_log_recs = FALSE;
 	recv_sys->apply_batch_on = FALSE;
@@ -3042,6 +3048,85 @@ recv_parse_log_rec(
 
 	return(new_ptr - ptr);
 }
+
+// (jhpark): RECOVERY
+#ifdef UNIV_NVDIMM_CACHE
+ulint
+wrap_recv_parse_log_rec(
+	mlog_id_t*	type,
+	byte*		ptr,
+	byte*		end_ptr,
+	ulint*		space,
+	ulint*		page_no,
+	bool		apply,
+	byte**		body)
+{
+	byte*	new_ptr;
+
+	*body = NULL;
+
+	UNIV_MEM_INVALID(type, sizeof *type);
+	UNIV_MEM_INVALID(space, sizeof *space);
+	UNIV_MEM_INVALID(page_no, sizeof *page_no);
+	UNIV_MEM_INVALID(body, sizeof *body);
+
+	if (ptr == end_ptr) {
+
+		return(0);
+	}
+
+	switch (*ptr) {
+#ifdef UNIV_LOG_LSN_DEBUG
+	case MLOG_LSN | MLOG_SINGLE_REC_FLAG:
+	case MLOG_LSN:
+		new_ptr = mlog_parse_initial_log_record(
+			ptr, end_ptr, type, space, page_no);
+		if (new_ptr != NULL) {
+			const lsn_t	lsn = static_cast<lsn_t>(
+				*space) << 32 | *page_no;
+			ut_a(lsn == recv_sys->recovered_lsn);
+		}
+
+		*type = MLOG_LSN;
+		return(new_ptr - ptr);
+#endif /* UNIV_LOG_LSN_DEBUG */
+	case MLOG_MULTI_REC_END:
+	case MLOG_DUMMY_RECORD:
+		*type = static_cast<mlog_id_t>(*ptr);
+		return(1);
+	case MLOG_CHECKPOINT:
+		if (end_ptr < ptr + SIZE_OF_MLOG_CHECKPOINT) {
+			return(0);
+		}
+		*type = static_cast<mlog_id_t>(*ptr);
+		return(SIZE_OF_MLOG_CHECKPOINT);
+	case MLOG_MULTI_REC_END | MLOG_SINGLE_REC_FLAG:
+	case MLOG_DUMMY_RECORD | MLOG_SINGLE_REC_FLAG:
+	case MLOG_CHECKPOINT | MLOG_SINGLE_REC_FLAG:
+		recv_sys->found_corrupt_log = true;
+		return(0);
+	}
+
+	new_ptr = mlog_parse_initial_log_record(ptr, end_ptr, type, space,
+						page_no);
+	*body = new_ptr;
+
+	if (UNIV_UNLIKELY(!new_ptr)) {
+
+		return(0);
+	}
+
+	new_ptr = recv_parse_or_apply_log_rec_body(
+		*type, new_ptr, end_ptr, *space, *page_no, NULL, NULL);
+
+	if (UNIV_UNLIKELY(new_ptr == NULL)) {
+
+		return(0);
+	}
+
+	return(new_ptr - ptr);
+}
+#endif
 
 /*******************************************************//**
 Calculates the new value for lsn when more data is added to the log. */

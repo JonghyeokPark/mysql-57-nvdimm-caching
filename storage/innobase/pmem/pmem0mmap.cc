@@ -86,9 +86,12 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
 			
 			// jhpark: check buffer!!!!!
 			// pm_mmap_recv_flush_buffer();
-
 			PMEMMMAP_INFO_PRINT("recovery offset: %lu\n", pmem_recv_offset);
-		} 
+		}
+
+    // HOT DEBUG //
+    pm_mmap_recv();
+
 
 		// step1. allocate mtr_recv_sys
 		// step2. 1) get header infor mation and 2) get info from mtr log region
@@ -150,6 +153,7 @@ int pm_mmap_mtrlogbuf_init(const size_t size) {
 	mmap_mtrlogbuf->ckpt_offset = PMEM_MMAP_MTR_FIL_HDR_SIZE;
   PMEMMMAP_INFO_PRINT("MTR LOG BUFFER structure initialization finished!\n"); 
   return 0;
+
 }
 
 // get mtr log header information
@@ -331,7 +335,7 @@ ssize_t pm_mmap_mtrlogbuf_write(
 	cur_space = mach_parse_compressed(&ptr, end_ptr);
 	if (ptr != NULL) {
 		cur_page = mach_parse_compressed(&ptr, end_ptr);
-		fprintf(stderr, "mtr log type: %lu space: %lu page: %lu\n", type, cur_space, cur_page);
+		fprintf(stderr, "[DEBUG] mtr log type: %lu space: %lu page: %lu\n", type, cur_space, cur_page);
 	}
 
 	mtr_hdr.space = cur_space;

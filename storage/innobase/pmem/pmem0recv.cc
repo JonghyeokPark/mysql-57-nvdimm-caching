@@ -19,8 +19,70 @@
 #include "mtr0types.h"
 #include "trx0rec.h"
 
+#include "buf0rea.h"
+
 extern unsigned char* gb_pm_mmap;
 extern uint64_t pmem_recv_size;
+
+
+void pm_mmap_recv() {
+  // parse log records
+  // (jhpark): first, we read at the begingin of mtrlog area
+
+  // read mtr log header 
+  ulint offset = PMEM_MMAP_MTR_FIL_HDR_SIZE;
+
+  PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr;
+  memcpy(&mtr_recv_hdr, gb_pm_mmap+offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
+  
+  fprintf(stderr, "[DEBUG] mtr log header check need_recv: %d len: %lu len: %lu mtr_lsn: %lu prev_offset: %lu space: %lu page: %lu\n"
+      ,mtr_recv_hdr.need_recv, mtr_recv_hdr.len, mtr_recv_hdr.lsn, mtr_recv_hdr.mtr_lsn
+      ,mtr_recv_hdr.prev_offset, mtr_recv_hdr.space, mtr_recv_hdr.page_no);
+
+  offset += sizeof(PMEM_MMAP_MTRLOG_HDR);
+
+  mlog_id_t type;
+  ulint space, page_no;
+  byte* body; 
+  ulint ret = wrap_recv_parse_log_rec(&type, gb_pm_mmap + offset
+      , gb_pm_mmap + offset + mtr_recv_hdr.len
+      , &space, &page_no, false, &body);
+
+
+  fprintf(stderr, "[DEBUG] ret: %lu type: %d space: %lu pange_no: %lu\n",ret, type, space ,page_no);
+
+  // apply log records
+  // (jhpark): we need to get a block is that ok? 
+
+/*  
+  // step1. first read to be recovered page !!!
+  int fd = open("./tpcc10/new_orders.ibd", O_RDWR, 0x777);
+  if (fd < 0) {
+    fprintf(stderr, "[ERROR] we can not open the file!\n");
+  }
+  if (lseek(fd, page_no << UNIV_PAGE_SIZE_SHIFT, SEEK_SET) < 0) {
+    fprintf(stderr, "[ERROR] lssek file is failed!\n");
+  }
+
+  byte cur_recv_page[4096];
+  read(fd, cur_recv_page, 4096);
+
+  // step2. apply current mtr log reocrds
+  mtr_t recv_mtr;
+  mtr_start(&recv_mtr);
+
+  //byte* xxx = recv_parse_or_apply_log_rec_body(
+  //    type, gb_pm_mmap + offset,  gb_pm_mmap + offset + mtr_recv_hdr.len
+  //    , space, page_no, block, &recv_mtr); 
+
+   recv_mtr.discard_modifications();
+   mtr_commit(&recv_mtr);
+ 
+  // step3. write current recv page 
+*/
+
+}
+
 
 uint64_t pm_mmap_recv_check(PMEM_MMAP_MTRLOGFILE_HDR* log_fil_hdr) {
 	size_t tmp_offset = log_fil_hdr->ckpt_offset;

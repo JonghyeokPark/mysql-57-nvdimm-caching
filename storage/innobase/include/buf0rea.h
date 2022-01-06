@@ -160,4 +160,6 @@ invoked */
 #endif /* UNIV_NVDIMM_CACHE */
 /* @} */
 
+// (jhpark): RECOVERY
+void nc_fil_io_test();
 #endif

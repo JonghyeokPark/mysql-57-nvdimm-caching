@@ -196,6 +196,7 @@ void pm_mmap_buf_write(unsigned long len, void* buf);
 // recovery
 //bool pm_mmap_recv(PMEM_MMAP_MTRLOGFILE_HDR* log_fil_hdr);
 bool pm_mmap_recv(uint64_t start_offset, uint64_t end_offset);
+void pm_mmap_recv();
 uint64_t pm_mmap_recv_check(PMEM_MMAP_MTRLOGFILE_HDR* log_fil_hdr);
 void pm_mmap_recv_flush_buffer();
 
