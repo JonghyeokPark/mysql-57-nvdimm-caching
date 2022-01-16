@@ -85,29 +85,13 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
 			pmem_recv_size = recv_mmap_mtrlog_fil_hdr->size;
 			
 			// jhpark: check buffer!!!!!
-			// pm_mmap_recv_flush_buffer();
 			PMEMMMAP_INFO_PRINT("recovery offset: %lu\n", pmem_recv_offset);
 		}
-
+ 
     // HOT DEBUG //
-    pm_mmap_recv();
+    //pm_mmap_recv_flush_buffer();
+    // HOT DEBUG //
 
-
-		// step1. allocate mtr_recv_sys
-		// step2. 1) get header infor mation and 2) get info from mtr log region
-		// step3. reconstruct undo page
-
-    // Get header information from exsiting nvdimm log file
-    //size_t recv_prev_offset = recv_mmap_mtrlog_hdr->prev;
-    //memset(recv_mmap_mtrlog_hdr, 0x00, PMEM_MMAP_MTRLOG_HDR_SIZE);
-    //memcpy(recv_mmap_mtrlog_hdr, gb_pm_mmap+recv_prev_offset, PMEM_MMAP_MTRLOG_HDR_SIZE);
-
-    // debug
-    //fprintf(stderr, "size: %lu\n", recv_size);
-    //fprintf(stderr, "len: %lu\n", recv_mmap_mtrlog_hdr->len);
-    //fprintf(stderr, "lsn: %lu\n", recv_mmap_mtrlog_hdr->lsn);
-    //fprintf(stderr, "need_recovery: %d\n", recv_mmap_mtrlog_hdr->need_recv);
-    
 		free(recv_mmap_mtrlog_fil_hdr);
     free(recv_mmap_mtrlog_hdr);
   }
@@ -223,8 +207,8 @@ void pm_mmap_log_commit(ulint cur_space, ulint cur_page, ulint cur_offset) {
 				cur_page == tmp_mmap_hdr->page_no) {
 
 			// 1. unset recovery flag
-			bool val = false;
-			memcpy(gb_pm_mmap + offset, &val, (size_t)offsetof(PMEM_MMAP_MTRLOG_HDR, len));
+		  //int val = 1;
+			//memcpy((void*)(gb_pm_mmap + offset), &val, (size_t)offsetof(PMEM_MMAP_MTRLOG_HDR, len));
 			// 2. keep ckpt_offset (continuous)
 			offset += PMEM_MMAP_MTRLOG_HDR_SIZE + tmp_mmap_hdr->len;
 
@@ -299,12 +283,16 @@ ssize_t pm_mmap_mtrlogbuf_write(
 
   // jhpark: Force to trigger mtr_log_checkpoint if the offset becomes larger than threshold
 	size_t offset = mmap_mtrlogbuf->cur_offset;
-	int limit = mmap_mtrlogbuf->size * 0.75;
+	size_t limit = mmap_mtrlogbuf->size * 0.1;
 
 	// checkopint occurred
   if (offset + n > limit) {
 		// debug
-		//PMEMMMAP_INFO_PRINT("[WRNING] mmap_mtrlogbuf is FULL!\n");
+		PMEMMMAP_INFO_PRINT("[WRNING] mmap_mtrlogbuf is FULL!\n");
+    // HOT DEBUG //
+    exit(1);
+    // HOT DEBUG //
+
 		ut_ad(offset < mmap_mtrlogbuf->size);
 
 		offset = pm_mmap_log_checkpoint(offset);
@@ -329,14 +317,16 @@ ssize_t pm_mmap_mtrlogbuf_write(
 	const byte *end_ptr = buf+n;
 	ulint cur_space = 0, cur_page = 0;
 	mlog_id_t type;
-
 	type = (mlog_id_t)((ulint)*ptr & ~MLOG_SINGLE_REC_FLAG);
+
 	ptr++;
 	cur_space = mach_parse_compressed(&ptr, end_ptr);
 	if (ptr != NULL) {
 		cur_page = mach_parse_compressed(&ptr, end_ptr);
-		fprintf(stderr, "[DEBUG] mtr log type: %lu space: %lu page: %lu\n", type, cur_space, cur_page);
-	}
+		//fprintf(stderr, "[DEBUG] mtr log type: %lu space: %lu page: %lu\n", type, cur_space, cur_page);
+	} else {
+    fprintf(stderr, "[DEBUG] mtr log is NULL!\n");
+  }
 
 	mtr_hdr.space = cur_space;
 	mtr_hdr.page_no = cur_page;
@@ -363,6 +353,46 @@ ssize_t pm_mmap_mtrlogbuf_write(
 	pthread_mutex_unlock(&mmap_mtrlogbuf->mtrMutex);
   ret = n;
   return ret;
+}
+
+void pm_mmap_mtrlogbuf_commit(uint64_t space, uint64_t page_no) {
+  // TODO(jhpark): add hash map <page_id , offset>
+  ulint offset = PMEM_MMAP_MTR_FIL_HDR_SIZE;
+  PMEM_MMAP_MTRLOG_HDR mtrhdr;
+  bool commit_flag = false;
+
+// while(offset < mmap_mtrlogbuf->cur_offset) {
+   while(true) {
+
+    memcpy(&mtrhdr, gb_pm_mmap + offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
+    if (mtrhdr.len == 0) break;
+    
+    if (mtrhdr.space == space 
+        && mtrhdr.page_no == page_no) {
+
+      commit_flag = true;
+
+      if (mtrhdr.need_recv == 1) {
+        mtrhdr.need_recv = 0;
+      }
+
+      // (jhpark): initialize && flsuh?
+      memcpy(gb_pm_mmap + offset, &mtrhdr,(sizeof(PMEM_MMAP_MTRLOG_HDR)));
+      flush_cache(gb_pm_mmap + offset, (sizeof(PMEM_MMAP_MTRLOG_HDR)));
+      //memset(gb_pm_mmap + offset, 0x0, (sizeof(PMEM_MMAP_MTRLOG_HDR) + mtrhdr.len));
+    }
+
+    offset += (sizeof(PMEM_MMAP_MTRLOG_HDR) + mtrhdr.len);
+  }
+
+  /*
+  if (!commit_flag)  {
+    fprintf(stderr, "[ERROR] we can not find the mtr log !!!! (%lu:%lu)\n", space, page_no);
+  } else {
+    fprintf(stderr, "[ERROR] we found the mtr log !!!! (%lu:%lu)\n", space, page_no);
+  }
+  */
+ 
 }
 
 // commit mtr log 
@@ -416,7 +446,7 @@ bool pm_mmap_mtrlogbuf_identify(size_t offset, size_t n, ulint space, ulint page
 }
 
 void pm_mmap_mtrlogbuf_unset_recv_flag(size_t offset) {
-	memcpy(gb_pm_mmap + offset, false, sizeof(bool));
+	memcpy((void*)(gb_pm_mmap + offset),(const void*)1, sizeof(bool));
 	// need flush? No we can recover by using commit log
 }
 

@@ -1138,7 +1138,14 @@ buf_flush_write_block_low(
 normal:
         // HOT DEBUG//
         // (jhpark): this section will detect the NVDIMM -> DISK pages
-        if (bpage->moved_to_nvdimm || bpage->cached_in_nvdimm) {
+        bool mtrlog_commit_flag = false;
+        ulint check_space, check_page;
+        if (bpage->cached_in_nvdimm) {
+        //  (jhpark): is this right place?
+        //  pm_mmap_mtrlogbuf_commit(bpage->id.space(), bpage->id.page_no());
+          mtrlog_commit_flag = true;
+          check_space = bpage->id.space();
+          check_page = bpage->id.page_no();
           fprintf(stderr, "[DEBUG] (%lu:%lu) this page is flushed to disk !!!!\n", bpage->id.space(), bpage->id.page_no());
         }
         // HOT DEBUG// 
@@ -1182,9 +1189,6 @@ normal:
                     sync, bpage->id, bpage->size, 0, bpage->size.physical(),
                     frame, bpage); 
 
-            // jhpark: write oldest_modification_lsn of current NVDIMM-caching page
-            pm_mmap_write_logfile_header_lsn(bpage->oldest_modification);
-
         } else if (flush_type == BUF_FLUSH_SINGLE_PAGE) {
             buf_dblwr_write_single_page(bpage, sync);
         } else {
@@ -1204,6 +1208,11 @@ normal:
             /* true means we want to evict this page from the
                LRU list as well. */
             buf_page_io_complete(bpage, true);
+        }
+
+        // HOT DEBUG //
+        if (mtrlog_commit_flag) {
+          pm_mmap_mtrlogbuf_commit(check_space, check_page);
         }
     }
 #else

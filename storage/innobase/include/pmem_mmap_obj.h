@@ -158,7 +158,8 @@ struct __pmem_mmap_mtrlog_fileheader {
 };
 
 struct __pmem_mmap_mtrlog_hdr {
-	bool need_recv;								 // true if need recovery
+	//bool need_recv;								 // true if need recovery
+  int need_recv;
 	unsigned long int len;    		 // length of mtr log payload
 	unsigned long int lsn;      	 // lsn from global log_sys
   unsigned long int mtr_lsn;  	 // mtr log lsn
@@ -183,6 +184,8 @@ ssize_t pm_mmap_mtrlogbuf_write(const uint8_t* buf,
 
 bool pm_mmap_mtrlogbuf_identify(size_t offset, unsigned long space, unsigned long page_no);
 void pm_mmap_mtrlogbuf_unset_recv_flag(size_t offset);
+void pm_mmap_mtrlogbuf_commit(uint64_t space, uint64_t page_no);
+
 void pm_mmap_mtrlogbuf_commit(unsigned char* rec, unsigned long cur_rec_size, unsigned long space, unsigned long page_no);
 void pm_mmap_mtrlogbuf_commit_v1(unsigned long space, unsigned long page_no);
 
@@ -194,9 +197,7 @@ void pm_mmap_buf_write(unsigned long len, void* buf);
 
 
 // recovery
-//bool pm_mmap_recv(PMEM_MMAP_MTRLOGFILE_HDR* log_fil_hdr);
-bool pm_mmap_recv(uint64_t start_offset, uint64_t end_offset);
-void pm_mmap_recv();
+void pm_mmap_recv(uint64_t start_offset, uint64_t end_offset);
 uint64_t pm_mmap_recv_check(PMEM_MMAP_MTRLOGFILE_HDR* log_fil_hdr);
 void pm_mmap_recv_flush_buffer();
 

@@ -24,63 +24,52 @@
 extern unsigned char* gb_pm_mmap;
 extern uint64_t pmem_recv_size;
 
-
-void pm_mmap_recv() {
+void pm_mmap_recv(uint64_t start_offset, uint64_t end_offset) {
   // parse log records
-  // (jhpark): first, we read at the begingin of mtrlog area
+  // TODO(jhpark): we need to use start_offset
 
-  // read mtr log header 
   ulint offset = PMEM_MMAP_MTR_FIL_HDR_SIZE;
-
-  PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr;
-  memcpy(&mtr_recv_hdr, gb_pm_mmap+offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
-  
-  fprintf(stderr, "[DEBUG] mtr log header check need_recv: %d len: %lu len: %lu mtr_lsn: %lu prev_offset: %lu space: %lu page: %lu\n"
-      ,mtr_recv_hdr.need_recv, mtr_recv_hdr.len, mtr_recv_hdr.lsn, mtr_recv_hdr.mtr_lsn
-      ,mtr_recv_hdr.prev_offset, mtr_recv_hdr.space, mtr_recv_hdr.page_no);
-
-  offset += sizeof(PMEM_MMAP_MTRLOG_HDR);
-
   mlog_id_t type;
   ulint space, page_no;
   byte* body; 
-  ulint ret = wrap_recv_parse_log_rec(&type, gb_pm_mmap + offset
-      , gb_pm_mmap + offset + mtr_recv_hdr.len
-      , &space, &page_no, false, &body);
 
+  fprintf(stderr, "[DEBUG] mtr_log_recovery end_offset: %lu\n", end_offset);
+//  while (offset <= end_offset) {
+  while (1) {
 
-  fprintf(stderr, "[DEBUG] ret: %lu type: %d space: %lu pange_no: %lu\n",ret, type, space ,page_no);
-
-  // apply log records
-  // (jhpark): we need to get a block is that ok? 
-
-/*  
-  // step1. first read to be recovered page !!!
-  int fd = open("./tpcc10/new_orders.ibd", O_RDWR, 0x777);
-  if (fd < 0) {
-    fprintf(stderr, "[ERROR] we can not open the file!\n");
-  }
-  if (lseek(fd, page_no << UNIV_PAGE_SIZE_SHIFT, SEEK_SET) < 0) {
-    fprintf(stderr, "[ERROR] lssek file is failed!\n");
-  }
-
-  byte cur_recv_page[4096];
-  read(fd, cur_recv_page, 4096);
-
-  // step2. apply current mtr log reocrds
-  mtr_t recv_mtr;
-  mtr_start(&recv_mtr);
-
-  //byte* xxx = recv_parse_or_apply_log_rec_body(
-  //    type, gb_pm_mmap + offset,  gb_pm_mmap + offset + mtr_recv_hdr.len
-  //    , space, page_no, block, &recv_mtr); 
-
-   recv_mtr.discard_modifications();
-   mtr_commit(&recv_mtr);
+    // read mtr log header 
+    PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr;
+    memcpy(&mtr_recv_hdr, gb_pm_mmap+offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
  
-  // step3. write current recv page 
-*/
+    if (mtr_recv_hdr.len == 0) {
+      break;
+    }
 
+    fprintf(stderr, "[DEBUG] mtr log header check need_recv: %d len: %lu lsn: %lu mtr_lsn: %lu prev_offset: %lu space: %lu page: %lu\n"
+        ,mtr_recv_hdr.need_recv, mtr_recv_hdr.len, mtr_recv_hdr.lsn, mtr_recv_hdr.mtr_lsn
+        ,mtr_recv_hdr.prev_offset, mtr_recv_hdr.space, mtr_recv_hdr.page_no);
+
+    offset += sizeof(PMEM_MMAP_MTRLOG_HDR);
+    
+    ulint ret = wrap_recv_parse_log_rec(&type, gb_pm_mmap + offset
+        , gb_pm_mmap + offset + mtr_recv_hdr.len
+        , &space, &page_no, false, &body);
+
+
+    fprintf(stderr, "[DEBUG] ret: %lu type: %d space: %lu pange_no: %lu\n",ret, type, space ,page_no);
+
+    // apply log records
+    // HOT DEBUG we skip applying now !!
+    /*
+    if (mtr_recv_hdr.need_recv) {
+      pmem_recv_recover_page_func(space, page_no);
+    }
+    */
+
+    offset += mtr_recv_hdr.len;
+  }
+
+  fprintf(stderr, "[DEBUG] mtr log applying is finished!\n");
 }
 
 
@@ -115,161 +104,30 @@ uint64_t pm_mmap_recv_check(PMEM_MMAP_MTRLOGFILE_HDR* log_fil_hdr) {
   return -1;
 }
 
-bool pm_mmap_recv(uint64_t start_offset, uint64_t end_offset) {
-
-	mtr_t mtr;
-	size_t tmp_offset = start_offset;
-
-	while (true) {
-		fprintf(stderr, "current tmp_offset: %lu:(%lu)\n", tmp_offset, end_offset);
-
-		if (tmp_offset >= end_offset) {
-			break;
-		}
-
-		PMEM_MMAP_MTRLOG_HDR *recv_mmap_hdr = (PMEM_MMAP_MTRLOG_HDR *) malloc(PMEM_MMAP_MTRLOG_HDR_SIZE);
-		memcpy(recv_mmap_hdr, gb_pm_mmap + tmp_offset, PMEM_MMAP_MTRLOG_HDR_SIZE);
-		ut_ad(recv_mmap_hdr == NULL);
-
-		fprintf(stderr, "[recovery] need_recv: %d len: %lu lsn: %lu prev_offset: %lu space: %lu page_no: %lu\n"
-										,recv_mmap_hdr->need_recv, recv_mmap_hdr->len, recv_mmap_hdr->lsn,
-										recv_mmap_hdr->prev_offset,
-										recv_mmap_hdr->space, recv_mmap_hdr->page_no);
-
-    if (recv_mmap_hdr->need_recv == false) {
-      fprintf(stderr, "current log doesn't need to recvoery!\n");
-      tmp_offset += (PMEM_MMAP_MTRLOG_HDR_SIZE + recv_mmap_hdr->len);
-      free(recv_mmap_hdr);
-      continue;
-    }
-  
-		// page generation
-		bool found;
-		const page_size_t& page_size 
-			= fil_space_get_page_size(recv_mmap_hdr->space, &found);
-		
-		if (!found) {
-			fprintf(stderr, "This tablespace with that id (%lu) page (page_no: %lu) does not exist.\n"
-			,	recv_mmap_hdr->space, recv_mmap_hdr->page_no);
-		}	
-
-		const page_id_t   page_id(recv_mmap_hdr->space, recv_mmap_hdr->page_no);
-		if (buf_page_peek(page_id)) {
-			buf_block_t*  block;
-			mtr_start(&mtr);
-			block = buf_page_get( page_id, page_size, RW_X_LATCH, &mtr);
-			recv_recover_page(FALSE, block);
-			fprintf(stderr, " page (page_no: %lu) is recovered!\n", recv_mmap_hdr->page_no);
-			mtr_commit(&mtr); 	
-		} else {
-			// TODO(jhpark): implement nc version `recv_read_in_area()`
-			fprintf(stderr, "current page doesn't exist buffer!\n");
-			//ulint page_nos[1]; 
-			//page_nos[0] = recv_mmap_hdr->page_no; // just one element
-			//buf_read_recv_pages(TRUE, page_id.space(), page_nos, 1);
-			//fprintf(stderr, "Recv pages at %lu\n", page_nos[0]); 
-		  //recv_read_in_area(page_id);
-
-      // Force recovery UNDO page 
-      byte *mlog_data =  (byte*) malloc(recv_mmap_hdr->len);
-      memcpy(mlog_data, gb_pm_mmap + tmp_offset + PMEM_MMAP_MTRLOG_HDR_SIZE, sizeof(*mlog_data)); 
-      byte* ptr = mlog_data;
-      byte* end_ptr = mlog_data + recv_mmap_hdr->len;
-      mlog_id_t type;
-      type = (mlog_id_t)((ulint)*ptr & ~MLOG_SINGLE_REC_FLAG);
-    
-      // get current page with space_id and page_no
-
-			mtr_start(&mtr); 
-			buf_block_t* block = buf_page_get( page_id, page_size, RW_X_LATCH, &mtr);
-      byte* page = block->frame;
-			if (page == NULL) {
-				fprintf(stderr,"[JOGNQ] Tried to undo page but it is NULL!\n");
-			} else {
-				fprintf(stderr,"[JONGQ] YES!!! UNDO is right!!!\n");
-			}
-     	mtr_commit(&mtr); 
-
-      switch(type) {
-        case MLOG_UNDO_INSERT:
-          ptr = trx_undo_parse_add_undo_rec(ptr, end_ptr, page);
-					fprintf(stderr, "[JONGQ] success!\n");
-					IORequest write_request(IORequest::WRITE);
-					write_request.disable_compression(); // stil needed?
-					fprintf(stderr, "[JONGQ] perform fil_io write!!!\n");
-					int check = 0;
-					check = fil_io(write_request, true, page_id, 
-					univ_page_size, 0, univ_page_size.physical(), (void*) page, NULL);
-					fprintf(stderr, "[JONGQ] fio_io result: %d\n", check);
-      };
-      // free mlog data
-      free(mlog_data);
-
-		}
-
-    tmp_offset += (PMEM_MMAP_MTRLOG_HDR_SIZE + recv_mmap_hdr->len);
-    free(recv_mmap_hdr);
-	}
-
-  return true;
-}
-
 
 void pm_mmap_recv_flush_buffer() {
-	// step1. grap information of all nc buffer pages (space, page_no)
-	// TODO(jhpark): need to modify to get pmem_log_buffer size automatically
 
-	uint64_t cur_offset = 0;
-	uint64_t total_buf_size = (1024*1024*1024*2UL);
-	unsigned char* cur_gb_pm_buf = gb_pm_mmap + (1024*1024*3UL);
+  uint64_t cur_offset = 0;
+  uint64_t total_buf_size = (1024*1024*1024*2UL);
+  unsigned char* cur_gb_pm_buf = gb_pm_mmap + (1024*1024*1024*2UL);
+  uint64_t space, page_no;
 
-	while (true) {
-		if (cur_offset >= total_buf_size) {
-			break;
-		}
+  while (true) {
+     if (cur_offset >= total_buf_size) {
+       break;
+     }
 
-		// In this phase, buffer pool is already allocated,
-		// copy these frame to allocated frame of buf_block_t
-		// buffer_pool_t -> buf_chunk_t -> buf_block_t -> frame
-		// or---!!! just copy as bug_page_t (with UNIV_PAGE_SIZE)
-		
-		// TODO(jhpark): convert page size as constant variable
-		byte* buf = (byte*) malloc(4096*1024); // 4KB page
-		memcpy(buf, gb_pm_mmap + cur_offset, (4096*1024));
-		// align page
-		page_align(buf);
+     space = reinterpret_cast<buf_block_t*>(cur_gb_pm_buf)->page.id.space();
+     page_no = reinterpret_cast<buf_block_t*>(cur_gb_pm_buf)->page.id.page_no();
+     byte* frame = reinterpret_cast<buf_block_t*>(cur_gb_pm_buf)->frame;
 
-		// check page information
-		// refer to btr0btr.ic
-		// first check page_no and space_id
-		
-		unsigned long space_id = mach_read_from_4(buf + FIL_PAGE_SPACE_ID);
-		unsigned long page_no = mach_read_from_4(buf + FIL_PAGE_OFFSET);  			
-		
-		fprintf(stderr, "[JONGQ] cur_offset: %lu, space_id: %lu, page_no: %lu\n"
-		,cur_offset, space_id, page_no);		
+     byte check_page[4096] = {0,};
 
-		if (space_id == 27 || space_id == 29) {
-			//&& page_no == 0)) {
-			// perform fil_io
-			IORequest write_request(IORequest::WRITE);
-			write_request.disable_compression(); // stil needed?
+     fprintf(stderr, "[DEBUG] (%lu:%lu) page exists in NVDIMM Buffer (%lu:%lu)\n"
+         , space, page_no);
 
-			// similar process, partila updates! 
-			write_request.dblwr_recover();
-			fprintf(stderr, "[JONGQ] perform fil_io write!!!\n");
-			int check = 0;
-			check = fil_io(write_request, true, page_id_t(space_id, page_no), 
-					univ_page_size, 0 ,univ_page_size.physical(), (void*) buf, NULL);
+     cur_gb_pm_buf += sizeof(buf_block_t); 
+  }
 
-			fprintf(stderr, "[JONGQ] fil_io check: %d!\n", check);
-		}
-
-		cur_offset += (4096*1024);
-		free(buf);
-	}
-
-    // step2. call fil_io() function to flush current 
-    // note that changes on these pages are not atomic 
-    // they might have partial updates
 }
+

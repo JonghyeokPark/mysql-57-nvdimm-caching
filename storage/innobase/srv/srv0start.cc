@@ -2358,14 +2358,19 @@ files_checked:
 #ifdef UNIV_NVDIMM_CACHE		
 		fprintf(stderr, "[JONGQ] ---- pass force recovery!\n"); 
 		
+    // HOT DEBUG //
+    if (is_pmem_recv) {
+//      nc_fil_io_test();
+     pm_mmap_recv(pmem_recv_offset, pmem_recv_size);
+    }
+
+
 // TODO(jhpark): NC recovery check !!!!!
 		if (is_pmem_recv)  {
 			PMEMMMAP_INFO_PRINT("YES!!!! recovery!!!! start_offset: %lu end_offset: %lu\n"
 				,pmem_recv_offset, pmem_recv_size);
-//			pm_mmap_recv(pmem_recv_offset, pmem_recv_size);
-//			PMEMMMAP_INFO_PRINT("UNDO page is recoverd !!!!\n");
-//			//pm_mmap_recv_flush_buffer();
 		}
+
 #endif /* UNIV_NVDIMM_CACHE */
 
 		purge_queue = trx_sys_init_at_db_start();
@@ -2384,7 +2389,9 @@ files_checked:
 			recv_apply_hashed_log_recs(TRUE);
 			DBUG_PRINT("ib_log", ("apply completed"));
 
-nc_fil_io_test();
+      // HOT DEBUG //
+      //nc_fil_io_test();
+      //pm_mmap_recv(pmem_recv_offset, pmem_recv_size);
 
 			if (recv_needed_recovery) {
 				trx_sys_print_mysql_binlog_offset();
@@ -2411,15 +2418,16 @@ nc_fil_io_test();
 
 		trx_purge_sys_create(srv_n_purge_threads, purge_queue);
 
+#ifdef UNIV_NVDIMM_CACHE
     PMEMMMAP_INFO_PRINT("JONGQ recovery-6\n"); 
-
+#endif
 		/* recv_recovery_from_checkpoint_finish needs trx lists which
 		are initialized in trx_sys_init_at_db_start(). */
 
 		recv_recovery_from_checkpoint_finish();
-
+#ifdef UNIV_NVDIMM_CACHE
     PMEMMMAP_INFO_PRINT("JONGQ recovery-7\n"); 
-
+#endif
 		/* Fix-up truncate of tables in the system tablespace
 		if server crashed while truncate was active. The non-
 		system tables are done after tablespace discovery. Do
@@ -2427,17 +2435,18 @@ nc_fil_io_test();
 		have changed since redo recovery.  Tablespace discovery
 		can do updates to pages in the system tablespace.*/
 		err = truncate_t::fixup_tables_in_system_tablespace();
-
+#ifdef UNIV_NVDIMM_CACHE
     PMEMMMAP_INFO_PRINT("JONGQ recovery-7-1\n"); 
-
+#endif
 		if (srv_force_recovery < SRV_FORCE_NO_IBUF_MERGE) {
 			/* Open or Create SYS_TABLESPACES and SYS_DATAFILES
 			so that tablespace names and other metadata can be
 			found. */
 			srv_sys_tablespaces_open = true;
 			err = dict_create_or_check_sys_tablespace();
+#ifdef UNIV_NVDIMM_CACHE
       PMEMMMAP_INFO_PRINT("JONGQ recovery-7-2\n"); 
-
+#endif
 			if (err != DB_SUCCESS) {
 				return(srv_init_abort(err));
 			}
@@ -2468,10 +2477,16 @@ nc_fil_io_test();
 				&& srv_force_recovery == 0;
 
 			dict_check_tablespaces_and_store_max_id(validate);
-      PMEMMMAP_INFO_PRINT("JONGQ recovery-7-3\n"); 
+
+#ifdef UNIV_NVDIMM_CACHE
+      PMEMMMAP_INFO_PRINT("JONGQ recovery-7-3\n");
+#endif
+
 		}
 
+#ifdef UNIV_NVDIMM_CACHE
     PMEMMMAP_INFO_PRINT("JONGQ recovery-8\n"); 
+#endif
 
 		/* Rotate the encryption key for recovery. It's because
 		server could crash in middle of key rotation. Some tablespace
@@ -2547,12 +2562,13 @@ nc_fil_io_test();
 				logfile0);
 		}
 
+#ifdef UNIV_NVDIMM_CACHE
     PMEMMMAP_INFO_PRINT("JONGQ recovery-9\n"); 
-
+#endif
 		recv_recovery_rollback_active();
-
+#ifdef UNIV_NVDIMM_CACHE
 		 PMEMMMAP_INFO_PRINT("JONGQ recovery-10\n"); 
-
+#endif
 		/* It is possible that file_format tag has never
 		been set. In this case we initialize it to minimum
 		value.  Important to note that we can do it ONLY after
@@ -2575,9 +2591,9 @@ nc_fil_io_test();
 
 		log_buffer_flush_to_disk();
 	}
-
+#ifdef UNIV_NVDIMM_CACHE
   PMEMMMAP_INFO_PRINT("JONGQ recovery-11\n"); 
-
+#endif
 	/* Open temp-tablespace and keep it open until shutdown. */
 
 	err = srv_open_tmp_tablespace(create_new_db, &srv_tmp_space);

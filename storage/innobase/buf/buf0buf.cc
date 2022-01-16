@@ -6222,6 +6222,8 @@ corrupt:
 		if (recv_recovery_is_on()) {
 			/* Pages must be uncompressed for crash recovery. */
 			ut_a(uncompressed);
+      // (jhpark): HOT DEBUG
+      fprintf(stderr, "[DEBUG] recv_recover_page called at buf_page_io_complete! (%u:%u)\n", bpage->id.space(), bpage->id.page_no());
 			recv_recover_page(TRUE, (buf_block_t*) bpage);
 		}
 

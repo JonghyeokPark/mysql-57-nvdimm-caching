@@ -886,7 +886,17 @@ buf_read_recv_pages(
 		count = 0;
 
 		buf_pool = buf_pool_get(cur_page_id);
+
+
+    fprintf(stderr, "(debug) n_pend_read: %lu free_frame: %lu instance: %d (%u:%u)\n"
+          , buf_pool->n_pend_reads
+          , recv_n_pool_free_frames
+          , buf_pool->instance_no
+          , space_id, page_nos[i]);
+
+
 		while (buf_pool->n_pend_reads >= recv_n_pool_free_frames / 2) {
+
 			os_aio_simulated_wake_handler_threads();
 			os_thread_sleep(10000);
 
@@ -918,6 +928,9 @@ buf_read_recv_pages(
 
 	os_aio_simulated_wake_handler_threads();
 
+  fprintf(stderr, "recovery read-ahead (%u pages)",
+			      unsigned(n_stored));
+
 	DBUG_PRINT("ib_buf", ("recovery read-ahead (%u pages)",
 			      unsigned(n_stored)));
 }
@@ -925,7 +938,10 @@ buf_read_recv_pages(
 // (jhpark): RECOVERY
 #include "dict0crea.h"
 void nc_fil_io_test() {
-  
+   fprintf(stderr, "[INFO] we force to check all tablespaces !\n");
+   dict_check_tablespaces_and_store_max_id(false);
+/*
+
   dberr_t err;
 
   // (jhpark): we need to construct the fil_space list first
@@ -951,4 +967,5 @@ void nc_fil_io_test() {
 			cur_page_id, page_size, true);
 
 	fprintf(stderr, "read page successs?! err: %d\n", err);
+*/
 }

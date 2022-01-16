@@ -1597,7 +1597,12 @@ btr_root_raise_and_insert(
 	mem_heap_t**	heap,	/*!< in/out: pointer to memory heap, or NULL */
 	const dtuple_t*	tuple,	/*!< in: tuple to insert */
 	ulint		n_ext,	/*!< in: number of externally stored columns */
-	mtr_t*		mtr)	/*!< in: mtr */
+	mtr_t*		mtr
+#ifdef UNIV_NVDIMM_CACHE
+  ,bool is_nvm_page)
+#else
+  )	/*!< in: mtr */
+#endif
 {
 	dict_index_t*	index;
 	page_t*		root;
@@ -2513,7 +2518,12 @@ btr_page_split_and_insert(
 	mem_heap_t**	heap,	/*!< in/out: pointer to memory heap, or NULL */
 	const dtuple_t*	tuple,	/*!< in: tuple to insert */
 	ulint		n_ext,	/*!< in: number of externally stored columns */
-	mtr_t*		mtr)	/*!< in: mtr */
+	mtr_t*		mtr	/*!< in: mtr */
+#ifdef UNIV_NVDIMM_CACHE
+  , bool is_nvm_page)
+#else
+  )
+#endif
 {
 	buf_block_t*	block;
 	page_t*		page;

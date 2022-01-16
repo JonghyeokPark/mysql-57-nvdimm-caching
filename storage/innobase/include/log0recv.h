@@ -418,7 +418,6 @@ extern ulint	recv_n_pool_free_frames;
 #endif
 
 // (jhpark): RECOVERY
-#ifdef UNIV_NVDIMM_CACHE
 ulint
 wrap_recv_parse_log_rec(
     mlog_id_t*  type,
@@ -428,7 +427,6 @@ wrap_recv_parse_log_rec(
     ulint*    page_no,
     bool    apply,
     byte**    body);
-#endif
 
 byte*
 recv_parse_or_apply_log_rec_body(
@@ -440,5 +438,9 @@ recv_parse_or_apply_log_rec_body(
     buf_block_t* block,
     mtr_t* mtr);
 
+void
+pmem_recv_recover_page_func(
+    ulint space_id,
+    ulint page_no);
 
 #endif

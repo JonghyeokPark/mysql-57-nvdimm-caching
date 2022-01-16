@@ -4015,6 +4015,9 @@ dump:
 			MLOG_COMP_REC_UPDATE_IN_PLACE/MLOG_REC_UPDATE_IN_PLACE
 			expects trx_id, roll_ptr for secondary indexes. So we
 			just write dummy trx_id(0), roll_ptr(0) */
+
+      fprintf(stderr, "[DEBUG] ibuf_???\n");
+
 			btr_cur_update_in_place_log(BTR_KEEP_SYS_FLAG, rec,
 						    index, update, 0, 0, mtr);
 

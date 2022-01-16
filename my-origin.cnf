@@ -14,26 +14,28 @@ prompt=\u:\d>\_
 
 # This was formally known as [safe_mysqld]. Both versions are currently parsed.
 [mysqld_safe]
+user=root
 socket          = /tmp/mysql.sock
 #nice           = 0
 
 [mysqld]
+user=root
 #
 # * Basic Settings
 #
 default-storage-engine = innodb
 skip-grant-tables
-pid-file        = /home/mijin/test_data/mysql.pid
+pid-file        = /home/vldb/test_data/mysql.pid
 socket          = /tmp/mysql.sock
 port            = 3306
-datadir         = /home/mijin/test_data/
-log-error	= /home/mijin/test_data/mysql_error_nvdimm.log
+datadir         = /home/vldb/test_data/
+log-error	= /home/vldb/test_data/mysql_error_nvdimm.log
 
 ##################################################
 # Need to Modify
 ##################################################
 #Log group path (iblog0, iblog1)
-innodb_log_group_home_dir=/home/mijin/test_log/
+innodb_log_group_home_dir=/home/vldb/test_log/
 
 #innodb page size
 innodb_page_size=4KB
@@ -46,7 +48,7 @@ innodb_page_size=4KB
 innodb_file_per_table=1
 
 #buffer settings
-innodb_buffer_pool_size=6G
+innodb_buffer_pool_size=4G
 innodb_buffer_pool_instances=8
 innodb_max_dirty_pages_pct_lwm=0
 

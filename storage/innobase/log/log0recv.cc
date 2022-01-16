@@ -1920,8 +1920,9 @@ recv_parse_or_apply_log_rec_body(
 			ut_a(!page
 			     || (ibool)!!page_is_comp(page)
 			     == dict_table_is_comp(index->table));
+
 			ptr = page_cur_parse_insert_rec(FALSE, ptr, end_ptr,
-							block, index, mtr);
+							block, index, mtr); 
 		}
 		break;
 	case MLOG_REC_CLUST_DELETE_MARK: case MLOG_COMP_REC_CLUST_DELETE_MARK:
@@ -2065,7 +2066,8 @@ recv_parse_or_apply_log_rec_body(
 				     ptr, end_ptr,
 				     type == MLOG_COMP_REC_DELETE,
 				     &index))) {
-			ut_a(!page
+  	  
+      ut_a(!page
 			     || (ibool)!!page_is_comp(page)
 			     == dict_table_is_comp(index->table));
 			ptr = page_cur_parse_delete_rec(ptr, end_ptr,
@@ -2243,7 +2245,7 @@ recv_add_to_hash_table(
 			    recv_fold(space, page_no), recv_addr);
 		recv_sys->n_addrs++;
 		// debug
-#if 1
+#if 0
 		fprintf(stderr, "Inserting log rec for space %lu, page %lu\n",
 			space, page_no);
 #endif
@@ -2313,6 +2315,79 @@ recv_data_copy_to_buf(
 	}
 }
 
+// (jhpark): RECVOERY
+extern unsigned char* gb_pm_mmap;
+#ifdef UNIV_NVDIMM_CACHE
+void
+pmem_recv_recover_page_func(ulint space_id, ulint page_no) {
+    const page_id_t   page_id(space_id, page_no);
+
+    //dict_check_tablespaces_and_store_max_id(false);
+    
+    bool found;
+    const page_size_t&  page_size
+      = fil_space_get_page_size(space_id, &found);
+
+    ut_ad(found);
+
+    buf_block_t* block;
+    mtr_t recv_mtr;
+
+    if (buf_page_peek(page_id)) {
+      fprintf(stderr, "[DEBUG] (%lu:%lu) page does exists in the buffer!\n", space_id, page_no);
+
+      mtr_start(&recv_mtr);
+
+      block = buf_page_get(
+          page_id, page_size, RW_X_LATCH, &recv_mtr);
+
+      mtr_commit(&recv_mtr);
+    } else {
+      fprintf(stderr, "[DEBUG] (%lu:%lu) page does not exist in the buffer!\n", space_id, page_no);
+
+      fil_space_t* space = fil_space_get(space_id);
+      if (space == NULL) {
+        fprintf(stderr, "[DEBUG] space is NULL!\n");
+      }
+
+      fil_space_open_if_needed(space);
+
+       mtr_start(&recv_mtr);
+
+       block = buf_page_get(
+           page_id, page_size, RW_X_LATCH, &recv_mtr);
+
+       mtr_commit(&recv_mtr);
+    }
+
+      // (jhpark): parse the mtr log
+      mtr_start(&recv_mtr);
+      ulint offset = PMEM_MMAP_MTR_FIL_HDR_SIZE;
+      PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr;
+      memcpy(&mtr_recv_hdr, gb_pm_mmap+offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
+
+
+      mlog_id_t type;
+      byte* body;
+      ulint mtr_space, mtr_page_no;
+      offset += sizeof(PMEM_MMAP_MTRLOG_HDR);
+      ulint ret = wrap_recv_parse_log_rec(&type, gb_pm_mmap + offset
+          , gb_pm_mmap + offset + mtr_recv_hdr.len
+          , &mtr_space, &mtr_page_no, false, &body);
+
+      fprintf(stderr, "[DEBUG] ret: %lu type: %d space: %lu pange_no: %lu\n",ret, type, mtr_space , mtr_page_no);
+
+      recv_parse_or_apply_log_rec_body(
+          type, gb_pm_mmap+offset, gb_pm_mmap+offset+mtr_recv_hdr.len
+          , space_id, page_no, block, &recv_mtr);
+
+      recv_mtr.discard_modifications();
+      mtr_commit(&recv_mtr);
+
+      fprintf(stderr, "[DEBUG] mtr log recovery completed!\n");
+}
+#endif
+
 /************************************************************************//**
 Applies the hashed log records to the page, if the page lsn is less than the
 lsn of a log record. This can be called when a buffer page has just been
@@ -2362,6 +2437,12 @@ recv_recover_page_func(
 
 		return;
 	}
+
+  // (jhpark)
+  fprintf(stderr,
+		   "[JOGNQ] Applying log to page %u:%u",
+		    recv_addr->space, recv_addr->page_no);
+
 
 #ifndef UNIV_HOTBACKUP
 	ut_ad(recv_needed_recovery);
@@ -2495,9 +2576,6 @@ recv_recover_page_func(
 				    recv_addr->space,
 				    recv_addr->page_no));
 
-      // (jhpark): RECOVERY
-      fprintf(stderr, "[DEBUG] recovery apply log records!\n");
-
 			recv_parse_or_apply_log_rec_body(
 				recv->type, buf, buf + recv->len,
 				recv_addr->space, recv_addr->page_no,
@@ -2595,6 +2673,7 @@ recv_read_in_area(
 
 		if (recv_addr && !buf_page_peek(cur_page_id)) {
 			mutex_enter(&(recv_sys->mutex));
+
 			if (recv_addr->state == RECV_NOT_PROCESSED) {
 				recv_addr->state = RECV_BEING_READ;
 
@@ -2606,7 +2685,8 @@ recv_read_in_area(
 			mutex_exit(&(recv_sys->mutex));
 		}
 	}
-	buf_read_recv_pages(FALSE, page_id.space(), page_nos, n);
+	
+  buf_read_recv_pages(FALSE, page_id.space(), page_nos, n);
 
 	return(n);
 }
@@ -2695,7 +2775,7 @@ loop:
 				}
 				
 				// debug
-				fprintf(stderr, "[JONGQ] i=%d recv_sys->n_addrs: %lu\n"
+				fprintf(stderr, "[JONGQ] i=%ld recv_sys->n_addrs: %lu\n"
 											,i, recv_sys->n_addrs);
 
 				mutex_exit(&(recv_sys->mutex));
@@ -2714,8 +2794,13 @@ loop:
 
 					recv_recover_page(FALSE, block);
 					mtr_commit(&mtr);
+
+          fprintf(stderr, "[JONGQ] check-xxx! arleady in the buffer %u:%u\n"
+              , page_id.space(), page_id.page_no());
+	
 				} else {
-					fprintf(stderr, "[JONGQ] check-11!\n");
+					fprintf(stderr, "[JONGQ] check-11! try to read %u:%u\n"
+              , page_id.space(), page_id.page_no());
 					recv_read_in_area(page_id);
 				}
 
@@ -3040,6 +3125,10 @@ recv_parse_log_rec(
 
 	new_ptr = recv_parse_or_apply_log_rec_body(
 		*type, new_ptr, end_ptr, *space, *page_no, NULL, NULL);
+
+  // (jhpark) HOT DEBUG //
+  fprintf(stderr, "[DEBUG] !!! log parse (%u:%u) type: %d\n", *space, *page_no, *type);
+  //
 
 	if (UNIV_UNLIKELY(new_ptr == NULL)) {
 
@@ -4238,7 +4327,6 @@ recv_recovery_from_checkpoint_start(
 	/** Scan the redo log from checkpoint lsn and redo log to
 	the hash table. */
 	rescan = recv_group_scan_log_recs(group, &contiguous_lsn, false);
-
 
 	if ((recv_sys->found_corrupt_log && !srv_force_recovery)
 	    || recv_sys->found_corrupt_fs) {

@@ -789,10 +789,7 @@ trx_resurrect_table_locks(
 				trx->mod_tables.insert(table);
 			}
 			lock_table_ix_resurrect(table, trx);
-      
-      // debugging
-      fprintf(stderr, "ib_trx resurrect %d table %s IX lock from %s undo", trx_get_id_for_print(trx), table->name.m_name, undo == undo_ptr->insert_undo ? "insert" : "update");
-      
+           
 			DBUG_PRINT("ib_trx",
 				   ("resurrect" TRX_ID_FMT
 				    "  table '%s' IX lock from %s undo",
@@ -1020,14 +1017,12 @@ trx_lists_init_at_db_start(void)
 
 	for (ulint i = 0; i < TRX_SYS_N_RSEGS; ++i) {
 
-    //fprintf(stderr, "trx_lists_init_at_db_start: %d (%d)\n", i, TRX_SYS_N_RSEGS);
 		trx_undo_t*	undo;
 		trx_rseg_t*	rseg = trx_sys->rseg_array[i];
 
 		/* At this stage non-redo rseg slots are all NULL as they are
 		re-created on server start and existing slots are not read. */
 		if (rseg == NULL) {
-      fprintf(stderr, "[JONGQ] rseg is NULL \n");
 			continue;
 		}
 

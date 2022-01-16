@@ -1741,28 +1741,15 @@ use_heap:
 
         if (nvm_bpage->cached_in_nvdimm) {
 
-          // HOT DEBUG //
-//          if (!is_pmem_recv) {
-//          fprintf(stderr, "[DEBUG] debug !!!\n");
-//          exit(1);
-//          }
-          // HOT DEBUG //
-
           // skip generating REDO log for nvm-page 
           // instead we create new mini-transaction and create 
+          
           if (!is_pmem_recv) {
-
           mtr_t nvdimm_mtr;
           mtr_start(&nvdimm_mtr);
           nvdimm_page_cur_insert_rec_write_log(insert_rec, rec_size,
             current_rec, index, &nvdimm_mtr);
           nvdimm_mtr.commit_nvm();
-
-          if (!is_pmem_recv) {
-            fprintf(stderr, "[DEBUG] debug !!! (%lu:%lu)\n", space_id, page_no);
-            exit(1);
-          }
-
           }
 
         } else {
@@ -2170,10 +2157,11 @@ page_cur_insert_rec_zip(
                     buf_page_t* nvm_bpage = &nvm_block->page;
 
                     if (nvm_bpage->cached_in_nvdimm) {
-                        // skip generating REDO log for nvm-page
-                        pm_mmap_mtrlogbuf_commit(nvm_block->frame, UNIV_PAGE_SIZE, nvm_bpage->id.space(), nvm_bpage->id.page_no());
-
-                        //pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
+                      mtr_t nvdimm_mtr;   
+                      mtr_start(&nvdimm_mtr);
+                      nvdimm_page_cur_insert_rec_write_log(insert_rec, rec_size,
+                          cursor->rec, index, &nvdimm_mtr);
+                      nvdimm_mtr.commit_nvm();
                     } else {
                         page_cur_insert_rec_write_log(
                             insert_rec, rec_size,
@@ -2461,11 +2449,11 @@ use_heap:
         buf_page_t* nvm_bpage = &nvm_block->page;
 
         if (nvm_bpage->cached_in_nvdimm) {
-          // skip generating REDO logs for nvm-page
-					// persist records
-            pm_mmap_mtrlogbuf_commit(nvm_block->frame, UNIV_PAGE_SIZE, nvm_bpage->id.space(), nvm_bpage->id.page_no());
-
-          //pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
+          mtr_t nvdimm_mtr;
+          mtr_start(&nvdimm_mtr);
+          page_cur_insert_rec_write_log(insert_rec, rec_size,
+              cursor->rec, index, &nvdimm_mtr);
+          nvdimm_mtr.commit_nvm(); 
         } else {
             page_cur_insert_rec_write_log(insert_rec, rec_size,
                               cursor->rec, index, mtr);
@@ -2702,9 +2690,11 @@ page_copy_rec_list_end_to_created_page(
         buf_page_t* nvm_bpage = &nvm_block->page;
 
         if (nvm_bpage->cached_in_nvdimm) {
-            // skip generating REDO logs for nvm-page
-						//pm_mmap_mtrlogbuf_commit(insert_rec, rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
-						pm_mmap_mtrlogbuf_commit(nvm_block->frame, UNIV_PAGE_SIZE, nvm_bpage->id.space(), nvm_bpage->id.page_no());
+           mtr_t nvdimm_mtr;
+           mtr_start(&nvdimm_mtr);
+           page_cur_insert_rec_write_log(insert_rec, rec_size, prev_rec,
+                              index, &nvdimm_mtr);
+           nvdimm_mtr.commit_nvm();
         } else {
             page_cur_insert_rec_write_log(insert_rec, rec_size, prev_rec,
                               index, mtr);

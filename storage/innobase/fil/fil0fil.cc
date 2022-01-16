@@ -908,7 +908,8 @@ add_size:
 	}
 
     /* mijin */
-    fprintf(stderr, "%s = %lu\n", node->name, space->id);
+    // (jhpark): xxx
+    //fprintf(stderr, "%s = %lu\n", node->name, space->id);
 
 	return(true);
 }
