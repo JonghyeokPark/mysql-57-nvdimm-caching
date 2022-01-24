@@ -144,6 +144,11 @@ fseg_alloc_free_page_low(
 #ifdef UNIV_DEBUG
 	, ibool			has_done_reservation
 #endif /* UNIV_DEBUG */
+  // HOT DEBUG
+  , bool is_nvm_page
+//#ifdef UNIV_NVDIMM_CACHE
+//  , bool is_nvm_page = false
+//#endif
 )
 	MY_ATTRIBUTE((warn_unused_result));
 
@@ -786,13 +791,28 @@ static
 void
 fsp_init_file_page(
 	buf_block_t*	block,
-	mtr_t*		mtr)
+	mtr_t*		mtr
+#ifdef UNIV_NVDIMM_CACHE
+  , bool is_nvm_page = false
+#endif
+  )
 {
 	fsp_init_file_page_low(block);
 
 	ut_d(fsp_space_modify_check(block->page.id.space(), mtr));
+#ifdef UNIV_NVDIMM_CACHE
+  if (is_nvm_page) {
+  	mlog_write_initial_log_record(buf_block_get_frame(block),
+				      MLOG_INIT_FILE_PAGE2, mtr);
+    //fprintf(stderr, "we skip fil_page2 log on nvm page (%u:%u)\n", block->page.id.space(), block->page.id.page_no());
+  } else {
+  	mlog_write_initial_log_record(buf_block_get_frame(block),
+				      MLOG_INIT_FILE_PAGE2, mtr);
+  }
+#else
 	mlog_write_initial_log_record(buf_block_get_frame(block),
 				      MLOG_INIT_FILE_PAGE2, mtr);
+#endif
 }
 #endif /* !UNIV_HOTBACKUP */
 
@@ -1858,7 +1878,11 @@ fsp_page_create(
 	const page_size_t&	page_size,
 	rw_lock_type_t		rw_latch,
 	mtr_t*			mtr,
-	mtr_t*			init_mtr)
+	mtr_t*			init_mtr
+#ifdef UNIV_NVDIMM_CACHE
+ ,  bool is_nvm_page = false
+#endif
+  )
 {
 	buf_block_t*	block = buf_page_create(page_id, page_size, init_mtr);
 
@@ -1896,8 +1920,11 @@ fsp_page_create(
 		      || !mtr_memo_contains_flagged(mtr, block,
 						    MTR_MEMO_PAGE_X_FIX
 						    | MTR_MEMO_PAGE_SX_FIX));
-
+#ifdef UNIV_NVDIMM_CACHE
+		fsp_init_file_page(block, init_mtr, is_nvm_page);
+#else
 		fsp_init_file_page(block, init_mtr);
+#endif
 	}
 
 	return(block);
@@ -2682,7 +2709,10 @@ fseg_create_general(
 #ifdef UNIV_DEBUG
 						 , has_done_reservation
 #endif /* UNIV_DEBUG */
+             // HOT DEBUG //
+             ,false
 						 );
+
 
 		/* The allocation cannot fail if we have already reserved a
 		space for the page. */
@@ -2959,6 +2989,9 @@ fseg_alloc_free_page_low(
 #ifdef UNIV_DEBUG
 	, ibool			has_done_reservation
 #endif /* UNIV_DEBUG */
+#ifdef UNIV_NVDIMM_CACHE
+  , bool is_nvm_page = false
+#endif
 )
 {
 	fsp_header_t*	space_header;
@@ -3183,8 +3216,13 @@ got_hinted_page:
 
 	ut_ad(space->flags
 	      == mach_read_from_4(FSP_SPACE_FLAGS + space_header));
+#ifdef UNIV_NVDIMM_CACHE
+	return(fsp_page_create(page_id_t(space_id, ret_page), page_size,
+			       rw_latch, mtr, init_mtr, is_nvm_page));
+#else
 	return(fsp_page_create(page_id_t(space_id, ret_page), page_size,
 			       rw_latch, mtr, init_mtr));
+#endif
 }
 
 /**********************************************************************//**
@@ -3212,7 +3250,11 @@ fseg_alloc_free_page_general(
 				is no need to do the check for this individual
 				page */
 	mtr_t*		mtr,	/*!< in/out: mini-transaction */
-	mtr_t*		init_mtr)/*!< in/out: mtr or another mini-transaction
+	mtr_t*		init_mtr
+#ifdef UNIV_NVDIMM_CACHE
+  , bool is_nvm_page
+#endif
+  )/*!< in/out: mtr or another mini-transaction
 				in which the page should be initialized.
 				If init_mtr!=mtr, but the page is already
 				latched in mtr, do not initialize the page. */
@@ -3252,6 +3294,9 @@ fseg_alloc_free_page_general(
 #ifdef UNIV_DEBUG
 					 , has_done_reservation
 #endif /* UNIV_DEBUG */
+#ifdef UNIV_NVDIMM_CACHE
+           ,is_nvm_page
+#endif
 					 );
 
 	/* The allocation cannot fail if we have already reserved a

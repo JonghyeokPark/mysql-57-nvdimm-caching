@@ -485,7 +485,11 @@ fseg_alloc_free_page_general(
 				is no need to do the check for this individual
 				page */
 	mtr_t*		mtr,	/*!< in/out: mini-transaction */
-	mtr_t*		init_mtr)/*!< in/out: mtr or another mini-transaction
+	mtr_t*		init_mtr
+#ifdef UNIV_NVDIMM_CACHE
+  ,bool is_nvm_page=false
+#endif
+  )/*!< in/out: mtr or another mini-transaction
 				in which the page should be initialized.
 				If init_mtr!=mtr, but the page is already
 				latched in mtr, do not initialize the page. */

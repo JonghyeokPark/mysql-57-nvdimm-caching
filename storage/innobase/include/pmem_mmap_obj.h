@@ -11,8 +11,7 @@
 #include <unistd.h>
 
 #include <pthread.h>
-//#include "ut0new.h"
-//#include "log0log.h"
+#include <map>
 
 // (jhpark): this header file for UNIV_NVDIMM_CACHE
 //					 use persistent memroy with mmap on dax-enabled file system
@@ -162,7 +161,7 @@ struct __pmem_mmap_mtrlog_hdr {
   int need_recv;
 	unsigned long int len;    		 // length of mtr log payload
 	unsigned long int lsn;      	 // lsn from global log_sys
-  unsigned long int mtr_lsn;  	 // mtr log lsn
+  unsigned long int mtr_lsn;  	 // mtr log lsn (pageLSN)
 	unsigned long int prev_offset; // prev mtr log header offset
 	
 	unsigned long int space;			 // undo page space id
@@ -200,25 +199,22 @@ void pm_mmap_buf_write(unsigned long len, void* buf);
 void pm_mmap_recv(uint64_t start_offset, uint64_t end_offset);
 uint64_t pm_mmap_recv_check(PMEM_MMAP_MTRLOGFILE_HDR* log_fil_hdr);
 void pm_mmap_recv_flush_buffer();
+void pm_mmap_flush_nc_buffer();
 
 // TODO(jhpark): covert these variables as structure (i.e., recv_sys_t)
 extern bool is_pmem_recv;
 extern uint64_t pmem_recv_offset;
 extern uint64_t pmem_recv_size;
 
-/** Recovery system data structure */
-//struct recv_sys_t{
-//  ib_mutex_t    mutex;
-	/*!< mutex protecting the fields apply_log_recs,
-	n_addrs, and the state field in each recv_addr struct */
-//  ib_mutex_t    writer_mutex; 
-	/*!< mutex coordinating 
-	flushing between recv_writer_thread and the recovery thread. */
-//  ibool   apply_log_recs;
-	/*!< this is TRUE when log rec application to pages is allowed; this flag tells the
-  i/o-handler if it should do log record application */
-//  byte*   buf;  /*!< buffer for parsing log records */
-//  ulint   len;  /*!< amount of data in buf */
-//};
+extern uint64_t pmem_recv_latest_offset;
+extern uint64_t pmem_recv_tmp_buf_offset;
 
+bool pm_mmap_recv_check_nc_log(uint64_t space, uint64_t page_no);
+
+//class page_id_t;
+// map (page_id, offset) for NC buffer
+extern std::map<std::pair<uint64_t,uint64_t> ,uint64_t> pmem_nc_buffer_map;
+// map (page_id, offset) for NC log
+extern std::map<std::pair<uint64_t,uint64_t> ,uint64_t> pmem_nc_log_map;
+void pm_mmap_recv_prepare();
 #endif  /* __PMEMMAPOBJ_H__ */

@@ -104,6 +104,10 @@ bool buf_nvdimm_stock_page_cleaner_is_active = false;
 #endif /* UNIV_NVDIMM_CACHE_ST */
 #endif /* UNIV_NVDIMM_CACHE */
 
+// HOT DEBUG 3 //
+extern unsigned char* gb_pm_mmap;
+extern uint64_t pmem_recv_tmp_buf_offset;
+
 /** Event to synchronise with the flushing. */
 os_event_t	buf_flush_event;
 
@@ -1118,13 +1122,24 @@ buf_flush_write_block_low(
             << " flush-type = " << bpage->flush_type;*/
         memcpy(((buf_block_t *)nvdimm_page)->frame, ((buf_block_t *)bpage)->frame, UNIV_PAGE_SIZE);
 
+        // HOT DEBUG 3 //
+        memcpy(gb_pm_mmap + pmem_recv_tmp_buf_offset, ((buf_block_t *)bpage)->frame, UNIV_PAGE_SIZE);
+         flush_cache(gb_pm_mmap + pmem_recv_tmp_buf_offset, UNIV_PAGE_SIZE);
+
+        pmem_recv_tmp_buf_offset += UNIV_PAGE_SIZE;
+        if (pmem_recv_tmp_buf_offset >= (6*1024*1024*1024UL)) {
+          fprintf(stderr, "[DEBUG] exit !! for debugging !!\n");
+          exit(1);
+        }
+        // //
+
+
         /* Set the oldest LSN of the NVDIMM page to the previous newest LSN. */
         buf_flush_note_modification((buf_block_t *)nvdimm_page, bpage->newest_modification, bpage->newest_modification, nvdimm_page->flush_observer);
 
+        // (jhpark): is this right?
         // TODO: NVDIMM-porting
-        // 1
         flush_cache(((buf_block_t *)nvdimm_page)->frame, UNIV_PAGE_SIZE);
-        // 2
         
         /* Remove the target page from the original buffer pool. */
         buf_page_io_complete(bpage, true);
@@ -1146,7 +1161,9 @@ normal:
           mtrlog_commit_flag = true;
           check_space = bpage->id.space();
           check_page = bpage->id.page_no();
-          fprintf(stderr, "[DEBUG] (%lu:%lu) this page is flushed to disk !!!!\n", bpage->id.space(), bpage->id.page_no());
+          fprintf(stderr, "[DEBUG] (%lu:%lu) this page is flushed to disk !!!! page_lsn: %u\n"
+              , bpage->id.space(), bpage->id.page_no()
+              , mach_read_from_4(reinterpret_cast<buf_block_t*>(bpage)->frame + FIL_PAGE_LSN));
         }
         // HOT DEBUG// 
 

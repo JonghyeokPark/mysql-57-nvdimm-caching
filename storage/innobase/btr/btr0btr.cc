@@ -434,7 +434,11 @@ btr_page_alloc_low(
 					in the tree */
 	mtr_t*		mtr,		/*!< in/out: mini-transaction
 					for the allocation */
-	mtr_t*		init_mtr)	/*!< in/out: mtr or another
+	mtr_t*		init_mtr
+#ifdef UNIV_NVDIMM_CACHE
+  ,bool is_nvm_page = false
+#endif
+  )	/*!< in/out: mtr or another
 					mini-transaction in which the
 					page should be initialized.
 					If init_mtr!=mtr, but the page
@@ -456,9 +460,16 @@ btr_page_alloc_low(
 	reservation for free extents, and thus we know that a page can
 	be allocated: */
 
+#ifdef UNIV_NVDIMM_CACHE
+	return(fseg_alloc_free_page_general(
+		       seg_header, hint_page_no, file_direction,
+		       TRUE, mtr, init_mtr, is_nvm_page));
+
+#else
 	return(fseg_alloc_free_page_general(
 		       seg_header, hint_page_no, file_direction,
 		       TRUE, mtr, init_mtr));
+#endif
 }
 
 /**************************************************************//**
@@ -479,7 +490,11 @@ btr_page_alloc(
 					in the tree */
 	mtr_t*		mtr,		/*!< in/out: mini-transaction
 					for the allocation */
-	mtr_t*		init_mtr)	/*!< in/out: mini-transaction
+	mtr_t*		init_mtr
+#ifdef UNIV_NVDIMM_CACHE
+  , bool is_nvm_page 
+#endif
+  )	/*!< in/out: mini-transaction
 					for x-latching and initializing
 					the page */
 {
@@ -489,10 +504,13 @@ btr_page_alloc(
 
 		return(btr_page_alloc_for_ibuf(index, mtr));
 	}
-
+#ifdef UNIV_NVDIMM_CACHE
+	new_block = btr_page_alloc_low(
+		index, hint_page_no, file_direction, level, mtr, init_mtr, is_nvm_page);
+#else
 	new_block = btr_page_alloc_low(
 		index, hint_page_no, file_direction, level, mtr, init_mtr);
-
+#endif
 	if (new_block) {
 		buf_block_dbg_add_level(new_block, SYNC_TREE_NODE_NEW);
 	}
@@ -1650,9 +1668,11 @@ btr_root_raise_and_insert(
 	a node pointer to the new page, and then splitting the new page. */
 
 	level = btr_page_get_level(root, mtr);
-
+#ifdef UNIV_NVDIMM_CACHE
+	new_block = btr_page_alloc(index, 0, FSP_NO_DIR, level, mtr, mtr, is_nvm_page);
+#else
 	new_block = btr_page_alloc(index, 0, FSP_NO_DIR, level, mtr, mtr);
-
+#endif
 	new_page = buf_block_get_frame(new_block);
 	new_page_zip = buf_block_get_page_zip(new_block);
 	ut_a(!new_page_zip == !root_page_zip);
@@ -2637,8 +2657,13 @@ func_start:
 	}
 
 	/* 2. Allocate a new page to the index */
+#ifdef UNIV_NVDIMM_CACHE
+	new_block = btr_page_alloc(cursor->index, hint_page_no, direction,
+				   btr_page_get_level(page, mtr), mtr, mtr, is_nvm_page);
+#else
 	new_block = btr_page_alloc(cursor->index, hint_page_no, direction,
 				   btr_page_get_level(page, mtr), mtr, mtr);
+#endif
 
 	new_page = buf_block_get_frame(new_block);
 	new_page_zip = buf_block_get_page_zip(new_block);

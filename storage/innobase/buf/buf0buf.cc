@@ -791,6 +791,10 @@ buf_page_is_corrupted(
 #endif /* UNIV_INNOCHECKSUM */
 )
 {
+
+  // HOT DEBUG 3 //
+  //return false;
+  //
 	ulint		checksum_field1;
 	ulint		checksum_field2;
 
@@ -4344,6 +4348,9 @@ void
 buf_wait_for_read(
 	buf_block_t*	block)
 {
+  // HOT DEBUG 3//
+  if (is_pmem_recv) return;
+
 	/* Note:
 
 	We are using the block->lock to check for IO state (and a dirty read).
@@ -6218,12 +6225,16 @@ corrupt:
 
 		DBUG_EXECUTE_IF("buf_page_import_corrupt_failure",
 				page_not_corrupt:  bpage = bpage; );
-
+#ifdef UNIV_NVDIMM_CACHE
+    if (recv_recovery_is_on() && is_pmem_recv == true) {
+#else
 		if (recv_recovery_is_on()) {
+#endif
 			/* Pages must be uncompressed for crash recovery. */
 			ut_a(uncompressed);
       // (jhpark): HOT DEBUG
-      fprintf(stderr, "[DEBUG] recv_recover_page called at buf_page_io_complete! (%u:%u)\n", bpage->id.space(), bpage->id.page_no());
+      fprintf(stderr, "[DEBUG] recv_recover_page called at buf_page_io_complete! (%u:%u)\n"
+          , bpage->id.space(), bpage->id.page_no());
 			recv_recover_page(TRUE, (buf_block_t*) bpage);
 		}
 
@@ -7669,4 +7680,3 @@ operator<<(
 	return(out);
 }
 #endif /* !UNIV_INNOCHECKSUM */
-

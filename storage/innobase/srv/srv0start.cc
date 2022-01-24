@@ -2321,11 +2321,16 @@ files_checked:
 
 			return(srv_init_abort(DB_ERROR));
 		}
-
 		fprintf(stderr, "[JONGQ] ---- scan_and_parse log file finished\n");
 
 		/* We always try to do a recovery, even if the database had
 		been shut down normally: this is the normal startup path */
+
+    if (1) {
+			/* Initialize the change buffer. */
+			err = dict_boot();
+		}
+
 
 		err = recv_recovery_from_checkpoint_start(flushed_lsn);
 
@@ -2335,10 +2340,24 @@ files_checked:
 
 		fprintf(stderr, "[JONGQ] ---- dwb clear finished\n");
 
-		if (err == DB_SUCCESS) {
-			/* Initialize the change buffer. */
-			err = dict_boot();
-		}
+  // HOT DEBUG 3 //
+  // ORIGINAL POSITION //
+//  if (err == DB_SUCCESS) {
+//			/* Initialize the change buffer. */
+//			err = dict_boot();
+//		}
+
+    // HOT DEBUG //
+    if (is_pmem_recv) {
+      nc_fil_io_test();
+      fprintf(stderr, "[DEBUG] check nvdimm temp buffer!\n");
+      pm_mmap_recv_flush_buffer();
+      pm_mmap_recv(0,0);
+  //    pm_mmap_flush_nc_buffer();
+  //     pm_mmap_recv(pmem_recv_offset, pmem_recv_size);
+    }
+
+
 
 		if (err != DB_SUCCESS) {
 
@@ -2359,10 +2378,10 @@ files_checked:
 		fprintf(stderr, "[JONGQ] ---- pass force recovery!\n"); 
 		
     // HOT DEBUG //
-    if (is_pmem_recv) {
+//    if (is_pmem_recv) {
 //      nc_fil_io_test();
-     pm_mmap_recv(pmem_recv_offset, pmem_recv_size);
-    }
+//     pm_mmap_recv(pmem_recv_offset, pmem_recv_size);
+//    }
 
 
 // TODO(jhpark): NC recovery check !!!!!

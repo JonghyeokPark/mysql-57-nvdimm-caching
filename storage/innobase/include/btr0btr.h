@@ -611,7 +611,11 @@ btr_page_alloc(
 					in the tree */
 	mtr_t*		mtr,		/*!< in/out: mini-transaction
 					for the allocation */
-	mtr_t*		init_mtr)	/*!< in/out: mini-transaction
+	mtr_t*		init_mtr
+#ifdef UNIV_NVDIMM_CACHE
+  ,bool is_nvm_page = false
+#endif
+  )	/*!< in/out: mini-transaction
 					for x-latching and initializing
 					the page */
 	MY_ATTRIBUTE((warn_unused_result));

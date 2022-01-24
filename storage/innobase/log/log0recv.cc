@@ -2251,6 +2251,17 @@ recv_add_to_hash_table(
 #endif
 	}
 
+  // HOT DEBUG 3 //
+  if (space == 27 || space ==29) {
+    if (pm_mmap_recv_check_nc_buffer(space, page_no)) {
+      fprintf(stderr, "[DEBUG] yes! nc page here! start_lsn:%lu end_len:%lu\n", start_lsn ,end_lsn);
+    }
+///    if (pm_mmap_recv_check_nc_log(space, page_no)) {
+//      fprintf(stderr, "[DEBUG] yes! nc page log here! start_lsn:%lu end_len:%lu\n", start_lsn ,end_lsn);
+//    }
+  }
+  //
+
 	UT_LIST_ADD_LAST(recv_addr->rec_list, recv);
 
 	prev_field = &(recv->data);
@@ -2318,52 +2329,21 @@ recv_data_copy_to_buf(
 // (jhpark): RECVOERY
 extern unsigned char* gb_pm_mmap;
 #ifdef UNIV_NVDIMM_CACHE
+// (jhpark): offset means current mtr_hdr offset
 void
-pmem_recv_recover_page_func(ulint space_id, ulint page_no) {
+pmem_recv_recover_page_func(ulint space_id, ulint page_no, uint64_t offset, buf_block_t* block) {
     const page_id_t   page_id(space_id, page_no);
 
-    //dict_check_tablespaces_and_store_max_id(false);
-    
     bool found;
     const page_size_t&  page_size
       = fil_space_get_page_size(space_id, &found);
 
     ut_ad(found);
-
-    buf_block_t* block;
+    PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr;
     mtr_t recv_mtr;
-
-    if (buf_page_peek(page_id)) {
-      fprintf(stderr, "[DEBUG] (%lu:%lu) page does exists in the buffer!\n", space_id, page_no);
-
-      mtr_start(&recv_mtr);
-
-      block = buf_page_get(
-          page_id, page_size, RW_X_LATCH, &recv_mtr);
-
-      mtr_commit(&recv_mtr);
-    } else {
-      fprintf(stderr, "[DEBUG] (%lu:%lu) page does not exist in the buffer!\n", space_id, page_no);
-
-      fil_space_t* space = fil_space_get(space_id);
-      if (space == NULL) {
-        fprintf(stderr, "[DEBUG] space is NULL!\n");
-      }
-
-      fil_space_open_if_needed(space);
-
-       mtr_start(&recv_mtr);
-
-       block = buf_page_get(
-           page_id, page_size, RW_X_LATCH, &recv_mtr);
-
-       mtr_commit(&recv_mtr);
-    }
-
+    fprintf(stderr, "[DEBUG] check we call pmem_recv_recover_page_func!!!!!!\n");
       // (jhpark): parse the mtr log
       mtr_start(&recv_mtr);
-      ulint offset = PMEM_MMAP_MTR_FIL_HDR_SIZE;
-      PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr;
       memcpy(&mtr_recv_hdr, gb_pm_mmap+offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
 
 
@@ -2375,16 +2355,27 @@ pmem_recv_recover_page_func(ulint space_id, ulint page_no) {
           , gb_pm_mmap + offset + mtr_recv_hdr.len
           , &mtr_space, &mtr_page_no, false, &body);
 
-      fprintf(stderr, "[DEBUG] ret: %lu type: %d space: %lu pange_no: %lu\n",ret, type, mtr_space , mtr_page_no);
+      fprintf(stderr, "[DEBUG] log applying ret: %lu type: %d space: %lu pange_no: %lu\n",ret, type, mtr_space , mtr_page_no);
 
+      // (jhpark): check pageLSN
+      uint64_t cur_pageLsn = mach_read_from_8(block->frame + FIL_PAGE_LSN); 
+      if (cur_pageLsn > mtr_recv_hdr.mtr_lsn) {
+       fprintf(stderr, "[DEBUG] we could skip the mtr log applyting %lu > %lu\n", cur_pageLsn, mtr_recv_hdr.mtr_lsn);
+        //recv_parse_or_apply_log_rec_body(
+        //  type, gb_pm_mmap+offset, gb_pm_mmap+offset+mtr_recv_hdr.len
+        //  , space_id, page_no, block, &recv_mtr);
+ 
+      } else  {
+        fprintf(stderr, "[DEBUG] we can not skip the mtr log applyting %lu < %lu\n", cur_pageLsn, mtr_recv_hdr.mtr_lsn);
       recv_parse_or_apply_log_rec_body(
           type, gb_pm_mmap+offset, gb_pm_mmap+offset+mtr_recv_hdr.len
           , space_id, page_no, block, &recv_mtr);
-
+      }
       recv_mtr.discard_modifications();
       mtr_commit(&recv_mtr);
 
       fprintf(stderr, "[DEBUG] mtr log recovery completed!\n");
+
 }
 #endif
 
@@ -2438,11 +2429,29 @@ recv_recover_page_func(
 		return;
 	}
 
+  // (jhpark): if we already touch the NC page then skip the recovery
+  unsigned char *addr = gb_pm_mmap + (4*1024*1024*1024UL);
+  for (uint64_t i=0 ; i<(2*1024*1024*1024UL)/4096; ++i) {
+    uint64_t space = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.space();
+    uint64_t page_no = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.page_no();
+    if (space != 27 && space != 29) continue;
+    if (page_no > 1000000) continue;
+  
+    if (space == block->page.id.space() 
+        && page_no == block->page.id.page_no()) {
+         recv_sys->n_addrs--;
+         recv_addr->state = RECV_PROCESSED;
+      fprintf(stderr, "[DEBUG] yeeees!!! we already !!! (%lu:%lu)\n", space, page_no);
+      mutex_exit(&(recv_sys->mutex));
+      return;
+    }
+  }
+
+
   // (jhpark)
   fprintf(stderr,
 		   "[JOGNQ] Applying log to page %u:%u",
 		    recv_addr->space, recv_addr->page_no);
-
 
 #ifndef UNIV_HOTBACKUP
 	ut_ad(recv_needed_recovery);
@@ -2575,7 +2584,67 @@ recv_recover_page_func(
 				    get_mlog_string(recv->type), recv->len,
 				    recv_addr->space,
 				    recv_addr->page_no));
+      
+      // HOT DEBUG //
+      // (jhpark): In this phase, we distinguish the ordering of the 
+      //  applying logs between REDO logs and NC logs
+      // HOT DEBUG //
 
+      // step1. find current page_id 
+      /*
+      {
+      uint64_t offset = PMEM_MMAP_MTR_FIL_HDR_SIZE;
+      while(true && (recv_addr->space == 27 || recv_addr->space == 29)) {
+        PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr;
+        memcpy(&mtr_recv_hdr, gb_pm_mmap+offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
+        if (mtr_recv_hdr.len == 0 || offset >= 1024*1024*1024*1UL) {
+          break;
+        }
+
+        if (mtr_recv_hdr.space == recv_addr->space 
+           && mtr_recv_hdr.page_no == recv_addr->page_no) {
+          fprintf(stderr, "[DEUBG] wait, we found the mtr log! (%lu:%lu) need : %d\n"
+              , recv_addr->space, recv_addr->page_no
+              , mtr_recv_hdr.need_recv);
+        }
+
+        if (mtr_recv_hdr.need_recv &&
+            recv->start_lsn > mtr_recv_hdr.lsn) {
+          // keep header offset
+          pmem_recv_latest_offset = offset;
+          //fprintf(stderr, "[DEBUG] we need to apply mtr log! recv: %u mtr_recv: %u\n",recv->start_lsn, mtr_recv_hdr.lsn);
+          // apply log
+          fil_space_t* space_t = fil_space_acquire_silent(recv_addr->space);
+          const page_id_t cur_page_id(recv_addr->space,recv_addr->page_no);
+          const page_size_t cur_page_size(space_t->flags);
+
+          //mtr_t recv_mtr;
+          //mtr_start(&recv_mtr);
+          //buf_block_t* cur_block = buf_page_get_gen(cur_page_id, cur_page_size, BUF_GET_NO_LATCH,
+          //    NULL, BUF_GET_POSSIBLY_FREED,
+          //    __FILE__, __LINE__, &recv_mtr);
+
+          //fprintf(stderr, "[DEBUG] check (%u:%u) real: (%u:%u)\n", recv_addr->space, recv_addr->page_no
+          //    ,cur_block->page.id.space(), cur_block->page.id.page_no());
+
+          //pmem_recv_recover_page_func(mtr_recv_hdr.space, mtr_recv_hdr.page_no, offset, cur_block);
+          // save recv_info
+          //mtr_recv_hdr.need_recv = false;
+          //memcpy(gb_pm_mmap+offset, &mtr_recv_hdr, sizeof(PMEM_MMAP_MTRLOG_HDR)); 
+          
+        }
+
+        if (recv->start_lsn < mtr_recv_hdr.lsn) {
+          break;
+        }
+
+        offset += sizeof(PMEM_MMAP_MTRLOG_HDR);
+        offset += mtr_recv_hdr.len;
+      }
+      }
+      */
+
+      // step2. check the current recv->start_lsn and nc log 
 			recv_parse_or_apply_log_rec_body(
 				recv->type, buf, buf + recv->len,
 				recv_addr->space, recv_addr->page_no,
@@ -2685,8 +2754,11 @@ recv_read_in_area(
 			mutex_exit(&(recv_sys->mutex));
 		}
 	}
-	
-  buf_read_recv_pages(FALSE, page_id.space(), page_nos, n);
+
+  // HOT DEBUG 3 //
+  //buf_read_recv_pages(TRUE, page_id.space(), page_nos, n);
+
+    buf_read_recv_pages(FALSE, page_id.space(), page_nos, n);
 
 	return(n);
 }
@@ -3127,8 +3199,8 @@ recv_parse_log_rec(
 		*type, new_ptr, end_ptr, *space, *page_no, NULL, NULL);
 
   // (jhpark) HOT DEBUG //
-  fprintf(stderr, "[DEBUG] !!! log parse (%u:%u) type: %d\n", *space, *page_no, *type);
-  //
+  //fprintf(stderr, "[DEBUG] !!! log parse (%u:%u) type: %d\n", *space, *page_no, *type);
+  // 
 
 	if (UNIV_UNLIKELY(new_ptr == NULL)) {
 

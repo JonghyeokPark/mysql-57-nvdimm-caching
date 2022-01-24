@@ -19,11 +19,18 @@ unsigned char* gb_pm_mmap;
 int gb_pm_mmap_fd;
 PMEM_MMAP_MTRLOG_BUF* mmap_mtrlogbuf = NULL;
 
+
 // recovery
+std::map<std::pair<uint64_t,uint64_t> ,uint64_t> pmem_nc_buffer_map;
+std::map<std::pair<uint64_t,uint64_t> ,uint64_t> pmem_nc_log_map;
+
+
 bool is_pmem_recv = false;
 uint64_t pmem_recv_offset = 0;
 uint64_t pmem_recv_size = 0;
-
+uint64_t pmem_recv_latest_offset = 0;
+// HOT DEBUG // 
+uint64_t pmem_recv_tmp_buf_offset = (4*1024*1024*1024UL);
 
 unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
   
@@ -69,6 +76,11 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
 		fprintf(stderr, "[check] size: %lu, lsn: %lu, ckpt_lsn: %lu, ckpt_offset: %lu\n",
 						recv_mmap_mtrlog_fil_hdr->size, recv_mmap_mtrlog_fil_hdr->flushed_lsn, 
 						recv_mmap_mtrlog_fil_hdr->ckpt_lsn, recv_mmap_mtrlog_fil_hdr->ckpt_offset);
+
+    // HOT DEBUG 3//
+    memcpy(gb_pm_mmap + (4*1024*1024*1024UL), gb_pm_mmap + (1*1024*1024*1024UL), (2*1024*1024*1024UL));
+    // prepare nc recovery
+    pm_mmap_recv_prepare();
 
 		// recvoery check
     PMEM_MMAP_MTRLOG_HDR* recv_mmap_mtrlog_hdr = (PMEM_MMAP_MTRLOG_HDR*) malloc(PMEM_MMAP_MTRLOG_HDR_SIZE);
@@ -327,6 +339,19 @@ ssize_t pm_mmap_mtrlogbuf_write(
 	} else {
     fprintf(stderr, "[DEBUG] mtr log is NULL!\n");
   }
+  
+  // (jhpark): get pageLSN of the current page
+  
+  buf_block_t* check_block;
+  mtr_t check_mtr;
+  fil_space_t*  space = fil_space_acquire_silent(cur_space);   
+  const page_size_t check_page_size(space->flags);
+  check_block = buf_page_get(
+      page_id_t(cur_space, cur_page), check_page_size, RW_NO_LATCH, &check_mtr); 
+  ulint pageLsn = mach_read_from_8(check_block->frame + FIL_PAGE_LSN);
+  fprintf(stderr, "[DEBUG] (%lu:%lu) pageLSN: %lu\n", cur_space, cur_page, pageLsn);
+  mtr_hdr.mtr_lsn = pageLsn;
+ 
 
 	mtr_hdr.space = cur_space;
 	mtr_hdr.page_no = cur_page;
@@ -393,35 +418,6 @@ void pm_mmap_mtrlogbuf_commit(uint64_t space, uint64_t page_no) {
   }
   */
  
-}
-
-// commit mtr log 
-void pm_mmap_mtrlogbuf_commit(unsigned char* rec, unsigned long cur_rec_size ,ulint space, ulint page_no) {
-	// TODO(jhaprk): Keep page modification finish log for recovery	
-	// For current mtr logging version, we jsut ignore this function
-	//return;
-	flush_cache(rec, cur_rec_size);
-	//fprintf(stderr,"[JONGQ] flush_cach called after page modification rec_size:%lu \n", cur_rec_size);
-	//fprintf(stderr,"[JONGQ] space :%lu, page_no: %lu\n", space, page_no);
-	//fprintf(stderr,"[JONGQ] buf_start_address: %p rec address: %p\n",gb_pm_buf, rec);
-
-/*
-	if (mmap_mtrlogbuf == NULL) return;
-	
-	//fprintf(stderr, "[mtr-commit] space: %lu page_no: %lu\n", space, page_no);
-	// 1. check current cur_offset
-	size_t cur_offset = mmap_mtrlogbuf->cur_offset;
-	// 2. check current ckpt_offset
-	size_t ckpt_offset = mmap_mtrlogbuf->ckpt_offset;
-	// 3. remove stale log data
-	memset(gb_pm_mmap + PMEM_MMAP_MTR_FIL_HDR_SIZE, 0x00, cur_offset - PMEM_MMAP_MTR_FIL_HDR_SIZE);
-	//fprintf(stderr, "cur_offset: %lu ckpt_offset: %lu\n", cur_offset, ckpt_offset);
-	mmap_mtrlogbuf->cur_offset = PMEM_MMAP_MTR_FIL_HDR_SIZE;
-	mmap_mtrlogbuf->prev_offset = PMEM_MMAP_MTR_FIL_HDR_SIZE;
-	// really needed?
-	pm_mmap_write_logfile_header_size(PMEM_MMAP_MTR_FIL_HDR_SIZE);
-*/
-
 }
 
 

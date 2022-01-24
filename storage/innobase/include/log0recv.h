@@ -441,6 +441,10 @@ recv_parse_or_apply_log_rec_body(
 void
 pmem_recv_recover_page_func(
     ulint space_id,
-    ulint page_no);
+    ulint page_no,
+    uint64_t offset,
+    buf_block_t* block);
 
+bool 
+pm_mmap_recv_check_nc_buffer(uint64_t space, uint64_t page_no);
 #endif
