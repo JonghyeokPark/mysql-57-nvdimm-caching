@@ -162,7 +162,8 @@ void pm_mmap_recv_prepare() {
       PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr;
       memcpy(&mtr_recv_hdr, gb_pm_mmap+offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
       if (mtr_recv_hdr.len == 0) break;
-      pmem_nc_log_map[std::make_pair(mtr_recv_hdr.space, mtr_recv_hdr.page_no)] = offset;
+
+      pmem_nc_log_map[std::make_pair(mtr_recv_hdr.space, mtr_recv_hdr.page_no)].push_back(offset);
 
       offset += sizeof(PMEM_MMAP_MTRLOG_HDR);
       offset += mtr_recv_hdr.len;
@@ -181,54 +182,21 @@ void pm_mmap_recv_prepare() {
       if (space != 27 && space != 29) continue;
       if (page_no > 1000000) continue;
 
-      pmem_nc_buffer_map[std::make_pair(space,page_no)] = i*sizeof(buf_block_t);
+      pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*sizeof(buf_block_t));
    }
  
 }
 
 bool pm_mmap_recv_check_nc_log(uint64_t space, uint64_t page_no) {
-
-    ulint offset = PMEM_MMAP_MTR_FIL_HDR_SIZE;
-
-    while (true) {
-      PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr;
-      memcpy(&mtr_recv_hdr, gb_pm_mmap+offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
-      if (mtr_recv_hdr.len == 0) break;
-
-      if (mtr_recv_hdr.space == space 
-          && mtr_recv_hdr.page_no == page_no) {
-        fprintf(stderr, "[DEBUG] --recovery  mtr log header check need_recv: %d len: %lu lsn: %lu mtr_lsn: %lu prev_offset: %lu space: %lu page: %lu\n"
-            ,mtr_recv_hdr.need_recv, mtr_recv_hdr.len, mtr_recv_hdr.lsn, mtr_recv_hdr.mtr_lsn
-            ,mtr_recv_hdr.prev_offset, mtr_recv_hdr.space, mtr_recv_hdr.page_no);
-
-/*
-        if (mtr_recv_hdr.need_recv) { 
-          buf_block_t *tmp_block;
-          fil_space_t* space_t = fil_space_get(space);
-          const page_id_t cur_page_id(space,page_no);
-          const page_size_t cur_page_size(space_t->flags);
-          mtr_t recv_mtr;
-          mtr_start(&recv_mtr);
-          buf_block_t* cur_block = buf_page_get(cur_page_id, cur_page_size, RW_NO_LATCH,
-              &recv_mtr);
-
-          uint64_t cur_pageLsn = mach_read_from_8(cur_block->frame + FIL_PAGE_LSN);
-          fprintf(stderr, "[DEBUG] check (%u:%u) real: (%u:%u) cur_page_lsn:%u\n", space, page_no
-            ,cur_block->page.id.space(), cur_block->page.id.page_no(), cur_pageLsn);
+  std::map<std::pair<uint64_t,uint64_t>, std::vector<uint64_t> >::iterator ncbuf_iter;
+  ncbuf_iter = pmem_nc_buffer_map.find(std::make_pair(space,page_no));
+  if (ncbuf_iter != pmem_nc_buffer_map.end()) {
+    return true;
+  } else {
+    return false;
+  }
 
 
-          if (cur_pageLsn <= mtr_recv_hdr.lsn) {
-            pmem_recv_recover_page_func(space, page_no, offset, cur_block);
-            mtr_recv_hdr.need_recv = false;
-            memcpy(gb_pm_mmap+offset, &mtr_recv_hdr, sizeof(PMEM_MMAP_MTRLOG_HDR));
-          }
-        }
-*/
-      }
-      offset += sizeof(PMEM_MMAP_MTRLOG_HDR);
-      offset += mtr_recv_hdr.len;
-    }
- 
 }
 
 #ifdef UNIV_NVDIMM_CACHE
@@ -361,5 +329,6 @@ void pm_mmap_flush_nc_buffer() {
   is_pmem_recv=true;
   
 }
+
 
 // space, page_no 입력하면 해당 offset주는 것

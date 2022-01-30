@@ -781,6 +781,10 @@ page_cur_search_with_match_bytes(
 	slots come to the distance 1 of each other */
 
 	while (up - low > 1) {
+
+    fprintf(stderr, "(%u:%u) up: %u low : %u\n", block->page.id.space(), block->page.id.page_no()
+        , up , low);
+
 		mid = (low + up) / 2;
 		slot = page_dir_get_nth_slot(page, mid);
 		mid_rec = page_dir_slot_get_rec(slot);

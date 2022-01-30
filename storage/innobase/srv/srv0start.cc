@@ -2326,11 +2326,10 @@ files_checked:
 		/* We always try to do a recovery, even if the database had
 		been shut down normally: this is the normal startup path */
 
-    if (1) {
-			/* Initialize the change buffer. */
-			err = dict_boot();
-		}
-
+//    if (1) {
+//			/* Initialize the change buffer. */
+//			err = dict_boot();
+//		}
 
 		err = recv_recovery_from_checkpoint_start(flushed_lsn);
 
@@ -2342,22 +2341,17 @@ files_checked:
 
   // HOT DEBUG 3 //
   // ORIGINAL POSITION //
-//  if (err == DB_SUCCESS) {
-//			/* Initialize the change buffer. */
-//			err = dict_boot();
-//		}
+  if (err == DB_SUCCESS) {
+			/* Initialize the change buffer. */
+			err = dict_boot();
+  }
 
     // HOT DEBUG //
     if (is_pmem_recv) {
       nc_fil_io_test();
       fprintf(stderr, "[DEBUG] check nvdimm temp buffer!\n");
       pm_mmap_recv_flush_buffer();
-      pm_mmap_recv(0,0);
-  //    pm_mmap_flush_nc_buffer();
-  //     pm_mmap_recv(pmem_recv_offset, pmem_recv_size);
     }
-
-
 
 		if (err != DB_SUCCESS) {
 
@@ -2376,13 +2370,6 @@ files_checked:
 
 #ifdef UNIV_NVDIMM_CACHE		
 		fprintf(stderr, "[JONGQ] ---- pass force recovery!\n"); 
-		
-    // HOT DEBUG //
-//    if (is_pmem_recv) {
-//      nc_fil_io_test();
-//     pm_mmap_recv(pmem_recv_offset, pmem_recv_size);
-//    }
-
 
 // TODO(jhpark): NC recovery check !!!!!
 		if (is_pmem_recv)  {
@@ -2407,10 +2394,6 @@ files_checked:
 
 			recv_apply_hashed_log_recs(TRUE);
 			DBUG_PRINT("ib_log", ("apply completed"));
-
-      // HOT DEBUG //
-      //nc_fil_io_test();
-      //pm_mmap_recv(pmem_recv_offset, pmem_recv_size);
 
 			if (recv_needed_recovery) {
 				trx_sys_print_mysql_binlog_offset();
@@ -2866,6 +2849,11 @@ files_checked:
 
 	/* Create the buffer pool resize thread */
 	os_thread_create(buf_resize_thread, NULL, NULL);
+
+  // HOT DEBUG 3//
+//#ifdef UNIV_NVDIMM_CACHE
+//  is_pmem_recv=false;
+//#endif
 
 	srv_was_started = TRUE;
 	return(DB_SUCCESS);

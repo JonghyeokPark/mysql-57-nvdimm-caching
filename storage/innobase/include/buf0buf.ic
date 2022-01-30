@@ -39,6 +39,12 @@ Created 11/5/1995 Heikki Tuuri
 #include "fsp0types.h"
 #include "ut0new.h"
 
+
+#ifdef UNIV_NVDIMM_CACHE
+#include "pmem_mmap_obj.h"
+extern bool is_pmem_recv;
+#endif
+
 /** A chunk of buffers. The buffer pool is allocated in chunks. */
 struct buf_chunk_t{
 	ulint		size;		/*!< size of frames[] and blocks[] */

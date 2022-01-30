@@ -19,11 +19,10 @@ unsigned char* gb_pm_mmap;
 int gb_pm_mmap_fd;
 PMEM_MMAP_MTRLOG_BUF* mmap_mtrlogbuf = NULL;
 
-
 // recovery
-std::map<std::pair<uint64_t,uint64_t> ,uint64_t> pmem_nc_buffer_map;
-std::map<std::pair<uint64_t,uint64_t> ,uint64_t> pmem_nc_log_map;
-
+std::map<std::pair<uint64_t,uint64_t> ,std::vector<uint64_t> > pmem_nc_buffer_map;
+std::map<std::pair<uint64_t,uint64_t> ,std::vector<uint64_t> > pmem_nc_log_map;
+std::map<std::pair<uint64_t,uint64_t> , bool> pmem_nc_log_check;
 
 bool is_pmem_recv = false;
 uint64_t pmem_recv_offset = 0;
@@ -31,6 +30,7 @@ uint64_t pmem_recv_size = 0;
 uint64_t pmem_recv_latest_offset = 0;
 // HOT DEBUG // 
 uint64_t pmem_recv_tmp_buf_offset = (4*1024*1024*1024UL);
+bool nc_buffer_flag = false;
 
 unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
   

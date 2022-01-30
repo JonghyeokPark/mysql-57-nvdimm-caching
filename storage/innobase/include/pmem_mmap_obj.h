@@ -12,6 +12,7 @@
 
 #include <pthread.h>
 #include <map>
+#include <vector>
 
 // (jhpark): this header file for UNIV_NVDIMM_CACHE
 //					 use persistent memroy with mmap on dax-enabled file system
@@ -213,8 +214,11 @@ bool pm_mmap_recv_check_nc_log(uint64_t space, uint64_t page_no);
 
 //class page_id_t;
 // map (page_id, offset) for NC buffer
-extern std::map<std::pair<uint64_t,uint64_t> ,uint64_t> pmem_nc_buffer_map;
+extern std::map<std::pair<uint64_t,uint64_t> , std::vector<uint64_t> > pmem_nc_buffer_map;
 // map (page_id, offset) for NC log
-extern std::map<std::pair<uint64_t,uint64_t> ,uint64_t> pmem_nc_log_map;
+extern std::map<std::pair<uint64_t,uint64_t> , std::vector<uint64_t> > pmem_nc_log_map;
+// map (page_id, bool) for checking NC log alreaddy applied
+extern std::map<std::pair<uint64_t,uint64_t> , bool> pmem_nc_log_check;
 void pm_mmap_recv_prepare();
+extern bool nc_buffer_flag;
 #endif  /* __PMEMMAPOBJ_H__ */

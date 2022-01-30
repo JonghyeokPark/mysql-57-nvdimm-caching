@@ -1331,7 +1331,7 @@ retry_page_get:
 					mtr, savepoint,
 					dict_index_get_lock(index));
 			}
-
+    
 			/* release upper blocks */
 			if (retrying_for_search_prev) {
 				for (;
@@ -1349,7 +1349,7 @@ retry_page_get:
 			for (; n_releases < n_blocks; n_releases++) {
 				if (n_releases == 0 && modify_external) {
 					/* keep latch of root page */
-					ut_ad(mtr_memo_contains_flagged(
+                    ut_ad(mtr_memo_contains_flagged(
 						mtr, tree_blocks[n_releases],
 						MTR_MEMO_PAGE_SX_FIX
 						| MTR_MEMO_PAGE_X_FIX));
