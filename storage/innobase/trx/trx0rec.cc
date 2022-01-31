@@ -1907,6 +1907,7 @@ trx_undo_report_row_operation(
 	int		loop_count	= 0;
 #endif /* UNIV_DEBUG */
 
+
 	ut_a(dict_index_is_clust(index));
 	ut_ad(!rec || rec_offs_validate(rec, index, offsets));
 

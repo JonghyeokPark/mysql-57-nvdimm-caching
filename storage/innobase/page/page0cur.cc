@@ -782,9 +782,6 @@ page_cur_search_with_match_bytes(
 
 	while (up - low > 1) {
 
-    fprintf(stderr, "(%u:%u) up: %u low : %u\n", block->page.id.space(), block->page.id.page_no()
-        , up , low);
-
 		mid = (low + up) / 2;
 		slot = page_dir_get_nth_slot(page, mid);
 		mid_rec = page_dir_slot_get_rec(slot);
@@ -1747,7 +1744,7 @@ use_heap:
 
           // skip generating REDO log for nvm-page 
           // instead we create new mini-transaction and create 
-          
+          /*
           if (!is_pmem_recv) {
           mtr_t nvdimm_mtr;
           mtr_start(&nvdimm_mtr);
@@ -1755,6 +1752,7 @@ use_heap:
             current_rec, index, &nvdimm_mtr);
           nvdimm_mtr.commit_nvm();
           }
+          */
 
         } else {
           // original : 
@@ -2161,11 +2159,13 @@ page_cur_insert_rec_zip(
                     buf_page_t* nvm_bpage = &nvm_block->page;
 
                     if (nvm_bpage->cached_in_nvdimm) {
+                      /*
                       mtr_t nvdimm_mtr;   
                       mtr_start(&nvdimm_mtr);
                       nvdimm_page_cur_insert_rec_write_log(insert_rec, rec_size,
                           cursor->rec, index, &nvdimm_mtr);
                       nvdimm_mtr.commit_nvm();
+                      */
                     } else {
                         page_cur_insert_rec_write_log(
                             insert_rec, rec_size,
@@ -2453,11 +2453,13 @@ use_heap:
         buf_page_t* nvm_bpage = &nvm_block->page;
 
         if (nvm_bpage->cached_in_nvdimm) {
+          /*
           mtr_t nvdimm_mtr;
           mtr_start(&nvdimm_mtr);
           page_cur_insert_rec_write_log(insert_rec, rec_size,
               cursor->rec, index, &nvdimm_mtr);
           nvdimm_mtr.commit_nvm(); 
+          */
         } else {
             page_cur_insert_rec_write_log(insert_rec, rec_size,
                               cursor->rec, index, mtr);
@@ -2694,11 +2696,13 @@ page_copy_rec_list_end_to_created_page(
         buf_page_t* nvm_bpage = &nvm_block->page;
 
         if (nvm_bpage->cached_in_nvdimm) {
+          /*
            mtr_t nvdimm_mtr;
            mtr_start(&nvdimm_mtr);
            page_cur_insert_rec_write_log(insert_rec, rec_size, prev_rec,
                               index, &nvdimm_mtr);
            nvdimm_mtr.commit_nvm();
+          */
         } else {
             page_cur_insert_rec_write_log(insert_rec, rec_size, prev_rec,
                               index, mtr);

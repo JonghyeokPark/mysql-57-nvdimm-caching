@@ -2251,17 +2251,6 @@ recv_add_to_hash_table(
 #endif
 	}
 
-  // HOT DEBUG 3 //
-//  if (space == 27 || space ==29) {
-//    if (pm_mmap_recv_check_nc_buffer(space, page_no)) {
-//      fprintf(stderr, "[DEBUG] yes! nc page here! start_lsn:%lu end_len:%lu\n", start_lsn ,end_lsn);
-//    }
-///    if (pm_mmap_recv_check_nc_log(space, page_no)) {
-//      fprintf(stderr, "[DEBUG] yes! nc page log here! start_lsn:%lu end_len:%lu\n", start_lsn ,end_lsn);
-//    }
-//  }
-  //
-
 	UT_LIST_ADD_LAST(recv_addr->rec_list, recv);
 
 	prev_field = &(recv->data);
@@ -2405,7 +2394,19 @@ recv_recover_page_func(
 	ibool		modification_to_page;
 	mtr_t		mtr;
 
+
  	mutex_enter(&(recv_sys->mutex));
+
+  // HOT DEBUG 4 //
+  
+  if (pm_mmap_recv_check_nc_log(block->page.id.space(), block->page.id.page_no())) {
+		recv_sys->n_addrs--;
+    fprintf(stderr, "[DEBUG] we skip NC resident page (%u:%u)\n"
+        , block->page.id.space(), block->page.id.page_no());
+    mutex_exit(&(recv_sys->mutex));
+    return;
+  }
+  
 
 	if (recv_sys->apply_log_recs == FALSE) {
 
@@ -2595,6 +2596,7 @@ recv_recover_page_func(
 		recv = UT_LIST_GET_NEXT(rec_list, recv);
 	}
 
+  /*
   // step1. check current page exists in NC buffer
   unsigned char* nc_buffer_addr = gb_pm_mmap + (4*1024*1024*1024UL); 
   std::map<std::pair<uint64_t,uint64_t>, std::vector<uint64_t> >::iterator nclog_iter;
@@ -2604,7 +2606,6 @@ recv_recover_page_func(
   if (ncbuf_iter != pmem_nc_buffer_map.end())  {
 
       // nc logging 
-    /*
       nclog_iter = pmem_nc_log_map.find(std::make_pair(block->page.id.space()
               , block->page.id.page_no()));
 
@@ -2623,7 +2624,6 @@ recv_recover_page_func(
 
          }
       }
-    */
  
       // debug check nc log already applied
       nccheck_iter = pmem_nc_log_check.find(std::make_pair(block->page.id.space(), block->page.id.page_no()));
@@ -2698,14 +2698,7 @@ recv_recover_page_func(
       return;
 
   } // end-of-if
-
-
-
-  // HOT DEBUG // 
-  if (recv_addr->space == 27 || recv_addr->space == 29) {
-    fprintf(stderr, "(%u:%u) slots: %u\n", recv_addr->space, recv_addr->page_no
-        , page_dir_get_n_slots(block->frame));
-  }
+*/
 
 #ifdef UNIV_ZIP_DEBUG
 	if (fil_page_index_page_check(page)) {
@@ -2743,8 +2736,12 @@ recv_recover_page_func(
 
 	recv_addr->state = RECV_PROCESSED;
 
+  // HOT DEBUG 4 //
+  if (recv_sys->n_addrs>0) recv_sys->n_addrs--;
+  /*
 	ut_a(recv_sys->n_addrs);
 	recv_sys->n_addrs--;
+  */
 
 	mutex_exit(&(recv_sys->mutex));
 
@@ -2793,10 +2790,7 @@ recv_read_in_area(
 		}
 	}
 
-  // HOT DEBUG 3 //
-  //buf_read_recv_pages(TRUE, page_id.space(), page_nos, n);
-
-    buf_read_recv_pages(FALSE, page_id.space(), page_nos, n);
+   buf_read_recv_pages(FALSE, page_id.space(), page_nos, n);
 
 	return(n);
 }
@@ -2983,9 +2977,9 @@ loop:
   fprintf(stderr, "Normal page applyging REDO log finished!\n");
 
   // (jhpark): we need to recover extra pages in NVDIMM Buffer and 
+/*
   // flsuh to disk!
   {
-
   unsigned char* addr = gb_pm_mmap + (4*1024*1024*1024UL);
   uint64_t page_num_chunks = static_cast<uint64_t>( (2*1024*1024*1024UL)/4096);
   uint64_t space, page_no;
@@ -3061,7 +3055,7 @@ loop:
   }
 
   }
-
+*/
 	recv_sys->apply_log_recs = FALSE;
 	recv_sys->apply_batch_on = FALSE;
 

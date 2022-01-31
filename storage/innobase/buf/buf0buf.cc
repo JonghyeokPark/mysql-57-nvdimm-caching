@@ -792,6 +792,9 @@ buf_page_is_corrupted(
 )
 {
 
+  // HOT DEBUG 4 //
+  return false;
+
 	ulint		checksum_field1;
 	ulint		checksum_field2;
 
@@ -802,6 +805,10 @@ buf_page_is_corrupted(
 
 		/* Stored log sequence numbers at the start and the end
 		of page do not match */
+    fprintf(stderr, "[DEBUG] corrupted log is not math %u : %u\n"
+        , read_buf + FIL_PAGE_LSN + 4
+        ,  read_buf + page_size.logical() -  FIL_PAGE_END_LSN_OLD_CHKSUM + 4);
+
 		return(TRUE);
 	}
 
@@ -1017,7 +1024,8 @@ buf_page_is_corrupted(
 				page_no);
 		}
 #endif /* UNIV_INNOCHECKSUM */
-		return(TRUE);
+		// (jhpark): most NC pages fall throughs here
+    return(TRUE);
 
 	case SRV_CHECKSUM_ALGORITHM_INNODB:
 	case SRV_CHECKSUM_ALGORITHM_STRICT_INNODB:
@@ -1096,6 +1104,7 @@ buf_page_is_corrupted(
 				page_no);
 		}
 #endif /* UNIV_INNOCHECKSUM */
+    fprintf(stderr, "[DEBUG] corrupted (2)\n");
 		return(TRUE);
 
 	case SRV_CHECKSUM_ALGORITHM_STRICT_NONE:
@@ -1151,6 +1160,9 @@ buf_page_is_corrupted(
 				page_no);
 		}
 #endif /* UNIV_INNOCHECKSUM */
+
+    fprintf(stderr, "[DEBUG] corrupted (3)\n");
+
 		return(TRUE);
 
 	case SRV_CHECKSUM_ALGORITHM_NONE:

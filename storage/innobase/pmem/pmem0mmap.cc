@@ -31,6 +31,8 @@ uint64_t pmem_recv_latest_offset = 0;
 // HOT DEBUG // 
 uint64_t pmem_recv_tmp_buf_offset = (4*1024*1024*1024UL);
 bool nc_buffer_flag = false;
+uint64_t pmem_recv_commit_offset = sizeof(PMEM_MMAP_MTRLOGFILE_HDR);
+
 
 unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
   
@@ -78,9 +80,9 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
 						recv_mmap_mtrlog_fil_hdr->ckpt_lsn, recv_mmap_mtrlog_fil_hdr->ckpt_offset);
 
     // HOT DEBUG 3//
-    memcpy(gb_pm_mmap + (4*1024*1024*1024UL), gb_pm_mmap + (1*1024*1024*1024UL), (2*1024*1024*1024UL));
+     memcpy(gb_pm_mmap + (6*1024*1024*1024UL), gb_pm_mmap + (1*1024*1024*1024UL), (2*1024*1024*1024UL));
     // prepare nc recovery
-    pm_mmap_recv_prepare();
+    //pm_mmap_recv_prepare();
 
 		// recvoery check
     PMEM_MMAP_MTRLOG_HDR* recv_mmap_mtrlog_hdr = (PMEM_MMAP_MTRLOG_HDR*) malloc(PMEM_MMAP_MTRLOG_HDR_SIZE);
@@ -99,12 +101,8 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
 			// jhpark: check buffer!!!!!
 			PMEMMMAP_INFO_PRINT("recovery offset: %lu\n", pmem_recv_offset);
 		}
- 
-    // HOT DEBUG //
-    //pm_mmap_recv_flush_buffer();
-    // HOT DEBUG //
 
-		free(recv_mmap_mtrlog_fil_hdr);
+    free(recv_mmap_mtrlog_fil_hdr);
     free(recv_mmap_mtrlog_hdr);
   }
 

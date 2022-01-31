@@ -209,6 +209,8 @@ extern uint64_t pmem_recv_size;
 
 extern uint64_t pmem_recv_latest_offset;
 extern uint64_t pmem_recv_tmp_buf_offset;
+extern uint64_t pmem_recv_commit_offset;
+
 
 bool pm_mmap_recv_check_nc_log(uint64_t space, uint64_t page_no);
 
@@ -221,4 +223,5 @@ extern std::map<std::pair<uint64_t,uint64_t> , std::vector<uint64_t> > pmem_nc_l
 extern std::map<std::pair<uint64_t,uint64_t> , bool> pmem_nc_log_check;
 void pm_mmap_recv_prepare();
 extern bool nc_buffer_flag;
+void pmem_recv_recvoer_nc_page();
 #endif  /* __PMEMMAPOBJ_H__ */

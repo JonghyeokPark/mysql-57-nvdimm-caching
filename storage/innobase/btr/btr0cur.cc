@@ -2996,11 +2996,23 @@ btr_cur_ins_lock_and_undo(
 
     bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
 
-	err = trx_undo_report_row_operation(is_nvm_page, flags, TRX_UNDO_INSERT_OP,
+    extern uint64_t pmem_recv_tmp_buf_offset;
+    extern unsigned char* gb_pm_mmap;
+    memcpy(gb_pm_mmap + pmem_recv_tmp_buf_offset, (buf_block_t *)nvm_block->frame, UNIV_PAGE_SIZE);
+    flush_cache(gb_pm_mmap + pmem_recv_tmp_buf_offset, UNIV_PAGE_SIZE);
+    pmem_recv_tmp_buf_offset += UNIV_PAGE_SIZE;
+
+    if (pmem_recv_tmp_buf_offset >= (6*1024*1024*1024UL)) {
+      fprintf(stderr, "[DEBUG] exit !! for debugging !!\n");
+      exit(1);
+    }
+
+	  err = trx_undo_report_row_operation(is_nvm_page, flags, TRX_UNDO_INSERT_OP,
 					    thr, index, entry,
 					    NULL, 0, NULL, NULL,
 					    &roll_ptr);
-#else
+
+ #else
 	err = trx_undo_report_row_operation(flags, TRX_UNDO_INSERT_OP,
 					    thr, index, entry,
 					    NULL, 0, NULL, NULL,
@@ -3581,6 +3593,21 @@ btr_cur_upd_lock_and_undo(
 
     bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
 
+  // HOT DEBUG 4 //
+  if (is_nvm_page) {
+    extern uint64_t pmem_recv_tmp_buf_offset;
+    extern unsigned char* gb_pm_mmap;
+    memcpy(gb_pm_mmap + pmem_recv_tmp_buf_offset, (buf_block_t *)nvm_block->frame, UNIV_PAGE_SIZE);
+    flush_cache(gb_pm_mmap + pmem_recv_tmp_buf_offset, UNIV_PAGE_SIZE);
+    pmem_recv_tmp_buf_offset += UNIV_PAGE_SIZE;
+
+    if (pmem_recv_tmp_buf_offset >= (6*1024*1024*1024UL)) {
+      fprintf(stderr, "[DEBUG] exit !! for debugging !!\n");
+      exit(1);
+    }
+
+  }
+
 
 	return(trx_undo_report_row_operation(
 		       is_nvm_page, flags, TRX_UNDO_MODIFY_OP, thr,
@@ -3947,6 +3974,7 @@ btr_cur_update_in_place(
     if (nvm_bpage->cached_in_nvdimm) {
         // skip generating REDO logs for NVM-resident pages
 				// write NC page on NVDIMM
+        /*
         if (!is_pmem_recv) {
 
           mtr_t nvdimm_mtr;
@@ -3954,8 +3982,8 @@ btr_cur_update_in_place(
           btr_cur_update_in_place_log(flags, rec, index, update,
                         trx_id, roll_ptr, &nvdimm_mtr);
           nvdimm_mtr.commit_nvm();
- 
         }
+        */
     } else {
         btr_cur_update_in_place_log(flags, rec, index, update,
                         trx_id, roll_ptr, mtr);
@@ -4909,6 +4937,21 @@ btr_cur_del_mark_set_clust_rec(
     nvm_bpage = &(block->page);
     is_nvm_page = nvm_bpage->cached_in_nvdimm;
 
+  // HOT DEBUG 4 //
+  if (is_nvm_page) {
+    extern uint64_t pmem_recv_tmp_buf_offset;
+    extern unsigned char* gb_pm_mmap;
+    memcpy(gb_pm_mmap + pmem_recv_tmp_buf_offset, block->frame, UNIV_PAGE_SIZE);
+		flush_cache(gb_pm_mmap + pmem_recv_tmp_buf_offset, UNIV_PAGE_SIZE);
+
+    pmem_recv_tmp_buf_offset += UNIV_PAGE_SIZE;
+    if (pmem_recv_tmp_buf_offset >= (6*1024*1024*1024UL)) {
+      fprintf(stderr, "[DEBUG] exit !! for debugging !!\n");
+      exit(1);
+    }
+  }
+
+
 	err = trx_undo_report_row_operation(is_nvm_page, flags, TRX_UNDO_MODIFY_OP, thr,
 					    index, entry, NULL, 0, rec, offsets,
 					    &roll_ptr);
@@ -4958,6 +5001,7 @@ btr_cur_del_mark_set_clust_rec(
 #ifdef UNIV_NVDIMM_CACHE
     if (is_nvm_page) {
     	// (XXX) skip REDO log for delete operation
+      /*
       if (!is_pmem_recv) {
         mtr_t nvdimm_mtr;
         mtr_start(&nvdimm_mtr);
@@ -4965,6 +5009,7 @@ btr_cur_del_mark_set_clust_rec(
             roll_ptr, &nvdimm_mtr);
         nvdimm_mtr.commit_nvm();
       }
+      */
 		} else {
       btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
          roll_ptr, mtr);
@@ -5104,10 +5149,12 @@ btr_cur_del_mark_set_sec_rec(
   fprintf(stderr, "[DEBUG] secondary delete!\n");
   buf_page_t* nvm_bpage = &block->page;
   if (nvm_bpage->cached_in_nvdimm) {
+    /*
     mtr_t nvdimm_mtr; 
     mtr_start(&nvdimm_mtr); 
     btr_cur_del_mark_set_sec_rec_log(rec, val, &nvdimm_mtr);
     nvdimm_mtr.commit_nvm();
+    */
   } else {
     btr_cur_del_mark_set_sec_rec_log(rec, val, mtr);
   }

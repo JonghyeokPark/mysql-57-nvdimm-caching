@@ -2349,8 +2349,7 @@ files_checked:
     // HOT DEBUG //
     if (is_pmem_recv) {
       nc_fil_io_test();
-      fprintf(stderr, "[DEBUG] check nvdimm temp buffer!\n");
-      pm_mmap_recv_flush_buffer();
+      pmem_recv_recvoer_nc_page();
     }
 
 		if (err != DB_SUCCESS) {

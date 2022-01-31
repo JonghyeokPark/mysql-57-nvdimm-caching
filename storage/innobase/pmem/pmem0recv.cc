@@ -24,6 +24,7 @@
 extern unsigned char* gb_pm_mmap;
 extern uint64_t pmem_recv_size;
 
+
 void pm_mmap_recv(uint64_t start_offset, uint64_t end_offset) {
   // parse log records
   // TODO(jhpark): we need to use start_offset
@@ -72,7 +73,7 @@ void pm_mmap_recv(uint64_t start_offset, uint64_t end_offset) {
 
   // HOT DEBUG 3 // 
   // copy 4GB+2GB
-  memcpy(gb_pm_mmap + (4*1024*1024*1024UL), gb_pm_buf, (2*1024*1024*1024UL));
+  //memcpy(gb_pm_mmap + (4*1024*1024*1024UL), gb_pm_buf, (2*1024*1024*1024UL));
 
   fprintf(stderr, "[DEBUG] mtr log applying is finished!\n");
   is_pmem_recv=true;
@@ -330,5 +331,90 @@ void pm_mmap_flush_nc_buffer() {
   
 }
 
+void pmem_recv_recvoer_nc_page() {
 
-// space, page_no 입력하면 해당 offset주는 것
+  uint64_t cur_offset = 0;
+  uint64_t space, page_no;
+  unsigned char *addr = gb_pm_mmap + (4*1024*1024*1024UL);
+  uint64_t page_num_chunks = static_cast<uint64_t>( (2*1024*1024*1024UL)/4096);
+
+  for (uint64_t i=0 ; i< page_num_chunks; ++i) {
+
+    //space = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.space();
+    //page_no = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.page_no();
+    //unsigned char *frame = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->frame;
+
+
+    space = mach_read_from_4(addr+i*4096 + FIL_PAGE_SPACE_ID);
+    page_no = mach_read_from_4(addr+i*4096 + FIL_PAGE_OFFSET);
+    unsigned char *frame = (addr+i*4096);
+
+    if (space != 27 && space != 29) continue;
+    if (page_no > 1000000) continue;
+ 
+    fprintf(stderr, "[DEBUG] (%lu:%lu) (3) page exists in temp NVDIMM Buffer! i: %lu\n"
+        ,space, page_no, i);
+   
+    fil_space_t* space_t = fil_space_get(space);
+    const page_id_t page_id(space,page_no);
+    const page_size_t page_size(space_t->flags);
+    if (buf_page_is_corrupted(true, frame, page_size,
+          fsp_is_checksum_disabled(space))) {
+      fprintf(stderr, "(%lu:%lu) page is corruptted!\n", space, page_no);
+    } else {
+      fprintf(stderr, "(%lu:%lu) page is good!\n", space, page_no);
+    }
+
+    // keep page info
+    //pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*4096);
+
+    // flush NC page
+    /*
+    IORequest write_request(IORequest::WRITE);
+    write_request.disable_compression();
+    int check = fil_io(write_request, true, page_id, page_size, 0
+         ,4096, frame, NULL);
+    fprintf(stderr, "fil_io check! %d\n", check);
+    */
+  }
+
+  unsigned char *real_addr = gb_pm_mmap + (6*1024*1024*1024UL);
+  uint64_t real_page_num_chunks = static_cast<uint64_t>( (2*1024*1024*1024UL)/4096);
+
+  for (uint64_t i=0 ; i< real_page_num_chunks; ++i) {
+    space = mach_read_from_4(real_addr+i*4096 + FIL_PAGE_SPACE_ID);
+    page_no = mach_read_from_4(real_addr+i*4096 + FIL_PAGE_OFFSET);
+    unsigned char *frame = (real_addr+i*4096);
+
+    if (space != 27 && space != 29) continue;
+    if (page_no > 1000000) continue;
+ 
+    fprintf(stderr, "[DEBUG] (%lu:%lu) (3) page exists in real NVDIMM Buffer! i: %lu\n"
+        ,space, page_no, i);
+ 
+    /*
+    std::map<std::pair<uint64_t,uint64_t>, std::vector<uint64_t> >::iterator ncbuf_iter;
+    ncbuf_iter = pmem_nc_buffer_map.find(std::make_pair(space,page_no));
+    if (ncbuf_iter != pmem_nc_buffer_map.end()) {
+      uint64_t temp_offset = ncbuf_iter->second.back();
+     } else {
+      fprintf(stderr, "[DEBUG] hmm we do not have original copy! (%u:%u)\n", space, page_no);
+    }
+    */
+
+      IORequest write_request(IORequest::WRITE);
+      write_request.disable_compression();
+      frame = gb_pm_mmap + (6*1024*1024*1024UL) + i * 4096;
+      fil_space_t* space_t = fil_space_get(space);
+      const page_id_t page_id(space,page_no);
+      const page_size_t page_size(space_t->flags);
+       pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*4096);
+      
+       int check = fil_io(write_request, true, page_id, page_size, 0
+           ,4096, frame, NULL);
+      fprintf(stderr, "fil_io check! %d\n", check);
+
+
+  }
+
+}

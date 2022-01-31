@@ -1122,18 +1122,6 @@ buf_flush_write_block_low(
             << " flush-type = " << bpage->flush_type;*/
         memcpy(((buf_block_t *)nvdimm_page)->frame, ((buf_block_t *)bpage)->frame, UNIV_PAGE_SIZE);
 
-        // HOT DEBUG 3 //
-        memcpy(gb_pm_mmap + pmem_recv_tmp_buf_offset, ((buf_block_t *)bpage)->frame, UNIV_PAGE_SIZE);
-         flush_cache(gb_pm_mmap + pmem_recv_tmp_buf_offset, UNIV_PAGE_SIZE);
-
-        pmem_recv_tmp_buf_offset += UNIV_PAGE_SIZE;
-        if (pmem_recv_tmp_buf_offset >= (6*1024*1024*1024UL)) {
-          fprintf(stderr, "[DEBUG] exit !! for debugging !!\n");
-          exit(1);
-        }
-        // //
-
-
         /* Set the oldest LSN of the NVDIMM page to the previous newest LSN. */
         buf_flush_note_modification((buf_block_t *)nvdimm_page, bpage->newest_modification, bpage->newest_modification, nvdimm_page->flush_observer);
 
@@ -1148,22 +1136,31 @@ buf_flush_write_block_low(
         /*buf_pool_t*	buf_pool = buf_pool_from_bpage(nvdimm_page);
         ib::info() << nvdimm_page->id.space() << " "
                 << nvdimm_page->id.page_no() << " is moved to "
-                << nvdimm_page->buf_pool_index << " from " << bpage->buf_pool_index;*/
+                << nvdimm_page->buf_pool_index << " from " << bpage->buf_pool_index;
+        */
     } else {
 normal:
         // HOT DEBUG//
         // (jhpark): this section will detect the NVDIMM -> DISK pages
         bool mtrlog_commit_flag = false;
         ulint check_space, check_page;
+
+
         if (bpage->cached_in_nvdimm) {
-        //  (jhpark): is this right place?
-        //  pm_mmap_mtrlogbuf_commit(bpage->id.space(), bpage->id.page_no());
           mtrlog_commit_flag = true;
           check_space = bpage->id.space();
           check_page = bpage->id.page_no();
           fprintf(stderr, "[DEBUG] (%lu:%lu) this page is flushed to disk !!!! page_lsn: %u\n"
               , bpage->id.space(), bpage->id.page_no()
               , mach_read_from_4(reinterpret_cast<buf_block_t*>(bpage)->frame + FIL_PAGE_LSN));
+
+          
+          extern uint64_t pmem_recv_commit_offset;
+          memcpy(gb_pm_mmap + pmem_recv_commit_offset, &check_space, sizeof(uint64_t));
+          memcpy(gb_pm_mmap + pmem_recv_commit_offset, &check_page, sizeof(uint64_t));
+          pmem_recv_commit_offset += 2*sizeof(uint64_t);
+
+
         }
         // HOT DEBUG// 
 
@@ -1177,7 +1174,8 @@ normal:
                 << " with oldest: " << bpage->oldest_modification
                 << " newest: " << bpage->newest_modification
                 << " lsn-gap: " << bpage->newest_modification - bpage->oldest_modification;
-*/
+        */
+
         if (!srv_use_doublewrite_buf
             || buf_dblwr == NULL
             || srv_read_only_mode
