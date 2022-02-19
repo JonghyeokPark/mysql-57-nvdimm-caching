@@ -2326,11 +2326,6 @@ files_checked:
 		/* We always try to do a recovery, even if the database had
 		been shut down normally: this is the normal startup path */
 
-//    if (1) {
-//			/* Initialize the change buffer. */
-//			err = dict_boot();
-//		}
-
 		err = recv_recovery_from_checkpoint_start(flushed_lsn);
 
 		fprintf(stderr, "[JONGQ] ---- recv_recovery_from_checkpoint() finished\n");
@@ -2339,18 +2334,18 @@ files_checked:
 
 		fprintf(stderr, "[JONGQ] ---- dwb clear finished\n");
 
-  // HOT DEBUG 3 //
-  // ORIGINAL POSITION //
-  if (err == DB_SUCCESS) {
+    if (err == DB_SUCCESS) {
 			/* Initialize the change buffer. */
 			err = dict_boot();
-  }
+    }
 
     // HOT DEBUG //
+    
     if (is_pmem_recv) {
       nc_fil_io_test();
       pmem_recv_recvoer_nc_page();
     }
+    
 
 		if (err != DB_SUCCESS) {
 
@@ -2850,9 +2845,11 @@ files_checked:
 	os_thread_create(buf_resize_thread, NULL, NULL);
 
   // HOT DEBUG 3//
-//#ifdef UNIV_NVDIMM_CACHE
-//  is_pmem_recv=false;
-//#endif
+#ifdef UNIV_NVDIMM_CACHE
+  is_pmem_recv=false;
+  //memset(gb_pm_mmap, 0x0, 1*1024*1024*1024UL);
+  pm_mmap_mtrlogbuf_init(1*1024*1024*1024UL);
+#endif
 
 	srv_was_started = TRUE;
 	return(DB_SUCCESS);

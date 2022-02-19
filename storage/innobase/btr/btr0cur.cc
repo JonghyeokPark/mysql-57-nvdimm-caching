@@ -352,6 +352,8 @@ btr_cur_latch_leaves(
 #ifdef UNIV_BTR_DEBUG
 			ut_a(page_is_comp(get_block->frame)
 			     == page_is_comp(page));
+      /* jhpark */
+      // same error here
 			/* mijin */
             if (btr_page_get_prev(get_block->frame, mtr) != page_get_page_no(page)) {
                 fprintf(stderr, "%lu != %lu, %lu\n",
@@ -1117,6 +1119,7 @@ retry_page_get:
 	tree_savepoints[n_blocks] = mtr_set_savepoint(mtr);
 	block = buf_page_get_gen(page_id, page_size, rw_latch, guess,
 				 buf_mode, file, line, mtr);
+
 	tree_blocks[n_blocks] = block;
 
 	if (block == NULL) {
@@ -2954,6 +2957,32 @@ btr_cur_ins_lock_and_undo(
 	rec = btr_cur_get_rec(cursor);
 	index = cursor->index;
 
+
+  {
+
+    buf_block_t* nvm_block = btr_cur_get_block(cursor);
+    buf_page_t* nvm_bpage = &(nvm_block->page);
+
+    bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
+
+    if (is_nvm_page) {
+    const page_size_t page_size(
+         dict_table_page_size(index->table));
+
+    int is_query =0;
+    if (thr !=NULL) is_query = 1;
+
+    if (buf_page_is_corrupted(true, nvm_block->frame, page_size, false)) {
+      fprintf(stderr, "[DEBUG] (ins-1) what buffer is already corrupted! %u:%u is_query %d\n"
+          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query);
+    } else {
+      fprintf(stderr, "[DEBUG] (ins-2) what buffer is safe! %u:%u is_query %d\n"
+          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query); 
+    }
+
+    }
+  }
+
 	ut_ad(!dict_index_is_online_ddl(index)
 	      || dict_index_is_clust(index)
 	      || (flags & BTR_CREATE_FLAG));
@@ -2996,6 +3025,7 @@ btr_cur_ins_lock_and_undo(
 
     bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
 
+    /*
     extern uint64_t pmem_recv_tmp_buf_offset;
     extern unsigned char* gb_pm_mmap;
     memcpy(gb_pm_mmap + pmem_recv_tmp_buf_offset, (buf_block_t *)nvm_block->frame, UNIV_PAGE_SIZE);
@@ -3005,6 +3035,57 @@ btr_cur_ins_lock_and_undo(
     if (pmem_recv_tmp_buf_offset >= (6*1024*1024*1024UL)) {
       fprintf(stderr, "[DEBUG] exit !! for debugging !!\n");
       exit(1);
+    }
+    */
+
+    // keep undo nc here!
+    if (is_nvm_page) {
+    
+    const page_size_t page_size(
+         dict_table_page_size(index->table));
+
+    int is_query = 0;
+    if (thr != NULL) {
+      is_query = 1;
+    }
+
+    buf_flush_init_for_writing(
+        reinterpret_cast<const buf_block_t*>(nvm_bpage),  
+        reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame,           
+        nvm_bpage->zip.data ? &nvm_bpage->zip : NULL,
+        // HOT DEBUG //
+        nvm_bpage->newest_modification,
+        //nvm_bpage->oldest_modification,
+        fsp_is_checksum_disabled(nvm_bpage->id.space()));
+
+
+    if (buf_page_is_corrupted(true, nvm_block->frame, page_size, false)) {
+
+      ulint ck1 = mach_read_from_4(          
+          nvm_block->frame + FIL_PAGE_SPACE_OR_CHKSUM);                
+      ulint ck2 = mach_read_from_4(           
+          nvm_block->frame + page_size.logical() - FIL_PAGE_END_LSN_OLD_CHKSUM);        
+
+      fprintf(stderr, "[DEBUG] (ins) what buffer is already corrupted! %u:%u is_query %d ck1: %u ck2: %u\n"
+          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query, ck1, ck2);
+    } else {
+      fprintf(stderr, "[DEBUG] (ins) what buffer is safe! %u:%u is_query %d\n"
+          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query); 
+    }
+
+    uint64_t offset = pm_mmap_mtrlogbuf_write_undo(
+        nvm_block->frame, 4096
+        , log_sys->lsn
+        , nvm_bpage->id.space(), nvm_bpage->id.page_no()); 
+ 
+    if (thr != NULL) {
+      trx_t* trx = thr_get_trx(thr);  
+      trx->nc_pages_list.push_back(
+        trx_nc_pages_list_t::value_type(
+        std::make_pair(nvm_bpage->id.space(), nvm_bpage->id.page_no())
+        , offset));
+    }
+
     }
 
 	  err = trx_undo_report_row_operation(is_nvm_page, flags, TRX_UNDO_INSERT_OP,
@@ -3118,6 +3199,23 @@ btr_cur_optimistic_insert(
 	block = btr_cur_get_block(cursor);
 	page = buf_block_get_frame(block);
 	index = cursor->index;
+
+#ifdef UNIV_NVDIMM_CACHE
+  buf_page_t* nvm_bpage = &(block->page);
+  bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
+  if (is_nvm_page) {                              
+    const page_size_t page_size(  
+         dict_table_page_size(index->table));
+    if (buf_page_is_corrupted(true, block->frame, page_size, false)) {       
+      fprintf(stderr, "[DEBUG] (ins-1) what buffer is already corrupted! %u:%u\n"
+          ,nvm_bpage->id.space(), nvm_bpage->id.page_no());
+    } else {
+      fprintf(stderr, "[DEBUG] (ins-1) what buffer is safe! %u:%u\n"
+          , nvm_bpage->id.space(), nvm_bpage->id.page_no());
+    }
+  }
+
+#endif
 
 	/* Block are not latched for insert if table is intrinsic
 	and index is auto-generated clustered index. */
@@ -3389,11 +3487,37 @@ btr_cur_pessimistic_insert(
 
 	ut_ad(dtuple_check_typed(entry));
 
-  // HOT DEBUG //
+#ifdef UNIV_NVDIMM_CACHE
   buf_block_t *check_block = btr_cur_get_block(cursor);
   buf_page_t *check_page = &(check_block->page);
   bool is_nvm_page = check_page->cached_in_nvdimm;
-  // HOT DEBUG //
+
+  // HOT DEBUG 7
+   
+  if (is_nvm_page) {
+//    check_block->page.cached_in_nvdimm = false; 
+
+    buf_page_t* nvm_bpage = &(check_block->page);
+    buf_flush_init_for_writing(
+        reinterpret_cast<const buf_block_t*>(nvm_bpage),
+        reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame,
+        nvm_bpage->zip.data ? &nvm_bpage->zip : NULL,
+        nvm_bpage->newest_modification,
+        fsp_is_checksum_disabled(nvm_bpage->id.space()));
+
+    pm_mmap_mtrlogbuf_write_undo(
+        check_block->frame,
+        4096, log_sys->lsn
+        , check_block->page.id.space()
+        , check_block->page.id.page_no(), 3);
+
+    if ( btr_cur_get_block(cursor)->page.cached_in_nvdimm == true) {
+      fprintf(stderr, "[ERROR] FAIL!!!!! (%u:%u)\n", check_block->page.id.space(), check_block->page.id.page_no());
+    }
+
+  }
+  
+#endif
 
 	*big_rec = NULL;
 
@@ -3560,6 +3684,30 @@ btr_cur_upd_lock_and_undo(
 	rec = btr_cur_get_rec(cursor);
 	index = cursor->index;
 
+  {
+    buf_block_t* nvm_block = btr_cur_get_block(cursor);
+    buf_page_t* nvm_bpage = &(nvm_block->page);
+
+    bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
+
+    if (is_nvm_page) {
+    const page_size_t page_size(
+         dict_table_page_size(index->table));
+    int is_query =0;
+    if (thr !=NULL) is_query = 1;
+
+
+    if (buf_page_is_corrupted(true, nvm_block->frame, page_size, false)) {
+      fprintf(stderr, "[DEBUG] (upd-1) what buffer is already corrupted! %u:%u is_query %d\n"
+          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query);
+    } else {
+      fprintf(stderr, "[DEBUG] (upd-1) what buffer is safe! %u:%u is_query %d\n"
+          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query);
+    }
+    }
+
+  }
+
 	ut_ad(rec_offs_validate(rec, index, offsets));
 	ut_ad(mtr->is_named_space(index->space));
 
@@ -3595,6 +3743,7 @@ btr_cur_upd_lock_and_undo(
 
   // HOT DEBUG 4 //
   if (is_nvm_page) {
+    /*
     extern uint64_t pmem_recv_tmp_buf_offset;
     extern unsigned char* gb_pm_mmap;
     memcpy(gb_pm_mmap + pmem_recv_tmp_buf_offset, (buf_block_t *)nvm_block->frame, UNIV_PAGE_SIZE);
@@ -3604,6 +3753,48 @@ btr_cur_upd_lock_and_undo(
     if (pmem_recv_tmp_buf_offset >= (6*1024*1024*1024UL)) {
       fprintf(stderr, "[DEBUG] exit !! for debugging !!\n");
       exit(1);
+    }
+    */
+    // KEEP UNDO NC HERE!
+
+    const page_size_t page_size(
+         dict_table_page_size(index->table));
+    int is_query =0;
+    if (thr !=NULL) is_query = 1;
+
+    buf_flush_init_for_writing(
+        reinterpret_cast<const buf_block_t*>(nvm_bpage),  
+        reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame,           
+        nvm_bpage->zip.data ? &nvm_bpage->zip : NULL,
+        nvm_bpage->newest_modification,
+        fsp_is_checksum_disabled(nvm_bpage->id.space()));
+
+
+    if (buf_page_is_corrupted(true, nvm_block->frame, page_size, false)) {
+
+      ulint ck1 = mach_read_from_4(          
+          nvm_block->frame + FIL_PAGE_SPACE_OR_CHKSUM);                
+      ulint ck2 = mach_read_from_4(           
+          nvm_block->frame + page_size.logical() - FIL_PAGE_END_LSN_OLD_CHKSUM);        
+
+      fprintf(stderr, "[DEBUG] (upd) what buffer is already corrupted! %u:%u is_query %d ck1:%u ck2:%u\n"
+          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query, ck1, ck2);
+    } else {
+      fprintf(stderr, "[DEBUG] (upd) what buffer is safe! %u:%u is_query %d\n"
+          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query);
+
+    }
+
+
+    uint64_t offset = pm_mmap_mtrlogbuf_write_undo(
+        nvm_block->frame, 4096,  log_sys->lsn, nvm_bpage->id.space(), nvm_bpage->id.page_no());
+
+    if (thr != NULL) {
+      trx_t* trx = thr_get_trx(thr);
+      trx->nc_pages_list.push_back(
+        trx_nc_pages_list_t::value_type(
+        std::make_pair(nvm_bpage->id.space(), nvm_bpage->id.page_no())
+        , offset));
     }
 
   }
@@ -4390,6 +4581,37 @@ btr_cur_pessimistic_update(
 
 	block = btr_cur_get_block(cursor);
 	page = buf_block_get_frame(block);
+
+#ifdef UNIV_NVDIMM_CACHE
+  // HOT DEBUG 7
+  
+  bool is_nvm_page = block->page.cached_in_nvdimm; 
+  if (is_nvm_page) {
+    //block->page.cached_in_nvdimm = false; 
+
+    buf_page_t* nvm_bpage = &(block->page);
+    buf_flush_init_for_writing(
+        reinterpret_cast<const buf_block_t*>(nvm_bpage),
+        reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame,
+        nvm_bpage->zip.data ? &nvm_bpage->zip : NULL,
+        nvm_bpage->newest_modification,
+        fsp_is_checksum_disabled(nvm_bpage->id.space()));
+
+    pm_mmap_mtrlogbuf_write_undo(
+        //read_buf
+        reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame
+        , 4096, log_sys->lsn
+        , block->page.id.space()
+        , block->page.id.page_no(),3);
+
+    if ( btr_cur_get_block(cursor)->page.cached_in_nvdimm == true) {
+      fprintf(stderr, "[ERROR] FAIL!!!!! (%u:%u)\n", block->page.id.space(), block->page.id.page_no());
+    }
+
+  }
+  
+#endif
+
 	page_zip = buf_block_get_page_zip(block);
 	index = cursor->index;
 
@@ -4907,9 +5129,32 @@ btr_cur_del_mark_set_clust_rec(
 	page_zip_des_t*	page_zip;
 	trx_t*		trx;
 
+
 #ifdef UNIV_NVDIMM_CACHE
     buf_page_t* nvm_bpage;
     bool is_nvm_page;
+
+    {
+     nvm_bpage = &(block->page);
+     is_nvm_page = nvm_bpage->cached_in_nvdimm;
+
+     if (is_nvm_page) {
+     const page_size_t page_size(
+         dict_table_page_size(index->table));
+
+    int is_query =0;
+    if (thr !=NULL) is_query = 1;
+
+    if (buf_page_is_corrupted(true, block->frame, page_size, false)) {
+      fprintf(stderr, "[DEBUG] (del-1) what buffer is already corrupted! %u:%u is_query %d\n"
+          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query);
+    } else {
+      fprintf(stderr, "[DEBUG] (del-1) what buffer is safe! %u:%u is_query %d\n"
+          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query); 
+    }
+     }
+    }
+  
 #endif /* UNIV_NVDIMM_CACHE */
 
 	ut_ad(dict_index_is_clust(index));
@@ -4939,6 +5184,7 @@ btr_cur_del_mark_set_clust_rec(
 
   // HOT DEBUG 4 //
   if (is_nvm_page) {
+    /*
     extern uint64_t pmem_recv_tmp_buf_offset;
     extern unsigned char* gb_pm_mmap;
     memcpy(gb_pm_mmap + pmem_recv_tmp_buf_offset, block->frame, UNIV_PAGE_SIZE);
@@ -4949,6 +5195,53 @@ btr_cur_del_mark_set_clust_rec(
       fprintf(stderr, "[DEBUG] exit !! for debugging !!\n");
       exit(1);
     }
+    */
+    // KEEP UNDO NC HERE!
+
+    const page_size_t page_size(
+         dict_table_page_size(index->table));
+
+    int is_query =0;
+    if (thr !=NULL) is_query = 1;
+
+    buf_flush_init_for_writing(
+        reinterpret_cast<const buf_block_t*>(nvm_bpage),  
+        reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame,           
+        nvm_bpage->zip.data ? &nvm_bpage->zip : NULL,
+        nvm_bpage->newest_modification,
+        fsp_is_checksum_disabled(nvm_bpage->id.space()));
+
+
+    if (buf_page_is_corrupted(true, block->frame, page_size, false)) {
+
+      ulint ck1 = mach_read_from_4(          
+          block->frame + FIL_PAGE_SPACE_OR_CHKSUM);                
+      ulint ck2 = mach_read_from_4(           
+          block->frame + page_size.logical() - FIL_PAGE_END_LSN_OLD_CHKSUM);        
+
+      fprintf(stderr, "[DEBUG] (del) what buffer is already corrupted! %u:%u is_query %d ck1:%u ck2:%u\n"
+          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query, ck1, ck2);
+    } else {
+      fprintf(stderr, "[DEBUG] (del) what buffer is safe! %u:%u is_query %d\n"
+          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query); 
+    }
+
+
+   
+    uint64_t offset = pm_mmap_mtrlogbuf_write_undo(
+        block->frame, 4096,  log_sys->lsn, nvm_bpage->id.space(), nvm_bpage->id.page_no());
+
+    
+    if (thr != NULL) {
+      trx_t* tmp_trx = thr_get_trx(thr);
+      fprintf(stderr, "[DEBUG] (%lu:%lu) offset: %lu\n"
+          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), offset);
+      tmp_trx->nc_pages_list.push_back(
+        trx_nc_pages_list_t::value_type(
+        std::make_pair(nvm_bpage->id.space(), nvm_bpage->id.page_no())
+        ,offset));
+    }
+
   }
 
 
@@ -5398,6 +5691,38 @@ btr_cur_pessimistic_delete(
 	page = buf_block_get_frame(block);
 	index = btr_cur_get_index(cursor);
 
+#ifdef UNIV_NVDIMM_CACHE
+// HOT DEBUG 7
+ 
+  
+bool is_nvm_page = block->page.cached_in_nvdimm; 
+if (is_nvm_page) {
+  //block->page.cached_in_nvdimm = false;
+
+  buf_page_t* nvm_bpage = &(block->page);
+  buf_flush_init_for_writing(
+        reinterpret_cast<const buf_block_t*>(nvm_bpage),
+        reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame,
+        nvm_bpage->zip.data ? &nvm_bpage->zip : NULL,
+        nvm_bpage->newest_modification,
+        fsp_is_checksum_disabled(nvm_bpage->id.space()));
+
+ 
+  if (btr_cur_get_block(cursor)->page.cached_in_nvdimm == true) {
+    pm_mmap_mtrlogbuf_write_undo(
+        //read_buf
+        reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame
+        , 4096, log_sys->lsn
+        , block->page.id.space()
+        , block->page.id.page_no(),3);
+
+    fprintf(stderr, "[ERROR] FAIL!!!!! (%u:%u)\n", block->page.id.space(), block->page.id.page_no());     
+  }
+
+}
+
+#endif
+
 	ulint rec_size_est = dict_index_node_ptr_max_size(index);
 	const page_size_t       page_size(dict_table_page_size(index->table));
 
@@ -5485,7 +5810,12 @@ btr_cur_pessimistic_delete(
 			because everything will take place within a single
 			mini-transaction and because writing to the redo log
 			is an atomic operation (performed by mtr_commit()). */
+#ifdef UNIV_NVDIMM_CACHE
+      bool is_nvm_page = block->page.cached_in_nvdimm; 
+    	btr_set_min_rec_mark(next_rec, mtr, is_nvm_page);
+#else
 			btr_set_min_rec_mark(next_rec, mtr);
+#endif
 		} else if (dict_index_is_spatial(index)) {
 			/* For rtree, if delete the leftmost node pointer,
 			we need to update parent page. */

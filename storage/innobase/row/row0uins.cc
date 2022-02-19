@@ -464,7 +464,6 @@ row_undo_ins(
 	dict_locked = node->trx->dict_operation_lock_mode == RW_X_LATCH;
 
 	row_undo_ins_parse_undo_rec(node, dict_locked);
-
 	if (node->table == NULL) {
 		return(DB_SUCCESS);
 	}

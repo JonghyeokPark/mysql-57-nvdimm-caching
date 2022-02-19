@@ -2620,7 +2620,7 @@ err_exit:
 				n_ext, thr, &mtr);
 
 			if (err == DB_FAIL) {
-				err = btr_cur_pessimistic_insert(
+ 				err = btr_cur_pessimistic_insert(
 					flags, cursor,
 					&offsets, &offsets_heap,
 					entry, &insert_rec, &big_rec,

@@ -840,9 +840,8 @@ buf_flush_update_zip_checksum(
 	const uint32_t	checksum = page_zip_calc_checksum(
 		page, size,
 		static_cast<srv_checksum_algorithm_t>(srv_checksum_algorithm));
-
-	mach_write_to_8(page + FIL_PAGE_LSN, lsn);
-	mach_write_to_4(page + FIL_PAGE_SPACE_OR_CHKSUM, checksum);
+	  mach_write_to_8(page + FIL_PAGE_LSN, lsn);
+    mach_write_to_4(page + FIL_PAGE_SPACE_OR_CHKSUM, checksum);
 }
 
 /** Initialize a page for writing to the tablespace.
@@ -1057,9 +1056,9 @@ buf_flush_write_block_low(
 	/* Force the log to the disk before writing the modified block */
 	if (!srv_read_only_mode) {
 #ifdef UNIV_NVDIMM_CACHE
-			if (bpage->buf_pool_index < srv_buf_pool_instances) {
+			//if (bpage->buf_pool_index < srv_buf_pool_instances) {
 				log_write_up_to(bpage->newest_modification, true);
-			}
+			//}
 #else
 			log_write_up_to(bpage->newest_modification, true);
 #endif /* UNIV_NVDIMM_CACHE */
@@ -1114,54 +1113,75 @@ buf_flush_write_block_low(
         /* Add the target page to the NVDIMM buffer. */
         nvdimm_page = buf_page_init_for_read(&err, BUF_MOVE_TO_NVDIMM, page_id, page_size, false);
         
-        if (nvdimm_page == NULL)    goto normal;
-        
+        if (nvdimm_page == NULL) { 
+          fprintf(stderr, "[DEBUG] what? nvdimm page is NULL!\n");
+          goto normal;
+        }
+  
         /*ib::info() << "page_id = " << bpage->id.space()
             << " offset = " << bpage->id.page_no() 
             << " dst = " << &(((buf_block_t *)nvdimm_page)->frame) << " src = " << &(((buf_block_t *)bpage)->frame)
             << " flush-type = " << bpage->flush_type;*/
         memcpy(((buf_block_t *)nvdimm_page)->frame, ((buf_block_t *)bpage)->frame, UNIV_PAGE_SIZE);
 
+        // debug
+        if (buf_page_is_corrupted(true, ((buf_block_t *)nvdimm_page)->frame, page_size, false)) {
+          fprintf(stderr, "[DEBUG] dram - nvdimm buffer corrupt! (%u:%u)\n", bpage->id.space(), bpage->id.page_no());
+        } else {
+          fprintf(stderr, "[DEBUG] dram - nvdimm buffer safe! (%u:%u)\n", bpage->id.space(), bpage->id.page_no());
+        }
+
         /* Set the oldest LSN of the NVDIMM page to the previous newest LSN. */
         buf_flush_note_modification((buf_block_t *)nvdimm_page, bpage->newest_modification, bpage->newest_modification, nvdimm_page->flush_observer);
+
 
         // (jhpark): is this right?
         // TODO: NVDIMM-porting
         flush_cache(((buf_block_t *)nvdimm_page)->frame, UNIV_PAGE_SIZE);
-        
-        /* Remove the target page from the original buffer pool. */
+      
+        // (jhpark): keep original page in NVDIMM
+        extern uint64_t pmem_recv_tmp_buf_offset;
+        memcpy(gb_pm_mmap + pmem_recv_tmp_buf_offset
+            ,((buf_block_t *)bpage)->frame, UNIV_PAGE_SIZE);
+        flush_cache(gb_pm_mmap + pmem_recv_tmp_buf_offset, UNIV_PAGE_SIZE);
+        pmem_recv_tmp_buf_offset += UNIV_PAGE_SIZE;
+        fprintf(stderr, "[DEBUG] offset: %lu (%u:%u)\n", pmem_recv_tmp_buf_offset, bpage->id.space(), bpage->id.page_no());
+
+//        pm_mmap_mtrlogbuf_write_undo_flush(
+//              reinterpret_cast<const buf_block_t*>(bpage)->frame, 4096, log_sys->lsn,
+//              bpage->id.space(), bpage->id.page_no(), 0);
+
+
+         /* Remove the target page from the original buffer pool. */
         buf_page_io_complete(bpage, true);
         buf_page_io_complete(nvdimm_page);
         
-        /*buf_pool_t*	buf_pool = buf_pool_from_bpage(nvdimm_page);
+        buf_pool_t*	buf_pool = buf_pool_from_bpage(nvdimm_page);
         ib::info() << nvdimm_page->id.space() << " "
                 << nvdimm_page->id.page_no() << " is moved to "
                 << nvdimm_page->buf_pool_index << " from " << bpage->buf_pool_index;
-        */
+        
     } else {
 normal:
+
         // HOT DEBUG//
-        // (jhpark): this section will detect the NVDIMM -> DISK pages
-        bool mtrlog_commit_flag = false;
-        ulint check_space, check_page;
-
-
+      
         if (bpage->cached_in_nvdimm) {
-          mtrlog_commit_flag = true;
-          check_space = bpage->id.space();
-          check_page = bpage->id.page_no();
-          fprintf(stderr, "[DEBUG] (%lu:%lu) this page is flushed to disk !!!! page_lsn: %u\n"
-              , bpage->id.space(), bpage->id.page_no()
-              , mach_read_from_4(reinterpret_cast<buf_block_t*>(bpage)->frame + FIL_PAGE_LSN));
+          fprintf(stderr, "[DEBUG] NC page is flushed to disk (%lu:%lu)\n", bpage->id.space(), bpage->id.page_no());
+          pm_mmap_mtrlogbuf_write_undo_flush(
+              reinterpret_cast<const buf_block_t*>(bpage)->frame, 4096, log_sys->lsn,
+              bpage->id.space(), bpage->id.page_no(), 0);
 
-          
-          extern uint64_t pmem_recv_commit_offset;
-          memcpy(gb_pm_mmap + pmem_recv_commit_offset, &check_space, sizeof(uint64_t));
-          memcpy(gb_pm_mmap + pmem_recv_commit_offset, &check_page, sizeof(uint64_t));
-          pmem_recv_commit_offset += 2*sizeof(uint64_t);
+          if (buf_page_is_corrupted(true, ((buf_block_t *)bpage)->frame, bpage->size, false)) {
+            fprintf(stderr, "[DEBUG] nvdimm - disk buffer corrupt! (%u:%u)\n", bpage->id.space(), bpage->id.page_no());
+          } else {
+            fprintf(stderr, "[DEBUG] nvdimm - disk buffer safe! (%u:%u)\n", bpage->id.space(), bpage->id.page_no());
+          }
 
 
+          //exit(1);
         }
+     
         // HOT DEBUG// 
 
         bpage->moved_to_nvdimm = false;
@@ -1225,10 +1245,6 @@ normal:
             buf_page_io_complete(bpage, true);
         }
 
-        // HOT DEBUG //
-        if (mtrlog_commit_flag) {
-          pm_mmap_mtrlogbuf_commit(check_space, check_page);
-        }
     }
 #else
     if (!srv_use_doublewrite_buf

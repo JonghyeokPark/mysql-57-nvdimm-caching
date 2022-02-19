@@ -1039,9 +1039,11 @@ buf_pool_get(
 	const page_id_t&	page_id)
 {
   // (jhpark): HOT FIX, we ignore nvdimm-aware buffer pool during recvoery
+
+  /*
 #ifdef UNIV_NVDIMM_CACHE
   if (is_pmem_recv) {
-     /* 2log of BUF_READ_AHEAD_AREA (64) */
+    // 2log of BUF_READ_AHEAD_AREA (64) 
     ulint       ignored_page_no = page_id.page_no() >> 6;
 
     page_id_t   id(page_id.space(), ignored_page_no);
@@ -1051,6 +1053,7 @@ buf_pool_get(
     return(&buf_pool_ptr[i]); 
   }
 #endif
+  */
 
 #ifdef UNIV_NVDIMM_CACHE
     if (buf_block_will_be_moved_to_nvdimm(page_id)) {
@@ -1059,6 +1062,7 @@ buf_pool_get(
 
     if ((page_id.space() == 29
 #ifdef UNIV_NVDIMM_CACHE_OD
+// (jhpark): fix TPC-C 100 warehouse
         || page_id.space() == 29
 #endif /* UNIV_NVDIMM_CACHE_OD */        
         )

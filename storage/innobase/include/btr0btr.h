@@ -499,7 +499,11 @@ void
 btr_set_min_rec_mark(
 /*=================*/
 	rec_t*	rec,	/*!< in/out: record */
-	mtr_t*	mtr)	/*!< in: mtr */
+	mtr_t*	mtr
+#ifdef UNIV_NVDIMM_CACHE
+  ,bool is_nvm_page = false
+#endif
+  )	/*!< in: mtr */
 	MY_ATTRIBUTE((nonnull));
 #ifndef UNIV_HOTBACKUP
 /*************************************************************//**

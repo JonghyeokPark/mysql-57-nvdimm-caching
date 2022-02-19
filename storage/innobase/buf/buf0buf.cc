@@ -793,7 +793,7 @@ buf_page_is_corrupted(
 {
 
   // HOT DEBUG 4 //
-  return false;
+  //return false;
 
 	ulint		checksum_field1;
 	ulint		checksum_field2;

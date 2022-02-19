@@ -28,6 +28,7 @@ Created 3/26/1996 Heikki Tuuri
 
 #include <set>
 #include <list>
+#include <map>
 
 #include "ha_prototypes.h"
 
@@ -887,6 +888,26 @@ struct TrxVersion {
 
 typedef std::list<TrxVersion, ut_allocator<TrxVersion> > hit_list_t;
 
+//#ifdef UNIV_NVDIMM_CACHE
+
+struct TrxNcPages {
+	TrxNcPages(std::pair<uint32_t,uint32_t> page_id, uint64_t offset);
+
+	/**
+	@return true if the trx_t instance is the same */
+	bool operator==(const TrxNcPages& rhs) const
+	{
+    return (rhs.m_page_id == m_page_id);
+	}
+
+  std::pair<uint32_t, uint32_t> m_page_id;
+	uint64_t		m_offset;
+
+};
+typedef std::list<TrxNcPages, ut_allocator<TrxNcPages> > trx_nc_pages_list_t;
+
+//#endif
+
 struct trx_t {
 	TrxMutex	mutex;		/*!< Mutex protecting the fields
 					state and lock (except some fields
@@ -1270,6 +1291,13 @@ struct trx_t {
 					Committed on DD tables */
 #endif /* UNIV_DEBUG */
 	ulint		magic_n;
+
+  // TODO(jhpark): UNIV_NVDIMM_CACHE?
+#ifdef UNIV_NVDIMM_CACHE
+  // (page_id , offset in the NC undo logs)
+  //std::list< std::pair<std::pair<uint32_t, uint32_t>, uint64_t> > nc_pages_list;
+  trx_nc_pages_list_t nc_pages_list;
+#endif
 };
 
 /**

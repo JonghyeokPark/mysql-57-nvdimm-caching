@@ -449,6 +449,13 @@ btr_pcur_move_to_next_page(
 
 	next_page = buf_block_get_frame(next_block);
 #ifdef UNIV_BTR_DEBUG
+
+  // (jhpark)
+  if (btr_page_get_prev(next_page, mtr)
+      != btr_pcur_get_block(cursor)->page.id.page_no()) {
+    fprintf(stderr, "[DEBUG] 1: %lu 2: %lu\n", btr_page_get_prev(next_page, mtr) , btr_pcur_get_block(cursor)->page.id.page_no());
+  }
+
 	ut_a(page_is_comp(next_page) == page_is_comp(page));
 	ut_a(btr_page_get_prev(next_page, mtr)
 	     == btr_pcur_get_block(cursor)->page.id.page_no());

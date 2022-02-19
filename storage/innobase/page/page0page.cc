@@ -639,8 +639,13 @@ page_copy_rec_list_end(
 	}
 
 	if (page_dir_get_n_heap(new_page) == PAGE_HEAP_NO_USER_LOW) {
+#ifdef UNIV_NVDIMM_CACHE
+    page_copy_rec_list_end_to_created_page(new_page, rec,
+						       index, mtr, block->page.cached_in_nvdimm);
+#else
 		page_copy_rec_list_end_to_created_page(new_page, rec,
 						       index, mtr);
+#endif
 	} else {
 		if (dict_index_is_spatial(index)) {
 			ulint	max_to_move = page_get_n_recs(
@@ -1060,9 +1065,18 @@ delete_all:
 
 	buf_block_modify_clock_inc(block);
 
+#ifdef UNIV_NVDIMM_CACHE
+  bool is_nvm_page = block->page.cached_in_nvdimm;
+  if (!is_nvm_page) {
+    page_delete_rec_list_write_log(rec, index, page_is_comp(page)
+				       ? MLOG_COMP_LIST_END_DELETE
+				       : MLOG_LIST_END_DELETE, mtr);
+  }
+#else
 	page_delete_rec_list_write_log(rec, index, page_is_comp(page)
 				       ? MLOG_COMP_LIST_END_DELETE
 				       : MLOG_LIST_END_DELETE, mtr);
+#endif
 
 	if (page_zip) {
 		mtr_log_t	log_mode;
@@ -1237,7 +1251,14 @@ page_delete_rec_list_start(
 		type = MLOG_LIST_START_DELETE;
 	}
 
+#ifdef UNIV_NVDIMM_CACHE
+  bool is_nvm_page = block->page.cached_in_nvdimm;
+  if (!is_nvm_page) {
+    page_delete_rec_list_write_log(rec, index, type, mtr);
+  }
+#else
 	page_delete_rec_list_write_log(rec, index, type, mtr);
+#endif
 
 	page_cur_set_before_first(block, &cur1);
 	page_cur_move_to_next(&cur1);

@@ -146,9 +146,6 @@ fseg_alloc_free_page_low(
 #endif /* UNIV_DEBUG */
   // HOT DEBUG
   , bool is_nvm_page
-//#ifdef UNIV_NVDIMM_CACHE
-//  , bool is_nvm_page = false
-//#endif
 )
 	MY_ATTRIBUTE((warn_unused_result));
 
@@ -804,7 +801,6 @@ fsp_init_file_page(
   if (is_nvm_page) {
   	mlog_write_initial_log_record(buf_block_get_frame(block),
 				      MLOG_INIT_FILE_PAGE2, mtr);
-    //fprintf(stderr, "we skip fil_page2 log on nvm page (%u:%u)\n", block->page.id.space(), block->page.id.page_no());
   } else {
   	mlog_write_initial_log_record(buf_block_get_frame(block),
 				      MLOG_INIT_FILE_PAGE2, mtr);

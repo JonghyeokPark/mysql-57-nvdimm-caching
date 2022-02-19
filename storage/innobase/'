@@ -158,7 +158,6 @@ bool pm_mmap_recv_check_nc_buffer(uint64_t space, uint64_t page_no) {
 // fill map
 void pm_mmap_recv_prepare() {
 
-  /*
     ulint offset = PMEM_MMAP_MTR_FIL_HDR_SIZE;
     while (true) {
       PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr;
@@ -170,7 +169,7 @@ void pm_mmap_recv_prepare() {
       offset += sizeof(PMEM_MMAP_MTRLOG_HDR);
       offset += mtr_recv_hdr.len;
     }
-  */
+
     // buffer
     uint64_t space, page_no;
     unsigned char *addr = gb_pm_mmap + (1*1024*1024*1024UL);
@@ -189,53 +188,13 @@ void pm_mmap_recv_prepare() {
  
 }
 
-uint64_t pm_mmap_recv_check_nc_buf(uint64_t space, uint64_t page_no) {
+bool pm_mmap_recv_check_nc_log(uint64_t space, uint64_t page_no) {
   std::map<std::pair<uint64_t,uint64_t>, std::vector<uint64_t> >::iterator ncbuf_iter;
   ncbuf_iter = pmem_nc_buffer_map.find(std::make_pair(space,page_no));
-  if (ncbuf_iter != pmem_nc_buffer_map.end()) { 
-    std::vector<uint64_t> nc_offset_vec = (*ncbuf_iter).second;
-    uint64_t nc_offset;
-    for (uint64_t i=0; i<nc_offset_vec.size(); i++) {
-      nc_offset = nc_offset_vec[i];
-      fprintf(stderr, "[DEBUG] NC BUF (%lu:%lu) offset: %lu page_lsn: %lu i: %d\n", 
-          space, page_no, mach_read_from_8(gb_pm_mmap + (6*1024*1024*1024UL) + nc_offset + FIL_PAGE_LSN), i);
-      if (space != mach_read_from_4(gb_pm_mmap + (6*1024*1024*1024UL) + nc_offset + FIL_PAGE_SPACE_ID)
-          || page_no != mach_read_from_4(gb_pm_mmap + (6*1024*1024*1024UL) + nc_offset + FIL_PAGE_OFFSET)) {
-        fprintf(stderr, "[DEBUG] wrong buffer page info! %u:%u\n", space, page_no);
-      } else {
-        fprintf(stderr, "[DEBUG] buffer page is good! %u:%u\n", space, page_no);
-      }
-    }
-    return nc_offset;
+  if (ncbuf_iter != pmem_nc_buffer_map.end()) {
+    return true;
   } else {
-    return -1;
-  }
-}
-
-uint64_t pm_mmap_recv_check_nc_log(uint64_t space, uint64_t page_no) {
-  std::map<std::pair<uint64_t,uint64_t>, std::vector<uint64_t> >::iterator nclog_iter;
-  nclog_iter = pmem_nc_log_map.find(std::make_pair(space,page_no));
-  if (nclog_iter != pmem_nc_log_map.end()) { 
-    std::vector<uint64_t> nc_offset_vec = (*nclog_iter).second;
-    uint64_t nc_offset;
-    for (uint64_t i=0; i<nc_offset_vec.size(); i++) {
-     nc_offset = nc_offset_vec[i];
-
-     PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr;
-     memcpy(&mtr_recv_hdr, gb_pm_mmap+nc_offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
-
-     fprintf(stderr, "[DEBUG] NC LOG (%lu:%lu) offset: %lu page_lsn: %lu i: %d type: %d\n", 
-          space, page_no, mach_read_from_8(gb_pm_mmap + nc_offset + sizeof(PMEM_MMAP_MTRLOG_HDR) + FIL_PAGE_LSN), i, mtr_recv_hdr.need_recv);
-    }
-
-    PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr;
-    memcpy(&mtr_recv_hdr, gb_pm_mmap+nc_offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
-    //if (mtr_recv_hdr.type == 2) return -1; 
-    fprintf(stderr, "[DEBUG] NC LOG (%lu:%lu) need_recv: %d\n", space, page_no, mtr_recv_hdr.need_recv);
-
-    return nc_offset;
-  } else {
-    return -1;
+    return false;
   }
 
 
@@ -387,63 +346,11 @@ void pmem_recv_recvoer_nc_page() {
       memcpy(&mtr_recv_hdr, gb_pm_mmap+offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
       if (mtr_recv_hdr.len == 0) break;
 
-      fprintf(stderr, "[DEBUG] %lu:%lu log here! %lu flag: %d\n"
-          , mtr_recv_hdr.space, mtr_recv_hdr.page_no, offset, mtr_recv_hdr.need_recv);
-
+      fprintf(stderr, "[DEBUG] %lu:%lu log here! %lu\n", mtr_recv_hdr.space, mtr_recv_hdr.page_no, offset);
       pmem_nc_log_map[std::make_pair(mtr_recv_hdr.space, mtr_recv_hdr.page_no)].push_back(offset);
-
-      // add
-      pmem_nc_log_check[std::make_pair(mtr_recv_hdr.space, mtr_recv_hdr.page_no)] = false;
-
-      // (debug): we flush all pages with (need_recv==1)
-      /*
-      if (mtr_recv_hdr.need_recv == 1) {
-        
-        fil_space_t* space_t = fil_space_get(mtr_recv_hdr.space);
-        const page_id_t page_id(mtr_recv_hdr.space, mtr_recv_hdr.page_no);
-        const page_size_t page_size(space_t->flags);
-
-        if (buf_page_peek(page_id) == true) {
-          fprintf(stderr, "[DEBUG] (%lu:%lu) already exists in BUFFER!\n", mtr_recv_hdr.space, mtr_recv_hdr.page_no);
-        }
-
-        
-        void *p;
-        posix_memalign(&p, 4096, 4096);
-        memcpy(p, gb_pm_mmap + offset + sizeof(PMEM_MMAP_MTRLOG_HDR), 4096); 
-        IORequest write_request(IORequest::WRITE);
-        write_request.disable_compression();
-        int check = fil_io(write_request, false, page_id, page_size, 0
-            ,4096, p , NULL);
-        fprintf(stderr, "!!! NC LOG  !!! fil_io check! %d\n", check);
-        free(p);
-        
-
-        // buf_page_get_gen
-        
-        mtr_t tmp_mtr;
-        mtr_start(&tmp_mtr);
-        buf_block_t* tmp = buf_page_get_gen(
-            page_id, page_size, RW_NO_LATCH, NULL, BUF_GET, __FILE__, __LINE__, &tmp_mtr);
-        mtr_commit(&tmp_mtr);
-
-        if (buf_page_is_corrupted(true, gb_pm_mmap+offset+sizeof(PMEM_MMAP_MTRLOG_HDR), page_size, false)) {
-          fprintf(stderr, "[DEBUG] (%u:%u) page is corrupted!\n", mtr_recv_hdr.space, mtr_recv_hdr.page_no);
-        } else {
-          fprintf(stderr, "[DEBUG] (%u:%u) page is safe!\n", mtr_recv_hdr.space, mtr_recv_hdr.page_no);
-        }
-
-        fprintf(stderr, "[DEBUG] (%u:%u) we get from buffer offset:% lu\n"
-            ,mtr_recv_hdr.space, mtr_recv_hdr.page_no, offset 
-            );
-
-        memcpy(tmp->frame, gb_pm_mmap + offset + sizeof(PMEM_MMAP_MTRLOG_HDR), 4096);
-      }
-      */
 
       offset += sizeof(PMEM_MMAP_MTRLOG_HDR);
       offset += mtr_recv_hdr.len;
-
     }
 
   fprintf(stderr, "[DEBUG] log check end !!!\n");
@@ -451,6 +358,10 @@ void pmem_recv_recvoer_nc_page() {
   std::map<std::pair<uint64_t,uint64_t>, std::vector<uint64_t> >::iterator nclog_iter;
 
   for (uint64_t i=0 ; i< page_num_chunks; ++i) {
+
+    //space = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.space();
+    //page_no = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.page_no();
+    //unsigned char *frame = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->frame;
 
     space = mach_read_from_4(addr+i*4096 + FIL_PAGE_SPACE_ID);
     page_no = mach_read_from_4(addr+i*4096 + FIL_PAGE_OFFSET);
@@ -468,55 +379,102 @@ void pmem_recv_recvoer_nc_page() {
     if (buf_page_is_corrupted(true, frame, page_size,
           fsp_is_checksum_disabled(space))) {
       fprintf(stderr, "(%lu:%lu) page is corruptted!\n", space, page_no);
+    } else {
+      fprintf(stderr, "(%lu:%lu) page is good!\n", space, page_no);
+    }
 
-    // recovery from NC UNDO LOG 
+    // recovery from NC UNDO LOG
     nclog_iter = pmem_nc_log_map.find(std::make_pair(space, page_no));
     if (nclog_iter != pmem_nc_log_map.end()) {
       PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr;
-      std::vector<uint64_t> nc_offset_vec = (*nclog_iter).second;
-      for (uint64_t j=0; j<nc_offset_vec.size(); ++j) {
-        uint64_t nc_offset = nc_offset_vec[j];
-        memcpy(&mtr_recv_hdr, gb_pm_mmap+nc_offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
+      memcpy(&mtr_recv_hdr, gb_pm_mmap+offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
 
-        // double check
-        uint64_t ck_space = mach_read_from_4( 
-            gb_pm_mmap + nc_offset 
-            + sizeof(PMEM_MMAP_MTRLOG_HDR) + FIL_PAGE_SPACE_ID);
-        uint64_t ck_page_no = mach_read_from_4( 
-            gb_pm_mmap + nc_offset 
-            + sizeof(PMEM_MMAP_MTRLOG_HDR) + FIL_PAGE_OFFSET);
+      IORequest write_request(IORequest::WRITE);
+      write_request.disable_compression();
+      int check = fil_io(write_request, true, page_id, page_size, 0
+           ,4096, gb_pm_mmap + offset + sizeof(PMEM_MMAP_MTRLOG_HDR) , NULL);
+      fprintf(stderr, "fil_io check! %d\n", check);
+    }
+
+     // flush NC page
+   /* 
+    IORequest write_request(IORequest::WRITE);
+    write_request.disable_compression();
+    int check = fil_io(write_request, true, page_id, page_size, 0
+         ,4096, frame, NULL);
+    fprintf(stderr, "fil_io check! %d\n", check);
+   */
+  }
+
+  unsigned char *real_addr = gb_pm_mmap + (6*1024*1024*1024UL);
+  uint64_t real_page_num_chunks = static_cast<uint64_t>( (2*1024*1024*1024UL)/4096);
+
+  for (uint64_t i=0 ; i< real_page_num_chunks; ++i) {
+    space = mach_read_from_4(real_addr+i*4096 + FIL_PAGE_SPACE_ID);
+    page_no = mach_read_from_4(real_addr+i*4096 + FIL_PAGE_OFFSET);
+    unsigned char *frame = (real_addr+i*4096);
+
+    //space = reinterpret_cast<buf_block_t*>((real_addr+ i * sizeof(buf_block_t)))->page.id.space();
+    //page_no = reinterpret_cast<buf_block_t*>((real_addr+ i * sizeof(buf_block_t)))->page.id.page_no();
+    //unsigned char *frame = reinterpret_cast<buf_block_t*>((real_addr+ i * sizeof(buf_block_t)))->frame;
+
+
+    if (space != 27 && space != 29) continue;
+    if (page_no > 1000000) continue;
  
-          fprintf(stderr, "[DEBUG] ck_space: %lu ck_page_no: %lu type: %d\n"
-              , ck_space, ck_page_no, mtr_recv_hdr.type);
+    fprintf(stderr, "[DEBUG] (%lu:%lu) (3) page exists in real NVDIMM Buffer! i: %lu\n"
+        ,space, page_no, i);
 
-  
-       if (buf_page_is_corrupted(true
-             , gb_pm_mmap + nc_offset + sizeof(PMEM_MMAP_MTRLOG_HDR)
-             , page_size, fsp_is_checksum_disabled(space))) {
-          fprintf(stderr, "(%lu:%lu) page is corruptted!\n", space, page_no);
-       } else {
-          fprintf(stderr, "(%lu:%lu) page is good!\n", space, page_no);
-       }
-      } // end-for
-    } // end-if 
+    pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*4096);
+
+    fil_space_t* space_t = fil_space_get(space);
+    const page_id_t page_id(space,page_no);
+    const page_size_t page_size(space_t->flags);
+    if (buf_page_is_corrupted(true, frame, page_size,
+          fsp_is_checksum_disabled(space))) {
+      ulint checksum1 = mach_read_from_4(
+          frame + FIL_PAGE_SPACE_OR_CHKSUM);
+      ulint checksum2 = mach_read_from_4(
+          frame + page_size.logical() - FIL_PAGE_END_LSN_OLD_CHKSUM);
+
+       
+      fprintf(stderr, "(%lu:%lu) page is corruptted! ck1: %u ck2: %u\n"
+          , space, page_no
+          , checksum1, checksum2);
 
     } else {
       fprintf(stderr, "(%lu:%lu) page is good!\n", space, page_no);
-/*    
-      pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*4096);
-      mtr_t tmp_mtr;
-      mtr_start(&tmp_mtr);
-      buf_block_t* tmp = buf_page_get_gen(
-          page_id, page_size, RW_NO_LATCH, NULL, BUF_GET, __FILE__, __LINE__, &tmp_mtr);
+/*
+      IORequest write_request(IORequest::WRITE);
+      write_request.disable_compression();
+      frame = gb_pm_mmap + (6*1024*1024*1024UL) + i * 4096;
+      fil_space_t* space_t = fil_space_get(space);
+      const page_id_t page_id(space,page_no);
+      const page_size_t page_size(space_t->flags);
+       pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*4096);
       
-      mtr_commit(&tmp_mtr);
-      fprintf(stderr, "[DEBUG] (%u:%u) we get from buffer\n",space, page_no);
-      memcpy(tmp->frame, frame, 4096);
+       int check = fil_io(write_request, true, page_id, page_size, 0
+           ,4096, frame, NULL);
+      fprintf(stderr, "fil_io check! %d\n", check);
 */
-      pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*4096);
     }
 
-   }
+
+ 
+/*    
+      IORequest write_request(IORequest::WRITE);
+      write_request.disable_compression();
+      frame = gb_pm_mmap + (6*1024*1024*1024UL) + i * 4096;
+      fil_space_t* space_t = fil_space_get(space);
+      const page_id_t page_id(space,page_no);
+      const page_size_t page_size(space_t->flags);
+       pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*4096);
+      
+       int check = fil_io(write_request, true, page_id, page_size, 0
+           ,4096, frame, NULL);
+      fprintf(stderr, "fil_io check! %d\n", check);
+*/  
+
+  }
+
 }
-
-

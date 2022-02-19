@@ -2397,17 +2397,6 @@ recv_recover_page_func(
 
  	mutex_enter(&(recv_sys->mutex));
 
-  // HOT DEBUG 4 //
-  
-  if (pm_mmap_recv_check_nc_log(block->page.id.space(), block->page.id.page_no())) {
-		recv_sys->n_addrs--;
-    fprintf(stderr, "[DEBUG] we skip NC resident page (%u:%u)\n"
-        , block->page.id.space(), block->page.id.page_no());
-    mutex_exit(&(recv_sys->mutex));
-    return;
-  }
-  
-
 	if (recv_sys->apply_log_recs == FALSE) {
 
 		/* Log records should not be applied now */
@@ -2490,6 +2479,10 @@ recv_recover_page_func(
 
 	recv = UT_LIST_GET_FIRST(recv_addr->rec_list);
 
+  bool split_nc_flag = false;
+  uint64_t split_nc_lsn = -1;
+
+
 	while (recv) {
 		end_lsn = recv->end_lsn;
 
@@ -2563,15 +2556,373 @@ recv_recover_page_func(
 				    recv_addr->space,
 				    recv_addr->page_no));
 
-      // HOT DEBUG 3 //
-      //fprintf(stderr, "ib_log apply %lu: type:%d len :%lu page %u:%u\n"
-      //    , recv->start_lsn,
-			//	    recv->type, recv->len,
-			//	    recv_addr->space,
-			//	    recv_addr->page_no);
-      //
+
+      fprintf(stderr, "[INFO] log applying page:%u:%u lsn: %u len: %u\n",
+          recv_addr->space, recv_addr->page_no
+          ,recv->start_lsn, recv->len);
+
+      uint64_t nc_offset = pm_mmap_recv_check_nc_buf(block->page.id.space(), block->page.id.page_no());
+      
+      if (nc_offset != -1) {
+
+        fprintf(stderr, "[debug] we skip nc resident page (%u:%u) start_lsn: %u page_lsn: %u nc_buf_lsn: %u\ cur_page_lsn: %un"
+          , block->page.id.space(), block->page.id.page_no()
+          , start_lsn,  mach_read_from_8(block->frame + FIL_PAGE_LSN)
+          , mach_read_from_8(gb_pm_mmap + (6*1024*1024*1024UL) + nc_offset + FIL_PAGE_LSN)
+          , page_lsn);
+        
+        // can we skip REDO applying?
+        fprintf(stderr, "[DEBUG] we copy from NVDIMM buffer! (%u:%u)\n"
+            , block->page.id.space(), block->page.id.page_no());
+
+        if (buf_page_is_corrupted(true
+              , gb_pm_mmap + (6*1024*1024*1024UL) + nc_offset
+              , block->page.size, false)) {
+          
+          fprintf(stderr, "[DEBUG] NC buffer contents is corrupted! (%u:%u) nc_offset: %d\n"
+              , block->page.id.space(), block->page.id.page_no());
+          
+          // now we copy from the NC undo log
+          std::map<std::pair<uint64_t,uint64_t>, std::vector<uint64_t> >::iterator nclog_iter;
+          nclog_iter = pmem_nc_log_map.find(
+              std::make_pair(block->page.id.space(), block->page.id.page_no()));
+
+          if (nclog_iter != pmem_nc_log_map.end()) {
+            PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr;
+            std::vector<uint64_t> nc_log_offset_vec = (*nclog_iter).second;
+
+            // check
+            pmem_nc_log_check[std::make_pair(block->page.id.space(), block->page.id.page_no())] = true;
+            
+            // HOT DEBUG
+            uint64_t hot_offset = -1;
+            for (int k=nc_log_offset_vec.size()-1; k>=0; k--) {
+              uint64_t tmp_offset = nc_log_offset_vec[k];
+              memcpy(&mtr_recv_hdr, gb_pm_mmap+tmp_offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
+
+              fprintf(stderr, "[DEBUG] all nc undo log check k = %d (%u:%u) page_lsn: %lu type: %d need_recv: %d\n", k
+                  , block->page.id.space(), block->page.id.page_no()
+                  , mach_read_from_8(gb_pm_mmap + tmp_offset
+                   +sizeof(PMEM_MMAP_MTRLOG_HDR)+FIL_PAGE_LSN), mtr_recv_hdr.type, mtr_recv_hdr.need_recv);
+
+
+              //if((mtr_recv_hdr.type == 2 || mtr_recv_hdr.type == 3)
+              if((mtr_recv_hdr.type !=3)
+                  && hot_offset == -1) {
+                    fprintf(stderr, "[DEBUG] keep hot offset! (%u:%u)\n", block->page.id.space(), block->page.id.page_no());
+                    hot_offset = tmp_offset;
+              }
+
+            }
+
+            uint64_t nc_log_offset = nc_log_offset_vec[nc_log_offset_vec.size()-1];
+            memcpy(&mtr_recv_hdr, gb_pm_mmap+nc_log_offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
+
+            uint64_t ck_space = mach_read_from_4( 
+                gb_pm_mmap + nc_log_offset 
+                + sizeof(PMEM_MMAP_MTRLOG_HDR) + FIL_PAGE_SPACE_ID );
+            uint64_t ck_page =  mach_read_from_4( 
+                gb_pm_mmap + nc_log_offset 
+                + sizeof(PMEM_MMAP_MTRLOG_HDR) + FIL_PAGE_OFFSET );
+      
+            // we can skip the splited NC page
+            if (mtr_recv_hdr.type == 1  
+                || mtr_recv_hdr.type == 2
+                || mtr_recv_hdr.type == 3) {
+
+              // copy it from NC UNDO Log
+              uint64_t old_flush_lsn = mach_read_from_8(block->frame + FIL_PAGE_LSN);
+
+              if (hot_offset != -1) {
+                nc_log_offset = hot_offset;
+              }
+
+              if (old_flush_lsn 
+                  <= mach_read_from_8(
+                    gb_pm_mmap + nc_log_offset 
+                    + sizeof(PMEM_MMAP_MTRLOG_HDR)+FIL_PAGE_LSN)) {
+                                
+                //if (old_flush_lsn !=0) { 
+                  memcpy(block->frame 
+                    , gb_pm_mmap + nc_log_offset 
+                    + sizeof(PMEM_MMAP_MTRLOG_HDR), UNIV_PAGE_SIZE);
+                //}
+
+              }
+
+              fprintf(stderr, "[DEBUG] (%u:%u) nc_log page_lsn: %lu nc_lon_lsn: %lu start_lsn: %lu old_page_lsn: %lu\n"
+                , block->page.id.space(), block->page.id.page_no()
+                , mach_read_from_8(gb_pm_mmap + nc_log_offset + sizeof(PMEM_MMAP_MTRLOG_HDR)+ FIL_PAGE_LSN)
+                , mtr_recv_hdr.lsn
+                , recv->start_lsn
+                , old_flush_lsn);
+               
+               // HOT
+               while (recv) {
+
+                 page = block->frame;
+
+                 fprintf(stderr, "[DEBUG] (%u:%u) doing recovery copy page_lsn: %lu start_lsn: %lu cur_apge_lsn: %u\n"
+                , block->page.id.space(), block->page.id.page_no()
+                , mach_read_from_8(block->frame + FIL_PAGE_LSN)
+                , recv->start_lsn
+                , page_lsn);
+              
+ 
+                 // skip
+                if (mach_read_from_8(block->frame + FIL_PAGE_LSN) < recv->start_lsn) {
+               
+              	recv_parse_or_apply_log_rec_body(
+              				recv->type, buf, buf + recv->len,
+              				recv_addr->space, recv_addr->page_no,
+              				block, &mtr);
+
+          			end_lsn = recv->start_lsn + recv->len;
+          			mach_write_to_8(FIL_PAGE_LSN + page, end_lsn);
+          			mach_write_to_8(UNIV_PAGE_SIZE
+	      				- FIL_PAGE_END_LSN_OLD_CHKSUM
+				      	+ page, end_lsn);
+
+          			if (page_zip) {
+          				mach_write_to_8(FIL_PAGE_LSN
+					          	+ page_zip->data, end_lsn);
+          			}
+
+                }
+
+                if (recv->len > RECV_DATA_BLOCK_SIZE) {
+              			ut_free(buf);
+            		}
+
+
+                recv = UT_LIST_GET_NEXT(rec_list, recv);
+
+                if (!recv) break;
+
+                end_lsn = recv->end_lsn;
+            		ut_ad(end_lsn
+		                <= UT_LIST_GET_FIRST(log_sys->log_groups)->scanned_lsn);
+
+            		if (recv->len > RECV_DATA_BLOCK_SIZE) {
+              			/* We have to copy the record body to a separate
+                  			buffer */
+            			buf = static_cast<byte*>(ut_malloc_nokey(recv->len));
+          	  		recv_data_copy_to_buf(buf, recv);
+		            } else {
+            		  buf = ((byte*)(recv->data)) + sizeof(recv_data_t);
+    		        }
+
+          		if (recv->type == MLOG_INIT_FILE_PAGE) {
+          			page_lsn = page_newest_lsn;
+          			memset(FIL_PAGE_LSN + page, 0, 8);
+          			memset(UNIV_PAGE_SIZE - FIL_PAGE_END_LSN_OLD_CHKSUM
+			           + page, 0, 8);
+
+        			  if (page_zip) {
+				          memset(FIL_PAGE_LSN + page_zip->data, 0, 8);
+        			  }
+		          }
+
+          		bool	skip_recv = false;
+          		if (srv_was_tablespace_truncated(fil_space_get(recv_addr->space))) {
+            			lsn_t	init_lsn =
+            				truncate_t::get_truncated_tablespace_init_lsn(
+            				recv_addr->space);
+            			skip_recv = (recv->start_lsn < init_lsn);
+          		}
+
+              if (recv->start_lsn >= page_lsn
+        		    && !srv_is_tablespace_truncated(recv_addr->space)
+        		    && !skip_recv) {
+                // keep goining
+              } else {
+                fprintf(stderr, "[DEBUG] we skip during the recovery! (%u:%u)\n"
+                    , block->page.id.space(), block->page.id.page_no());
+                break;
+              }
+
+              } // end of while
+             
+            // HOT
+
+#ifdef UNIV_ZIP_DEBUG
+	if (fil_page_index_page_check(page)) {
+		page_zip_des_t*	page_zip = buf_block_get_page_zip(block);
+
+		ut_a(!page_zip
+		     || page_zip_validate_low(page_zip, page, NULL, FALSE));
+	}
+#endif /* UNIV_ZIP_DEBUG */
+
+#ifndef UNIV_HOTBACKUP
+	if (modification_to_page) {
+		ut_a(block);
+
+		log_flush_order_mutex_enter();
+		buf_flush_recv_note_modification(block, start_lsn, end_lsn);
+		log_flush_order_mutex_exit();
+	}
+#else /* !UNIV_HOTBACKUP */
+	start_lsn = start_lsn; /* Silence compiler */
+#endif /* !UNIV_HOTBACKUP */
+
+	/* Make sure that committing mtr does not change the modification
+	lsn values of page */
+
+	mtr.discard_modifications();
+
+	mtr_commit(&mtr);
+
+	mutex_enter(&(recv_sys->mutex));
+
+	if (recv_max_page_lsn < page_lsn) {
+		recv_max_page_lsn = page_lsn;
+	}
+
+	recv_addr->state = RECV_PROCESSED;
+
+  // HOT DEBUG 4 //
+  if (recv_sys->n_addrs>0) recv_sys->n_addrs--;
+  /*
+	ut_a(recv_sys->n_addrs);
+	recv_sys->n_addrs--;
+  */
+  fprintf(stderr, "[DEBUG] we finish all redo applying on (%u:%u)\n",  block->page.id.space(), block->page.id.page_no());
+	mutex_exit(&(recv_sys->mutex));
+  return;
+
+
+               // skip
+//            		  if (recv_sys->n_addrs>0) recv_sys->n_addrs -= UT_LIST_GET_LEN(recv_addr->rec_list);
+//              	  mtr.discard_modifications();
+//                  mtr_commit(&mtr);
+//                  return;
+
+
+            } else if (mtr_recv_hdr.type == 7) {
+              fprintf(stderr, "[DEBUG] we need REDO recovery on splited NC page! (%u:%u)\n"
+                  ,  block->page.id.space(), block->page.id.page_no());
+
+                           
+              // we copy from previous page
+              //if (nc_log_offset_vec.size()-2 < 0) {
+              //  fprintf(stderr, "[DEBUG] error!\n");
+              //  exit(1);
+              //}
+
+              nc_log_offset = nc_log_offset_vec[nc_log_offset_vec.size()-1];
+              memcpy(&mtr_recv_hdr, gb_pm_mmap+ nc_log_offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
+              //memcpy(block->frame, gb_pm_mmap + nc_log_offset + sizeof(PMEM_MMAP_MTRLOG_HDR), UNIV_PAGE_SIZE);  
+ 
+              uint64_t old_flush_lsn_split = mach_read_from_8(block->frame + FIL_PAGE_LSN);
+              fprintf(stderr, "(2) [DEBUG] (%u:%u) nc_log page_lsn: %lu nc_lon_lsn: %lu start_lsn: %lu old_page_lsn: %lu\n"
+                , block->page.id.space(), block->page.id.page_no()
+                , mach_read_from_8(gb_pm_mmap + nc_log_offset + sizeof(PMEM_MMAP_MTRLOG_HDR)+ FIL_PAGE_LSN)
+                , mtr_recv_hdr.lsn
+                , recv->start_lsn
+                , old_flush_lsn_split);
+ 
+
+              uint64_t old_flush_lsn = mach_read_from_8(block->frame + FIL_PAGE_LSN);
+              if (old_flush_lsn > mach_read_from_8(gb_pm_mmap + nc_log_offset + sizeof(PMEM_MMAP_MTRLOG_HDR)+FIL_PAGE_LSN)) {
+                fprintf(stderr, "[DEBUG] goto normal (2) %u:%u\n", block->page.id.space(), block->page.id.page_no());
+                goto normal;
+              }
+
+              
+              fprintf(stderr, "[DEBUG] splited NC page (%u:%u) lsn: %lu page_lsn :%u\n"
+                  , block->page.id.space(), block->page.id.page_no(), mtr_recv_hdr.lsn
+                  , mach_read_from_8(gb_pm_mmap+ nc_log_offset
+                    + sizeof(PMEM_MMAP_MTRLOG_HDR)+ FIL_PAGE_LSN));
+ 
+              if (buf_page_is_corrupted(true
+              , gb_pm_mmap + nc_log_offset + sizeof(PMEM_MMAP_MTRLOG_HDR)
+              , block->page.size, false)) {
+                fprintf(stderr, "[DEBUG] error (%u:%u) splited page log corroupted!\n"
+                    , block->page.id.space(), block->page.id.page_no());
+              }
+              
+              split_nc_flag = true;
+              split_nc_lsn = mtr_recv_hdr.lsn;
+
+              mtr_recv_hdr.type = 3;
+              memcpy(gb_pm_mmap+ nc_log_offset, &mtr_recv_hdr, sizeof(PMEM_MMAP_MTRLOG_HDR));
+
+            } else {
+              if (mtr_recv_hdr.type != 3) {
+                fprintf(stderr, "[DEBUG] type not !? type: %d\n", mtr_recv_hdr.type);
+                exit(1);
+              }
+            }
+
+          } else {
+
+            fprintf(stderr, "[DEBUG] NC page in the buffer but no log! (%u:%u)\n"
+                , block->page.id.space(), block->page.id.page_no());
+
+            /*
+            // skip
+        		if (recv_sys->n_addrs>0) recv_sys->n_addrs -= UT_LIST_GET_LEN(recv_addr->rec_list);
+          	mtr.discard_modifications();
+            mtr_commit(&mtr);
+            return;
+            */
+          }
+        } else {
+
+          fprintf(stderr ,"[DEBUG] NC buffer contents is safe! (%u:%u)\n"
+              , block->page.id.space(), block->page.id.page_no());
+
+          // check 
+          std::map<std::pair<uint64_t,uint64_t>, std::vector<uint64_t> >::iterator nclog_iter;
+          nclog_iter = pmem_nc_log_map.find(std::make_pair(block->page.id.space(), block->page.id.page_no()));
+
+          if (nclog_iter != pmem_nc_log_map.end()) {
+            
+            PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr;
+            std::vector<uint64_t> nc_log_offset_vec = (*nclog_iter).second;
+            uint64_t nc_log_offset = nc_log_offset_vec[nc_log_offset_vec.size()-1];
+            memcpy(&mtr_recv_hdr, gb_pm_mmap+nc_log_offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
+              
+            uint64_t old_flush_lsn = mach_read_from_8(block->frame + FIL_PAGE_LSN);
+              if (old_flush_lsn > mach_read_from_8(gb_pm_mmap + nc_log_offset + sizeof(PMEM_MMAP_MTRLOG_HDR)+FIL_PAGE_LSN)) {
+                fprintf(stderr, "[DEBUG] goto normal %u:%u\n", block->page.id.space(), block->page.id.page_no());
+                goto normal;
+              }
+
+
+            if (mtr_recv_hdr.type == 1) {
+
+              fprintf(stderr, "[DEBUG] we need REDO recovery on splited NC page! 2 (%u:%u) page_lsn: %u\n"
+                  ,  block->page.id.space(), block->page.id.page_no()
+                  , mach_read_from_8(gb_pm_mmap+ nc_log_offset+ (6*1024*1024*1024UL) + FIL_PAGE_LSN));
+             
+              memcpy(block->frame, gb_pm_mmap + nc_offset + (6*1024*1024*1024UL), UNIV_PAGE_SIZE);
+
+              if (recv_sys->n_addrs>0) recv_sys->n_addrs -= UT_LIST_GET_LEN(recv_addr->rec_list);
+          	  mtr.discard_modifications();
+              mtr_commit(&mtr);
+              return;
+
+            } else { 
+              fprintf(stderr, "[DEBUG] what? buffer safe page %u:%u\n"
+                  , block->page.id.space(), block->page.id.page_no());
+          
+              split_nc_flag = true;
+              //split_nc_lsn = mtr_recv_hdr.lsn;
+            }
+          }
+        }
+      } // end-of-if
 
       // step2. check the current recv->start_lsn and nc log 
+      if (split_nc_flag) {
+        fprintf(stderr, "[DEBUG] current nc split page (%u:%u) lsn :%u cur_lsn: %u\n"
+            , block->page.id.space(), block->page.id.page_no()
+            , split_nc_lsn, recv->start_lsn);
+      }
+
+normal:
 			recv_parse_or_apply_log_rec_body(
 				recv->type, buf, buf + recv->len,
 				recv_addr->space, recv_addr->page_no,
@@ -2595,110 +2946,6 @@ recv_recover_page_func(
 
 		recv = UT_LIST_GET_NEXT(rec_list, recv);
 	}
-
-  /*
-  // step1. check current page exists in NC buffer
-  unsigned char* nc_buffer_addr = gb_pm_mmap + (4*1024*1024*1024UL); 
-  std::map<std::pair<uint64_t,uint64_t>, std::vector<uint64_t> >::iterator nclog_iter;
-  std::map<std::pair<uint64_t,uint64_t>, std::vector<uint64_t> >::iterator ncbuf_iter;
-  std::map<std::pair<uint64_t,uint64_t>, bool >::iterator nccheck_iter;
-  ncbuf_iter = pmem_nc_buffer_map.find(std::make_pair(block->page.id.space(), block->page.id.page_no()));
-  if (ncbuf_iter != pmem_nc_buffer_map.end())  {
-
-      // nc logging 
-      nclog_iter = pmem_nc_log_map.find(std::make_pair(block->page.id.space()
-              , block->page.id.page_no()));
-
-      if (nclog_iter != pmem_nc_log_map.end()) {
-         std::vector<uint64_t> nc_offset_vec = (*nclog_iter).second;
-         for (uint64_t j=0; j<nc_offset_vec.size(); ++j) {
-           PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr; 
-           uint64_t nc_offset = nc_offset_vec[j];
-           memcpy(&mtr_recv_hdr, gb_pm_mmap+nc_offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
-
-           if (mtr_recv_hdr.lsn) {
-          
-             fprintf(stderr, "[DEBUG] we ignore applying mtr logging! here (%u:%u)\n"
-                 ,
-           }
-
-         }
-      }
- 
-      // debug check nc log already applied
-      nccheck_iter = pmem_nc_log_check.find(std::make_pair(block->page.id.space(), block->page.id.page_no()));
-      if (nccheck_iter != pmem_nc_log_check.end()) {
-        fprintf(stderr, "[JONGQ] we already applied this log! (%u:%u)\n"
-            , block->page.id.space(), block->page.id.page_no());
-        recv_sys->n_addrs--;
-        recv_addr->state = RECV_PROCESSED;
-        mutex_exit(&(recv_sys->mutex));
-        return;
-      }
-
-      // step2. check page corrouption
-      // TODO(jhpark): change nc_buffer_map value type as vector to uint64_t
-      std::vector<uint64_t> nc_buf_offset_vec = (*ncbuf_iter).second;
-      uint64_t nc_buf_offset;
-      for (uint64_t j=0; j<nc_buf_offset_vec.size(); ++j) {
-        nc_buf_offset = nc_buf_offset_vec[j];
-
-      const fil_space_t* space_t = fil_space_get(block->page.id.space());
-      const page_size_t page_size(space_t->flags);
-
-      // step3. now we need to recover 
-      if (buf_page_is_corrupted(true
-            , const_cast<byte*>(reinterpret_cast<buf_block_t*>(nc_buffer_addr+nc_buf_offset)->frame)
-            , page_size, fsp_is_checksum_disabled(block->page.id.space()))) {
-      
-      // step4. check nc logs
-        nclog_iter = pmem_nc_log_map.find(std::make_pair(block->page.id.space()
-              , block->page.id.page_no()));
-
-        if (nclog_iter != pmem_nc_log_map.end()) {
-              std::vector<uint64_t> nc_offset_vec = (*nclog_iter).second;
-              
-      // step5. apply nc log 
-              for (uint64_t j=0; j<nc_offset_vec.size(); ++j) {
-                PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr; 
-                uint64_t nc_offset = nc_offset_vec[j];
-                memcpy(&mtr_recv_hdr, gb_pm_mmap+nc_offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
-                pmem_recv_recover_page_func(mtr_recv_hdr.space, mtr_recv_hdr.page_no, nc_offset, block); 
-               }
-
-        } else {
-          fprintf(stderr, "[DEBUG] hmm? current page is corrupted but we do not have log! (%u:%u)\n"
-              , block->page.id.space(), block->page.id.page_no());
-
-        }
-
-      } else {
-
-        fprintf(stderr, "[DEBUG] oh, (%u:%u) page is not corrupted!\n", block->page.id.space(), block->page.id.page_no()); 				
-      	}
-
-      	// flsuh NC pages
-      	IORequest write_request(IORequest::WRITE);
-      	const page_id_t cur_page_id(block->page.id.space(), block->page.id.page_no());
-      	write_request.disable_compression();
-      	int check = fil_io(write_request, true, cur_page_id, page_size, 0,
-            UNIV_PAGE_SIZE,
-            const_cast<byte*>(reinterpret_cast<buf_block_t*>(nc_buffer_addr+nc_buf_offset)->frame), NULL);
-				
-				mtr_t cur_mtr;
-				mtr_start(&cur_mtr);
-				buf_page_get_gen(cur_page_id, page_size, RW_NO_LATCH, NULL, BUF_GET, __FILE__, __LINE__, &cur_mtr);
-	
-      }
-      
-			recv_sys->n_addrs--;
-      recv_addr->state = RECV_PROCESSED;
-      pmem_nc_log_check[std::make_pair(block->page.id.space(), block->page.id.page_no())]=true;
-      mutex_exit(&(recv_sys->mutex));
-      return;
-
-  } // end-of-if
-*/
 
 #ifdef UNIV_ZIP_DEBUG
 	if (fil_page_index_page_check(page)) {
@@ -2878,10 +3125,6 @@ loop:
 					has_printed = TRUE;
 				}
 				
-				// debug
-				fprintf(stderr, "[JONGQ] i=%ld recv_sys->n_addrs: %lu\n"
-											,i, recv_sys->n_addrs);
-
 				mutex_exit(&(recv_sys->mutex));
 
 				if (buf_page_peek(page_id)) {
@@ -2903,9 +3146,7 @@ loop:
               , page_id.space(), page_id.page_no());
 	
 				} else {
-					fprintf(stderr, "[JONGQ] check-11! try to read %u:%u\n"
-              , page_id.space(), page_id.page_no());
-					recv_read_in_area(page_id);
+          recv_read_in_area(page_id);
 				}
 
 				mutex_enter(&(recv_sys->mutex));
@@ -2975,6 +3216,54 @@ loop:
   // (jhpark): we finished normal page recovery (applying REDO logs)
   //  now, we recover the NC page redo logging
   fprintf(stderr, "Normal page applyging REDO log finished!\n");
+
+  /*
+  // now we check the existing pairs
+  std::map<std::pair<uint64_t,uint64_t>, bool >::iterator nclog_check_iter;
+  std::map<std::pair<uint64_t,uint64_t>, std::vector<uint64_t> >::iterator nclog_iter;
+
+  for (nclog_check_iter = pmem_nc_log_check.begin(); nclog_check_iter != pmem_nc_log_check.end(); nclog_check_iter++) {
+    if ( (*nclog_check_iter).second == false) {
+      fprintf(stderr, "[DEBUG] (%lu:%lu) page still exists in NVDIMM!\n", 
+         (*nclog_check_iter).first.first, (*nclog_check_iter).first.second);
+
+       nclog_iter = pmem_nc_log_map.find(
+           std::make_pair(
+           (*nclog_check_iter).first.first, (*nclog_check_iter).first.second));
+
+        if (nclog_iter != pmem_nc_log_map.end()) {
+          PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr;
+          std::vector<uint64_t> nc_log_offset_vec = (*nclog_iter).second;
+          uint64_t tmp_offset = nc_log_offset_vec[nc_log_offset_vec.size()-1];
+          memcpy(&mtr_recv_hdr, gb_pm_mmap+tmp_offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
+
+          // need recovery !!!
+          if (mtr_recv_hdr.need_recv) {
+            fprintf(stderr, "[DEBUG] still need recovery ! (%lu:%lu)\n"
+                , (*nclog_check_iter).first.first, (*nclog_check_iter).first.second);
+
+            mtr_t tmp_mtr;
+            mtr_start(&tmp_mtr);
+            const page_id_t page_id((*nclog_check_iter).first.first, (*nclog_check_iter).first.second);
+            fil_space_t* space_t = fil_space_get((*nclog_check_iter).first.first);
+            const page_size_t page_size(space_t->flags);
+           
+            buf_block_t* tmp = buf_page_get_gen(
+                page_id, page_size, RW_NO_LATCH, NULL, BUF_GET, __FILE__, __LINE__, &tmp_mtr);
+            mtr_commit(&tmp_mtr);
+
+            // restore latest NC page
+            memcpy(tmp->frame,  gb_pm_mmap+tmp_offset+sizeof(PMEM_MMAP_MTRLOG_HDR), UNIV_PAGE_SIZE);
+
+          }
+
+        } else {
+          fprintf(stderr, "[DEBUG] ERROR!!!!!\n");
+          exit(1);
+        }
+    }
+  }
+*/
 
   // (jhpark): we need to recover extra pages in NVDIMM Buffer and 
 /*
@@ -4676,6 +4965,123 @@ recv_recovery_from_checkpoint_finish(void)
 
 	/* Free the resources of the recovery system */
 	recv_recovery_on = false;
+
+  // now we check the existing pairs
+  std::map<std::pair<uint64_t,uint64_t>, bool >::iterator nclog_check_iter;
+  std::map<std::pair<uint64_t,uint64_t>, std::vector<uint64_t> >::iterator nclog_iter;
+
+  for (nclog_check_iter = pmem_nc_log_check.begin(); nclog_check_iter != pmem_nc_log_check.end(); nclog_check_iter++) {
+    if ( (*nclog_check_iter).second == false) {
+      fprintf(stderr, "[DEBUG] (%lu:%lu) page still exists in NVDIMM!\n", 
+         (*nclog_check_iter).first.first, (*nclog_check_iter).first.second);
+
+       nclog_iter = pmem_nc_log_map.find(
+           std::make_pair(
+           (*nclog_check_iter).first.first, (*nclog_check_iter).first.second));
+
+        if (nclog_iter != pmem_nc_log_map.end()) {
+          PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr;
+          std::vector<uint64_t> nc_log_offset_vec = (*nclog_iter).second;
+
+          uint64_t latest_offset = nc_log_offset_vec[nc_log_offset_vec.size()-1];
+          memcpy(&mtr_recv_hdr, gb_pm_mmap+latest_offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
+
+          // need recovery !!!
+          //if (mtr_recv_hdr.need_recv) {
+          if (1) {
+            fprintf(stderr, "[DEBUG] still need recovery ! (%lu:%lu)\n"
+                , (*nclog_check_iter).first.first, (*nclog_check_iter).first.second);
+
+            mtr_t tmp_mtr;
+            mtr_start(&tmp_mtr);
+            const page_id_t page_id((*nclog_check_iter).first.first, (*nclog_check_iter).first.second);
+            fil_space_t* space_t = fil_space_get((*nclog_check_iter).first.first);
+            const page_size_t page_size(space_t->flags);
+
+            buf_block_t* tmp = buf_page_get_gen(
+                page_id, page_size, RW_NO_LATCH, NULL, BUF_GET, __FILE__, __LINE__, &tmp_mtr);
+            mtr_commit(&tmp_mtr);
+
+            fprintf(stderr, "[DEBUG] olc_page_lsn: %lu new_page_lsn: %lu\n"
+                , mach_read_from_8(tmp->frame + FIL_PAGE_LSN)
+                , mach_read_from_8(gb_pm_mmap+latest_offset+sizeof(PMEM_MMAP_MTRLOG_HDR) + FIL_PAGE_LSN));
+            
+
+            uint64_t hot_offset = -1;
+            uint64_t old_page_lsn = mach_read_from_8(tmp->frame + FIL_PAGE_LSN);
+            uint64_t old_next = btr_page_get_next(tmp->frame, &tmp_mtr);
+            uint64_t old_prev = btr_page_get_prev(tmp->frame, &tmp_mtr);
+
+            fprintf(stderr, "[DEBUG] old page (%u:%u) old page_lsn: %lu next: %lu prev: %lu\n"
+                , (*nclog_check_iter).first.first, (*nclog_check_iter).first.second
+                , old_page_lsn, old_next, old_prev);
+            
+
+            for (int k=nc_log_offset_vec.size()-1; k>=0; k--) {
+
+              uint64_t tmp_offset = nc_log_offset_vec[k];
+              memcpy(&mtr_recv_hdr, gb_pm_mmap+tmp_offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
+              uint64_t cur_page_lsn = mach_read_from_8(gb_pm_mmap 
+                  + tmp_offset+sizeof(PMEM_MMAP_MTRLOG_HDR)+FIL_PAGE_LSN);
+
+              if (mtr_recv_hdr.type != 3
+                  && hot_offset == -1) {
+                hot_offset = tmp_offset;
+              }
+
+              ulint next_page = btr_page_get_next(gb_pm_mmap + tmp_offset+sizeof(PMEM_MMAP_MTRLOG_HDR), &tmp_mtr);
+              ulint prev_page = btr_page_get_prev(gb_pm_mmap + tmp_offset+sizeof(PMEM_MMAP_MTRLOG_HDR), &tmp_mtr);
+              fprintf(stderr, "[DEBUG] all nc undo log check k = %d (%u:%u) page_lsn: %lu type: %d need_recv: %d next: %lu prev: %lu\n", k
+                  ,  (*nclog_check_iter).first.first, (*nclog_check_iter).first.second
+                  , mach_read_from_8(gb_pm_mmap + tmp_offset
+                   +sizeof(PMEM_MMAP_MTRLOG_HDR)+FIL_PAGE_LSN), mtr_recv_hdr.type, mtr_recv_hdr.need_recv
+                  , next_page, prev_page);
+
+              // HOT DEBUG
+              /*
+              if (next_page !=4294967295) {
+              mtr_t tmp_mtr2;
+              mtr_start(&tmp_mtr2);
+              const page_id_t page_id_tmp((*nclog_check_iter).first.first, next_page);     
+              buf_block_t *tmp2 = buf_page_get_gen(
+                page_id_tmp, page_size, RW_NO_LATCH, NULL, BUF_GET, __FILE__, __LINE__, &tmp_mtr2);
+              mtr_commit(&tmp_mtr2);
+              fprintf(stderr, "[DEBUG] btree page check - prev: %lu\n", btr_page_get_prev(tmp2->frame, &tmp_mtr2));
+              }
+              */
+              // HOT DEBUG
+              
+            }
+             
+            //if (hot_offset != -1) {
+            //  latest_offset = hot_offset;
+            //}
+
+            // restore latest NC page
+/*
+              IORequest write_request(IORequest::WRITE);
+              write_request.disable_compression();
+              byte* read_buf_no_align = static_cast<byte*>(ut_malloc_nokey(2 * UNIV_PAGE_SIZE));
+              byte *read_buf =  static_cast<byte*>(ut_align(read_buf_no_align, UNIV_PAGE_SIZE));
+              memcpy(read_buf, gb_pm_mmap+latest_offset+sizeof(PMEM_MMAP_MTRLOG_HDR), UNIV_PAGE_SIZE);
+
+              int err = fil_io(
+                  write_request, false, page_id, page_size, 0
+                  ,4096, read_buf , NULL);
+*/
+
+            memcpy(tmp->frame,  gb_pm_mmap+latest_offset+sizeof(PMEM_MMAP_MTRLOG_HDR), UNIV_PAGE_SIZE);
+         }
+
+        } else {
+          fprintf(stderr, "[DEBUG] ERROR!!!!!\n");
+          exit(1);
+        }
+    }
+  }
+
+
+
 
 	/* By acquring the mutex we ensure that the recv_writer thread
 	won't trigger any more LRU batches. Now wait for currently

@@ -160,6 +160,7 @@ struct __pmem_mmap_mtrlog_fileheader {
 struct __pmem_mmap_mtrlog_hdr {
 	//bool need_recv;								 // true if need recovery
   int need_recv;
+  int type;
 	unsigned long int len;    		 // length of mtr log payload
 	unsigned long int lsn;      	 // lsn from global log_sys
   unsigned long int mtr_lsn;  	 // mtr log lsn (pageLSN)
@@ -212,16 +213,33 @@ extern uint64_t pmem_recv_tmp_buf_offset;
 extern uint64_t pmem_recv_commit_offset;
 
 
-bool pm_mmap_recv_check_nc_log(uint64_t space, uint64_t page_no);
+uint64_t pm_mmap_recv_check_nc_log(uint64_t space, uint64_t page_no);
+uint64_t pm_mmap_recv_check_nc_buf(uint64_t space, uint64_t page_no);
 
 //class page_id_t;
 // map (page_id, offset) for NC buffer
 extern std::map<std::pair<uint64_t,uint64_t> , std::vector<uint64_t> > pmem_nc_buffer_map;
 // map (page_id, offset) for NC log
 extern std::map<std::pair<uint64_t,uint64_t> , std::vector<uint64_t> > pmem_nc_log_map;
+
 // map (page_id, bool) for checking NC log alreaddy applied
 extern std::map<std::pair<uint64_t,uint64_t> , bool> pmem_nc_log_check;
 void pm_mmap_recv_prepare();
 extern bool nc_buffer_flag;
 void pmem_recv_recvoer_nc_page();
+
+
+uint64_t pm_mmap_mtrlogbuf_write_undo(
+     const uint8_t* buf,  unsigned long int n, 
+     unsigned long int lsn, unsigned long int space, 
+     unsigned long int page_no, int type = 0);
+
+void pm_mmap_invalidate_undo(uint64_t offset);
+uint64_t pm_mmap_mtrlogbuf_write_undo_flush(
+     const uint8_t* buf,  unsigned long int n, 
+     unsigned long int lsn, unsigned long int space, 
+     unsigned long int page_no, unsigned long int trx_id);
+
+bool read_disk_nc_page (uint32_t space, uint32_t page_no, unsigned char* read_buf);
+
 #endif  /* __PMEMMAPOBJ_H__ */

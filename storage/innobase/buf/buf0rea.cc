@@ -887,14 +887,6 @@ buf_read_recv_pages(
 
 		buf_pool = buf_pool_get(cur_page_id);
 
-
-    fprintf(stderr, "(debug) n_pend_read: %lu free_frame: %lu instance: %d (%u:%u)\n"
-          , buf_pool->n_pend_reads
-          , recv_n_pool_free_frames
-          , buf_pool->instance_no
-          , space_id, page_nos[i]);
-
-
 		while (buf_pool->n_pend_reads >= recv_n_pool_free_frames / 2) {
 
       fprintf(stderr, "[DEBUG] what??? buffer id: %lu pend_red: %lu\n", buf_pool->instance_no, buf_pool->n_pend_reads);
@@ -929,10 +921,7 @@ buf_read_recv_pages(
 
 	os_aio_simulated_wake_handler_threads();
 
-  fprintf(stderr, "recovery read-ahead (%u pages)",
-			      unsigned(n_stored));
-
-	DBUG_PRINT("ib_buf", ("recovery read-ahead (%u pages)",
+ 	DBUG_PRINT("ib_buf", ("recovery read-ahead (%u pages)",
 			      unsigned(n_stored)));
 }
 

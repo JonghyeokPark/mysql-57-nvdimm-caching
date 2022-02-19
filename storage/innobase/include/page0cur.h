@@ -253,7 +253,12 @@ page_copy_rec_list_end_to_created_page(
 	page_t*		new_page,	/*!< in/out: index page to copy to */
 	rec_t*		rec,		/*!< in: first record to copy */
 	dict_index_t*	index,		/*!< in: record descriptor */
-	mtr_t*		mtr);		/*!< in: mtr */
+	mtr_t*		mtr
+#ifdef UNIV_NVDIMM_CACHE
+  ,bool is_nvm_page = false
+#endif
+  );		/*!< in: mtr */
+
 /***********************************************************//**
 Deletes a record at the page cursor. The cursor is moved to the
 next record after the deleted one. */

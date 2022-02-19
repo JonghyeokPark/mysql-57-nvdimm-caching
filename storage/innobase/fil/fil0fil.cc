@@ -4146,7 +4146,7 @@ fil_ibd_open(
 
 skip_validate:
 	if (err == DB_SUCCESS) {
-    fprintf(stderr, "[DEBUG] fil_ibd_open %s!!!\n", space_name);
+    fprintf(stderr, "[DEBUG] fil_ibd_open %s!!! id %d\n", space_name, id);
 
 		fil_space_t*	space = fil_space_create(
 			space_name, id, flags, purpose);

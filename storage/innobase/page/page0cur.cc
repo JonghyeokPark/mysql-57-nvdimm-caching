@@ -43,6 +43,7 @@ Created 10/4/1994 Heikki Tuuri
 
 #ifdef UNIV_NVDIMM_CACHE
 #include "pmem_mmap_obj.h"
+extern unsigned char* gb_pm_mmap;
 #endif
 
 
@@ -752,6 +753,7 @@ page_cur_search_with_match_bytes(
 	}
 # endif
 #endif
+
 
 	/* The following flag does not work for non-latin1 char sets because
 	cmp_full_field does not tell how many bytes matched */
@@ -1732,11 +1734,13 @@ use_heap:
 	/* 9. Write log record of the insert */
 	if (UNIV_LIKELY(mtr != NULL)) {
 #ifdef UNIV_NVDIMM_CACHE
+        mtr_t tmp_mtr;
+        mtr_start(&tmp_mtr);
         ulint page_no = page_get_page_no(page);
         ulint space_id = page_get_space_id(page);
         buf_block_t* nvm_block = buf_page_get(page_id_t(space_id, page_no),
-                dict_table_page_size(index->table), RW_X_LATCH, mtr);
-
+                dict_table_page_size(index->table), RW_NO_LATCH, &tmp_mtr);
+        mtr_commit(&tmp_mtr);
         assert(nvm_block != NULL);
         buf_page_t* nvm_bpage = &nvm_block->page;
 
@@ -2576,7 +2580,12 @@ page_copy_rec_list_end_to_created_page(
 	page_t*		new_page,	/*!< in/out: index page to copy to */
 	rec_t*		rec,		/*!< in: first record to copy */
 	dict_index_t*	index,		/*!< in: record descriptor */
-	mtr_t*		mtr)		/*!< in: mtr */
+	mtr_t*		mtr
+#ifdef UNIV_NVDIMM_CACHE
+  ,bool is_nvm_page
+#endif
+  )/*!< in: mtr */
+
 {
 	page_dir_slot_t* slot = 0; /* remove warning */
 	byte*	heap_top;
@@ -2615,8 +2624,15 @@ page_copy_rec_list_end_to_created_page(
 			    new_page + UNIV_PAGE_SIZE - 1);
 #endif
 
+#ifdef UNIV_NVDIMM_CACHE
+//  if (!is_nvm_page) {
+    log_ptr = page_copy_rec_list_to_created_page_write_log(new_page,
+							       index, mtr);
+//  }
+#else
 	log_ptr = page_copy_rec_list_to_created_page_write_log(new_page,
 							       index, mtr);
+#endif
 
 	log_data_len = mtr->get_log()->size();
 
@@ -2692,10 +2708,10 @@ page_copy_rec_list_end_to_created_page(
         buf_block_t* nvm_block = buf_page_get(page_id_t(space_id, page_no),
                 dict_table_page_size(index->table), RW_X_LATCH, mtr);
         assert(nvm_block != NULL);
-
         buf_page_t* nvm_bpage = &nvm_block->page;
 
-        if (nvm_bpage->cached_in_nvdimm) {
+      if (nvm_bpage->cached_in_nvdimm) {
+//      if (is_nvm_page) {
           /*
            mtr_t nvdimm_mtr;
            mtr_start(&nvdimm_mtr);
@@ -2927,9 +2943,19 @@ page_cur_delete_rec(
 	cur_n_owned = page_dir_slot_get_n_owned(cur_dir_slot);
 
 	/* 0. Write the log record */
+#ifdef UNIV_NVDIMM_CACHE
+  buf_block_t* nvm_block = cursor->block;
+  buf_page_t* nvm_bpage = &(nvm_block->page);
+  bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
+  if (mtr != 0 && !is_nvm_page) {
+		page_cur_delete_rec_write_log(current_rec, index, mtr);
+	}
+
+#else
 	if (mtr != 0) {
 		page_cur_delete_rec_write_log(current_rec, index, mtr);
 	}
+#endif
 
 	/* 1. Reset the last insert info in the page header and increment
 	the modify clock for the frame */

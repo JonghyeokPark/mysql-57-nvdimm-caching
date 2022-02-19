@@ -1669,7 +1669,12 @@ btr_root_raise_and_insert(
 
 	level = btr_page_get_level(root, mtr);
 #ifdef UNIV_NVDIMM_CACHE
+  // HOT DEBUG 7
 	new_block = btr_page_alloc(index, 0, FSP_NO_DIR, level, mtr, mtr, is_nvm_page);
+  if (new_block->page.cached_in_nvdimm == true) {
+    fprintf(stderr, "[DEBUG] splited page but cached in nvdimm! (%u:%u)\n"
+        , new_block->page.id.space(), new_block->page.id.page_no());
+  }
 #else
 	new_block = btr_page_alloc(index, 0, FSP_NO_DIR, level, mtr, mtr);
 #endif
@@ -2658,8 +2663,16 @@ func_start:
 
 	/* 2. Allocate a new page to the index */
 #ifdef UNIV_NVDIMM_CACHE
+  // HOT DEBUG 7
 	new_block = btr_page_alloc(cursor->index, hint_page_no, direction,
 				   btr_page_get_level(page, mtr), mtr, mtr, is_nvm_page);
+  if(is_nvm_page) {
+    fprintf(stderr, "[DEBUG] split page info : %u:%u caching info: %d:%d\n"
+        , new_block->page.id.space(), new_block->page.id.page_no()
+        , new_block->page.cached_in_nvdimm, new_block->page.moved_to_nvdimm);
+
+     //new_block->page.cached_in_nvdimm = false;
+  }
 #else
 	new_block = btr_page_alloc(cursor->index, hint_page_no, direction,
 				   btr_page_get_level(page, mtr), mtr, mtr);
@@ -2939,6 +2952,28 @@ func_exit:
 	ut_ad(page_validate(buf_block_get_frame(right_block), cursor->index));
 
 	ut_ad(!rec || rec_offs_validate(rec, cursor->index, *offsets));
+
+  // HOT DEBUG 7
+#ifdef UNIV_NVDIMM_CACHE
+  buf_page_t* nvm_bpage = &(block->page);
+  bool is_nvm_page2 = nvm_bpage->cached_in_nvdimm;
+  if (is_nvm_page2) {
+    buf_flush_init_for_writing(
+        reinterpret_cast<const buf_block_t*>(nvm_bpage),
+        reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame, 
+        nvm_bpage->zip.data ? &nvm_bpage->zip : NULL,
+        nvm_bpage->newest_modification,
+         fsp_is_checksum_disabled(nvm_bpage->id.space()));
+
+    pm_mmap_mtrlogbuf_write_undo(
+        block->frame,
+        4096, log_sys->lsn
+        ,block->page.id.space()
+        ,block->page.id.page_no(), 3);
+  }
+#endif
+
+
 	return(rec);
 }
 
@@ -3073,7 +3108,11 @@ void
 btr_set_min_rec_mark(
 /*=================*/
 	rec_t*	rec,	/*!< in: record */
-	mtr_t*	mtr)	/*!< in: mtr */
+	mtr_t*	mtr
+#ifdef UNIV_NVDIMM_CACHE
+  ,bool is_nvm_page
+#endif
+  )	/*!< in: mtr */
 {
 	ulint	info_bits;
 
@@ -3081,14 +3120,24 @@ btr_set_min_rec_mark(
 		info_bits = rec_get_info_bits(rec, TRUE);
 
 		rec_set_info_bits_new(rec, info_bits | REC_INFO_MIN_REC_FLAG);
-
+#ifdef UNIV_NVDIMM_CACHE
+    //if (!is_nvm_page) {
+      btr_set_min_rec_mark_log(rec, MLOG_COMP_REC_MIN_MARK, mtr);
+    //}
+#else
 		btr_set_min_rec_mark_log(rec, MLOG_COMP_REC_MIN_MARK, mtr);
+#endif
 	} else {
 		info_bits = rec_get_info_bits(rec, FALSE);
 
 		rec_set_info_bits_old(rec, info_bits | REC_INFO_MIN_REC_FLAG);
-
+#ifdef UNIV_NVDIMM_CAHE
+    //if (!is_nvm_page) {
+  		btr_set_min_rec_mark_log(rec, MLOG_REC_MIN_MARK, mtr);
+    //}
+#else
 		btr_set_min_rec_mark_log(rec, MLOG_REC_MIN_MARK, mtr);
+#endif
 	}
 }
 
@@ -4031,7 +4080,14 @@ btr_discard_page(
 		because everything will take place within a single
 		mini-transaction and because writing to the redo log
 		is an atomic operation (performed by mtr_commit()). */
+#ifdef UNIV_NVDIMM_CACHE
+    bool is_nvm_page = block->page.cached_in_nvdimm;
+    if (!is_nvm_page) {
+      btr_set_min_rec_mark(node_ptr, mtr, is_nvm_page);
+    }
+#else
 		btr_set_min_rec_mark(node_ptr, mtr);
+#endif
 	}
 
 	if (dict_index_is_spatial(index)) {

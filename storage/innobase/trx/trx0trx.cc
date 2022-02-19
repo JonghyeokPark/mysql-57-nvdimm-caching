@@ -76,6 +76,14 @@ TrxVersion::TrxVersion(trx_t* trx)
 	/* No op */
 }
 
+//#ifdef UNIV_NVDIMM_CACHE
+TrxNcPages::TrxNcPages(std::pair<uint32_t,uint32_t> page_id, uint64_t offset)
+  : m_page_id(page_id), m_offset(offset)
+{
+  /* No op */
+}
+//#endif
+
 /** Set flush observer for the transaction
 @param[in/out]	trx		transaction struct
 @param[in]	observer	flush observer */
@@ -205,7 +213,9 @@ trx_init(
 	it got a chance to roll them back asynchronously. */
 
 	trx->hit_list.clear();
-
+#ifdef UNIV_NVDIMM_CACHE
+  trx->nc_pages_list.clear();
+#endif
 	trx->flush_observer = NULL;
 
 	++trx->version;
@@ -234,6 +244,10 @@ struct TrxFactory {
 		new(&trx->lock.table_locks) lock_pool_t();
 
 		new(&trx->hit_list) hit_list_t();
+
+#ifdef UNIV_NVDIMM_CACHE
+    new(&trx->nc_pages_list) trx_nc_pages_list_t();
+#endif
 
 		trx_init(trx);
 
@@ -316,6 +330,12 @@ struct TrxFactory {
 		trx->lock.table_locks.~lock_pool_t();
 
 		trx->hit_list.~hit_list_t();
+
+#ifdef UNIV_NVDIMM_CACHE
+    trx->nc_pages_list.~trx_nc_pages_list_t();
+#endif
+
+
 	}
 
 	/** Enforce any invariants here, this is called before the transaction
@@ -464,9 +484,7 @@ trx_create_low()
 	/* Trx state can be TRX_STATE_FORCED_ROLLBACK if
 	the trx was forced to rollback before it's reused.*/
 	trx->state = TRX_STATE_NOT_STARTED;
-
 	heap = mem_heap_create(sizeof(ib_vector_t) + sizeof(void*) * 8);
-
 	alloc = ib_heap_allocator_create(heap);
 
 	/* Remember to free the vector explicitly in trx_free(). */
@@ -2191,6 +2209,30 @@ trx_commit_low(
 	}
 #endif
 
+// HOT DEBUG 5 //
+#ifdef UNIV_NVDIMM_CACHE
+  // search the in the nc_pages_map in trx structure
+  // invalidate undo logs
+  bool nc_flag = false;
+  
+  //std::list<std::pair<std::pair<uint32_t,uint32_t>,uint64_t> >::iterator iter;
+  trx_nc_pages_list_t::iterator iter;
+ 
+  if (!trx->nc_pages_list.empty()) {
+  for (iter = trx->nc_pages_list.begin(); iter != trx->nc_pages_list.end(); iter++) {
+    nc_flag = true;
+    fprintf(stderr, "[DEBUG] (%u:%u) offset: %lu invalidate undo log trx_id: %lu\n"
+         ,iter->m_page_id.first, iter->m_page_id.second, iter->m_offset, trx->id);
+    pm_mmap_invalidate_undo(iter->m_offset);
+  }
+  
+  // DEBUG 
+  //if(nc_flag)  exit(1);
+  
+  }
+  
+#endif
+
 	trx_commit_in_memory(trx, mtr, serialised);
 }
 
@@ -3403,7 +3445,9 @@ trx_kill_blocking(trx_t* trx)
 	}
 
 	trx->hit_list.clear();
-
+#ifdef UNIV_NVDIMM_CACHE
+  trx->nc_pages_list.clear();
+#endif
 	if (had_dict_lock) {
 
 		row_mysql_freeze_data_dictionary(trx);
