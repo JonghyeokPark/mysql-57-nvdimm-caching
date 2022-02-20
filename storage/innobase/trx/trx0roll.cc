@@ -130,6 +130,18 @@ trx_rollback_to_savepoint_low(
 		MONITOR_INC(MONITOR_TRX_ROLLBACK_SAVEPOINT);
 	}
 
+#ifdef UNIV_NVDIMM_CACHE
+  // search the in the nc_pages_map in trx structure
+  trx_nc_pages_list_t::iterator iter;
+  if (!trx->nc_pages_list.empty()) {
+    for (iter = trx->nc_pages_list.begin(); iter != trx->nc_pages_list.end(); iter++) {
+      fprintf(stderr, "[DEBUG] (%u:%u) offset: %lu invalidate undo log trx_id: %lu\n"
+          ,iter->m_page_id.first, iter->m_page_id.second, iter->m_offset, trx->id);
+      pm_mmap_invalidate_undo(iter->m_offset, 1);
+    }
+  }
+#endif
+
 	ut_a(trx->error_state == DB_SUCCESS);
 	ut_a(trx->lock.que_state == TRX_QUE_RUNNING);
 

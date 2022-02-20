@@ -234,7 +234,7 @@ uint64_t pm_mmap_mtrlogbuf_write_undo(
      unsigned long int lsn, unsigned long int space, 
      unsigned long int page_no, int type = 0);
 
-void pm_mmap_invalidate_undo(uint64_t offset);
+void pm_mmap_invalidate_undo(uint64_t offset, int type = 0);
 uint64_t pm_mmap_mtrlogbuf_write_undo_flush(
      const uint8_t* buf,  unsigned long int n, 
      unsigned long int lsn, unsigned long int space, 

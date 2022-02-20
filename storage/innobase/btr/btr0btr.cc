@@ -2619,7 +2619,7 @@ func_start:
 
 	page_no = block->page.id.page_no();
 
-	/* 1. Decide the split record; split_rec == NULL means that the
+  /* 1. Decide the split record; split_rec == NULL means that the
 	tuple to be inserted should be the first record on the upper
 	half-page */
 	insert_left = FALSE;
@@ -2671,7 +2671,7 @@ func_start:
         , new_block->page.id.space(), new_block->page.id.page_no()
         , new_block->page.cached_in_nvdimm, new_block->page.moved_to_nvdimm);
 
-     //new_block->page.cached_in_nvdimm = false;
+//     new_block->page.cached_in_nvdimm = false;
   }
 #else
 	new_block = btr_page_alloc(cursor->index, hint_page_no, direction,
@@ -2952,27 +2952,6 @@ func_exit:
 	ut_ad(page_validate(buf_block_get_frame(right_block), cursor->index));
 
 	ut_ad(!rec || rec_offs_validate(rec, cursor->index, *offsets));
-
-  // HOT DEBUG 7
-#ifdef UNIV_NVDIMM_CACHE
-  buf_page_t* nvm_bpage = &(block->page);
-  bool is_nvm_page2 = nvm_bpage->cached_in_nvdimm;
-  if (is_nvm_page2) {
-    buf_flush_init_for_writing(
-        reinterpret_cast<const buf_block_t*>(nvm_bpage),
-        reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame, 
-        nvm_bpage->zip.data ? &nvm_bpage->zip : NULL,
-        nvm_bpage->newest_modification,
-         fsp_is_checksum_disabled(nvm_bpage->id.space()));
-
-    pm_mmap_mtrlogbuf_write_undo(
-        block->frame,
-        4096, log_sys->lsn
-        ,block->page.id.space()
-        ,block->page.id.page_no(), 3);
-  }
-#endif
-
 
 	return(rec);
 }

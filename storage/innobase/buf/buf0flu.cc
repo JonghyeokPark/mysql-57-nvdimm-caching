@@ -1378,6 +1378,28 @@ buf_flush_page(
                 bpage->moved_to_nvdimm = true;
             }
         }
+
+        // HOT DEBUG 8
+        /* Separate Neworder leaf page from the other pages. */
+        if (bpage->id.space() == 27 /* Neworder tablespace */
+            && bpage->buf_fix_count == 0 /* Not fixed */
+            && !bpage->cached_in_nvdimm) { /* Not cached in NVDIMM */
+            
+            const byte *frame =
+                bpage->zip.data != NULL ? bpage->zip.data : ((buf_block_t *)bpage)->frame;
+
+            const ulint page_type = fil_page_get_type(frame);
+
+            if ((page_type == FIL_PAGE_INDEX || page_type == FIL_PAGE_RTREE) /* Index page */
+                && page_is_leaf(frame) /* Leaf page */) {
+                //ib::info() << bpage->id.space() << " " << bpage->id.page_no() << " ol " << bpage->flush_type;
+                bpage->moved_to_nvdimm = true;
+            }
+        }
+
+
+
+
 #ifdef UNIV_NVDIMM_CACHE_OD
         /* Separate Orders leaf page from the other pages. */
         if (bpage->id.space() == 29 /* Order-Line tablespace */

@@ -2557,9 +2557,9 @@ recv_recover_page_func(
 				    recv_addr->page_no));
 
 
-      fprintf(stderr, "[INFO] log applying page:%u:%u lsn: %u len: %u\n",
-          recv_addr->space, recv_addr->page_no
-          ,recv->start_lsn, recv->len);
+//      fprintf(stderr, "[INFO] log applying page:%u:%u lsn: %u len: %u\n",
+//          recv_addr->space, recv_addr->page_no
+//          ,recv->start_lsn, recv->len);
 
       uint64_t nc_offset = pm_mmap_recv_check_nc_buf(block->page.id.space(), block->page.id.page_no());
       
@@ -2607,8 +2607,10 @@ recv_recover_page_func(
 
 
               //if((mtr_recv_hdr.type == 2 || mtr_recv_hdr.type == 3)
-              if((mtr_recv_hdr.type !=3)
-                  && hot_offset == -1) {
+              if(mtr_recv_hdr.need_recv == 0
+                  && mach_read_from_8(gb_pm_mmap + tmp_offset + +sizeof(PMEM_MMAP_MTRLOG_HDR)+FIL_PAGE_LSN)< recv_sys->recovered_lsn 
+                  && hot_offset == -1
+                  && mach_read_from_8(gb_pm_mmap + tmp_offset + +sizeof(PMEM_MMAP_MTRLOG_HDR)+FIL_PAGE_LSN) != 0) {
                     fprintf(stderr, "[DEBUG] keep hot offset! (%u:%u)\n", block->page.id.space(), block->page.id.page_no());
                     hot_offset = tmp_offset;
               }
@@ -2633,12 +2635,12 @@ recv_recover_page_func(
               // copy it from NC UNDO Log
               uint64_t old_flush_lsn = mach_read_from_8(block->frame + FIL_PAGE_LSN);
 
-              if (hot_offset != -1) {
-                nc_log_offset = hot_offset;
-              }
+              //if (hot_offset != -1) {
+              //  nc_log_offset = hot_offset;
+              //}
 
               if (old_flush_lsn 
-                  <= mach_read_from_8(
+                  < mach_read_from_8(
                     gb_pm_mmap + nc_log_offset 
                     + sizeof(PMEM_MMAP_MTRLOG_HDR)+FIL_PAGE_LSN)) {
                                 
@@ -2859,14 +2861,6 @@ recv_recover_page_func(
 
             fprintf(stderr, "[DEBUG] NC page in the buffer but no log! (%u:%u)\n"
                 , block->page.id.space(), block->page.id.page_no());
-
-            /*
-            // skip
-        		if (recv_sys->n_addrs>0) recv_sys->n_addrs -= UT_LIST_GET_LEN(recv_addr->rec_list);
-          	mtr.discard_modifications();
-            mtr_commit(&mtr);
-            return;
-            */
           }
         } else {
 
@@ -3217,135 +3211,7 @@ loop:
   //  now, we recover the NC page redo logging
   fprintf(stderr, "Normal page applyging REDO log finished!\n");
 
-  /*
-  // now we check the existing pairs
-  std::map<std::pair<uint64_t,uint64_t>, bool >::iterator nclog_check_iter;
-  std::map<std::pair<uint64_t,uint64_t>, std::vector<uint64_t> >::iterator nclog_iter;
-
-  for (nclog_check_iter = pmem_nc_log_check.begin(); nclog_check_iter != pmem_nc_log_check.end(); nclog_check_iter++) {
-    if ( (*nclog_check_iter).second == false) {
-      fprintf(stderr, "[DEBUG] (%lu:%lu) page still exists in NVDIMM!\n", 
-         (*nclog_check_iter).first.first, (*nclog_check_iter).first.second);
-
-       nclog_iter = pmem_nc_log_map.find(
-           std::make_pair(
-           (*nclog_check_iter).first.first, (*nclog_check_iter).first.second));
-
-        if (nclog_iter != pmem_nc_log_map.end()) {
-          PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr;
-          std::vector<uint64_t> nc_log_offset_vec = (*nclog_iter).second;
-          uint64_t tmp_offset = nc_log_offset_vec[nc_log_offset_vec.size()-1];
-          memcpy(&mtr_recv_hdr, gb_pm_mmap+tmp_offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
-
-          // need recovery !!!
-          if (mtr_recv_hdr.need_recv) {
-            fprintf(stderr, "[DEBUG] still need recovery ! (%lu:%lu)\n"
-                , (*nclog_check_iter).first.first, (*nclog_check_iter).first.second);
-
-            mtr_t tmp_mtr;
-            mtr_start(&tmp_mtr);
-            const page_id_t page_id((*nclog_check_iter).first.first, (*nclog_check_iter).first.second);
-            fil_space_t* space_t = fil_space_get((*nclog_check_iter).first.first);
-            const page_size_t page_size(space_t->flags);
-           
-            buf_block_t* tmp = buf_page_get_gen(
-                page_id, page_size, RW_NO_LATCH, NULL, BUF_GET, __FILE__, __LINE__, &tmp_mtr);
-            mtr_commit(&tmp_mtr);
-
-            // restore latest NC page
-            memcpy(tmp->frame,  gb_pm_mmap+tmp_offset+sizeof(PMEM_MMAP_MTRLOG_HDR), UNIV_PAGE_SIZE);
-
-          }
-
-        } else {
-          fprintf(stderr, "[DEBUG] ERROR!!!!!\n");
-          exit(1);
-        }
-    }
-  }
-*/
-
-  // (jhpark): we need to recover extra pages in NVDIMM Buffer and 
-/*
-  // flsuh to disk!
-  {
-  unsigned char* addr = gb_pm_mmap + (4*1024*1024*1024UL);
-  uint64_t page_num_chunks = static_cast<uint64_t>( (2*1024*1024*1024UL)/4096);
-  uint64_t space, page_no;
-  for (uint64_t i=0 ; i< page_num_chunks; ++i) {
-    space = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.space();
-    page_no = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.page_no();
-    if (!(space == 27 || space == 29)) {
-      continue;
-    }
-    if (page_no >= 1000000) continue; 
-
-    // step1. check current nc page already recovered
-    std::map<std::pair<uint64_t,uint64_t>, bool >::iterator nccheck_iter;
-    nccheck_iter = pmem_nc_log_check.find(std::make_pair(space, page_no));
-
-    if (nccheck_iter != pmem_nc_log_check.end()) {
-      continue;
-    } else {
-      unsigned char *frame = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->frame;
-      // step2. check current page is corrupted or not 
-      fil_space_t* space_t = fil_space_get(space);
-      const page_id_t page_id(space,page_no);
-      const page_size_t page_size(space_t->flags);
-
-      if (buf_page_is_corrupted(true, frame, page_size,
-            fsp_is_checksum_disabled(space))) {
-
-        // step4. recovery !!! (applying NC logs)
-        std::map<std::pair<uint64_t,uint64_t>, std::vector<uint64_t> >::iterator nclog_iter;
-        nclog_iter = pmem_nc_log_map.find(std::make_pair(space, page_no));
-        buf_block_t* block;
-        if (nclog_iter != pmem_nc_log_map.end()) {
-           std::vector<uint64_t> nc_offset_vec = (*nclog_iter).second;
-           for (uint64_t j=0; j<nc_offset_vec.size(); ++j) {
-              PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr;
-              uint64_t nc_offset = nc_offset_vec[j];
-              memcpy(&mtr_recv_hdr, gb_pm_mmap+nc_offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
-              mtr_t cur_mtr;
-              mtr_start(&cur_mtr);
-              mutex_exit(&(recv_sys->mutex));
-              block = buf_page_get(page_id, page_size, RW_NO_LATCH, &cur_mtr);
-              fprintf(stderr, "[DEBUG] get block :%u:%u (%u:%u)\n"
-                  , block->page.id.space(), block->page.id.page_no()
-                  , page_id.space(), page_id.page_no());
-              cur_mtr.discard_modifications();
-              mtr_commit(&cur_mtr);
-              pmem_recv_recover_page_func(mtr_recv_hdr.space, mtr_recv_hdr.page_no, nc_offset, block);
-              mutex_enter(&(recv_sys->mutex));
-           }
-        } else {
-          fprintf(stderr, "[DEBUG] we have corrupted pages but we do not have NC logs! (%lu:%lu)\n", space,page_no);
-        }
-      
-        IORequest write_request2(IORequest::WRITE);
-        const page_id_t cur_page_id2(space, page_no);
-        write_request2.disable_compression();
-        int check2 = fil_io(write_request2, true, cur_page_id2, page_size, 0,
-            UNIV_PAGE_SIZE,
-            const_cast<byte*>(block->frame), NULL);
-        fprintf(stderr, "[DEBUG] (2-1) nc_buf_write check:%d (%u:%u)\n", check2, space, page_no);
-
-      } else {
-        // step5. flush to disk
-        IORequest write_request(IORequest::WRITE);
-        const page_id_t cur_page_id(space, page_no);
-        write_request.disable_compression();
-        int check = fil_io(write_request, true, cur_page_id, page_size, 0,
-            UNIV_PAGE_SIZE, frame, NULL);
-        fprintf(stderr, "[DEBUG] (2-2) nc_buf_write check:%d (%u:%u)\n", check, space, page_no);
-      }
-
-    }
-  }
-
-  }
-*/
-	recv_sys->apply_log_recs = FALSE;
+  recv_sys->apply_log_recs = FALSE;
 	recv_sys->apply_batch_on = FALSE;
 
 	recv_sys_empty_hash();
@@ -3596,10 +3462,6 @@ recv_parse_log_rec(
 
 	new_ptr = recv_parse_or_apply_log_rec_body(
 		*type, new_ptr, end_ptr, *space, *page_no, NULL, NULL);
-
-  // (jhpark) HOT DEBUG //
-  //fprintf(stderr, "[DEBUG] !!! log parse (%u:%u) type: %d\n", *space, *page_no, *type);
-  // 
 
 	if (UNIV_UNLIKELY(new_ptr == NULL)) {
 
@@ -5024,38 +4886,66 @@ recv_recovery_from_checkpoint_finish(void)
               uint64_t cur_page_lsn = mach_read_from_8(gb_pm_mmap 
                   + tmp_offset+sizeof(PMEM_MMAP_MTRLOG_HDR)+FIL_PAGE_LSN);
 
-              if (mtr_recv_hdr.type != 3
-                  && hot_offset == -1) {
-                hot_offset = tmp_offset;
-              }
-
               ulint next_page = btr_page_get_next(gb_pm_mmap + tmp_offset+sizeof(PMEM_MMAP_MTRLOG_HDR), &tmp_mtr);
               ulint prev_page = btr_page_get_prev(gb_pm_mmap + tmp_offset+sizeof(PMEM_MMAP_MTRLOG_HDR), &tmp_mtr);
-              fprintf(stderr, "[DEBUG] all nc undo log check k = %d (%u:%u) page_lsn: %lu type: %d need_recv: %d next: %lu prev: %lu\n", k
+              fprintf(stderr, "[DEBUG] all nc undo log check k = %d (%u:%u) page_lsn: %lu type: %d need_recv: %d lsn: %lu next: %lu prev: %lu recover-lsn:%lu \n", k
                   ,  (*nclog_check_iter).first.first, (*nclog_check_iter).first.second
                   , mach_read_from_8(gb_pm_mmap + tmp_offset
                    +sizeof(PMEM_MMAP_MTRLOG_HDR)+FIL_PAGE_LSN), mtr_recv_hdr.type, mtr_recv_hdr.need_recv
-                  , next_page, prev_page);
+                  , mtr_recv_hdr.lsn
+                  , next_page, prev_page, recv_sys->recovered_lsn);
 
               // HOT DEBUG
-              /*
+              uint64_t real_prev = -1, real_next = -1;
               if (next_page !=4294967295) {
-              mtr_t tmp_mtr2;
-              mtr_start(&tmp_mtr2);
-              const page_id_t page_id_tmp((*nclog_check_iter).first.first, next_page);     
-              buf_block_t *tmp2 = buf_page_get_gen(
-                page_id_tmp, page_size, RW_NO_LATCH, NULL, BUF_GET, __FILE__, __LINE__, &tmp_mtr2);
-              mtr_commit(&tmp_mtr2);
-              fprintf(stderr, "[DEBUG] btree page check - prev: %lu\n", btr_page_get_prev(tmp2->frame, &tmp_mtr2));
+                mtr_t tmp_mtr2;
+                mtr_start(&tmp_mtr2);
+                const page_id_t page_id_tmp((*nclog_check_iter).first.first, next_page);     
+                buf_block_t *tmp2 = buf_page_get_gen(
+                  page_id_tmp, page_size, RW_NO_LATCH, NULL, BUF_GET, __FILE__, __LINE__, &tmp_mtr2);
+                mtr_commit(&tmp_mtr2);
+                fprintf(stderr, "[DEBUG] btree page check - prev: %lu\n", btr_page_get_prev(tmp2->frame, &tmp_mtr2));
+                real_prev = btr_page_get_prev(tmp2->frame, &tmp_mtr2);
+              } 
+
+              if (prev_page != 4294967295) {
+                mtr_t tmp_mtr3;
+                mtr_start(&tmp_mtr3);
+                const page_id_t page_id_tmp((*nclog_check_iter).first.first, prev_page);     
+                buf_block_t *tmp3 = buf_page_get_gen(
+                  page_id_tmp, page_size, RW_NO_LATCH, NULL, BUF_GET, __FILE__, __LINE__, &tmp_mtr3);
+                mtr_commit(&tmp_mtr3);
+                fprintf(stderr, "[DEBUG] btree page check - prev: %lu\n", btr_page_get_next(tmp3->frame, &tmp_mtr3));
+                real_next = btr_page_get_next(tmp3->frame, &tmp_mtr3);
               }
-              */
+              
+              if (real_prev == (*nclog_check_iter).first.second 
+                  && real_next == (*nclog_check_iter).first.second) {
+                fprintf(stderr, "[DEBUG] %u:%u page pass!\n",  (*nclog_check_iter).first.first, (*nclog_check_iter).first.second);
+              }
+
+              if (real_prev == prev_page
+                  && real_next == next_page
+                  && hot_offset == -1) {
+
+                hot_offset = tmp_offset;
+              }
+//                  && cur_page_lsn != 0
+//                  && hot_offset == -1) {
+//                hot_offset = tmp_offset;
+//              }
+
+
               // HOT DEBUG
               
             }
              
-            //if (hot_offset != -1) {
-            //  latest_offset = hot_offset;
-            //}
+            if (hot_offset != -1) {
+              fprintf(stderr, "[DEBUG] yes we get the point! %u:%u\n", (*nclog_check_iter).first.first, (*nclog_check_iter).first.second);
+              latest_offset = hot_offset;
+            } else {
+              fprintf(stderr, "[DEBUG] no we failed %u:%u\n", (*nclog_check_iter).first.first, (*nclog_check_iter).first.second);
+            }
 
             // restore latest NC page
 /*
@@ -5069,8 +4959,12 @@ recv_recovery_from_checkpoint_finish(void)
                   write_request, false, page_id, page_size, 0
                   ,4096, read_buf , NULL);
 */
-
-            memcpy(tmp->frame,  gb_pm_mmap+latest_offset+sizeof(PMEM_MMAP_MTRLOG_HDR), UNIV_PAGE_SIZE);
+            if (old_page_lsn < mach_read_from_8(gb_pm_mmap + latest_offset + sizeof(PMEM_MMAP_MTRLOG_HDR)+FIL_PAGE_LSN)
+                && hot_offset != -1) {
+              fprintf(stderr, "[DEBUG] we copy from NC buffer %u:%u\n"
+                  ,(*nclog_check_iter).first.first, (*nclog_check_iter).first.second);
+              memcpy(tmp->frame,  gb_pm_mmap+latest_offset+sizeof(PMEM_MMAP_MTRLOG_HDR), UNIV_PAGE_SIZE);
+            }
          }
 
         } else {

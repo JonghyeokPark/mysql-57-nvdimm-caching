@@ -3488,35 +3488,46 @@ btr_cur_pessimistic_insert(
 	ut_ad(dtuple_check_typed(entry));
 
 #ifdef UNIV_NVDIMM_CACHE
+  
   buf_block_t *check_block = btr_cur_get_block(cursor);
   buf_page_t *check_page = &(check_block->page);
   bool is_nvm_page = check_page->cached_in_nvdimm;
 
-  // HOT DEBUG 7
-   
+  // HOT DEBUG 7 
   if (is_nvm_page) {
-//    check_block->page.cached_in_nvdimm = false; 
+    //check_block->page.cached_in_nvdimm = false; 
 
     buf_page_t* nvm_bpage = &(check_block->page);
+
+    byte* read_buf_no_align = static_cast<byte*>(ut_malloc_nokey(2 * UNIV_PAGE_SIZE));
+    byte *read_buf =  static_cast<byte*>(ut_align(read_buf_no_align, UNIV_PAGE_SIZE));
+    memcpy(read_buf, reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame, UNIV_PAGE_SIZE);
+
+
     buf_flush_init_for_writing(
         reinterpret_cast<const buf_block_t*>(nvm_bpage),
-        reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame,
+        //reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame,
+        read_buf,
         nvm_bpage->zip.data ? &nvm_bpage->zip : NULL,
         nvm_bpage->newest_modification,
         fsp_is_checksum_disabled(nvm_bpage->id.space()));
 
-    pm_mmap_mtrlogbuf_write_undo(
-        check_block->frame,
+      uint64_t offset = pm_mmap_mtrlogbuf_write_undo(
+        //check_block->frame,
+        read_buf,
         4096, log_sys->lsn
         , check_block->page.id.space()
         , check_block->page.id.page_no(), 3);
 
-    if ( btr_cur_get_block(cursor)->page.cached_in_nvdimm == true) {
-      fprintf(stderr, "[ERROR] FAIL!!!!! (%u:%u)\n", check_block->page.id.space(), check_block->page.id.page_no());
+      if (thr != NULL) {
+      trx_t* trx = thr_get_trx(thr);  
+      trx->nc_pages_list.push_back(
+        trx_nc_pages_list_t::value_type(
+        std::make_pair(nvm_bpage->id.space(), nvm_bpage->id.page_no())
+        , offset));
     }
-
+    ut_free(read_buf_no_align);
   }
-  
 #endif
 
 	*big_rec = NULL;
@@ -4589,25 +4600,35 @@ btr_cur_pessimistic_update(
   if (is_nvm_page) {
     //block->page.cached_in_nvdimm = false; 
 
-    buf_page_t* nvm_bpage = &(block->page);
+    buf_page_t* nvm_bpage = &(block->page); 
+    byte* read_buf_no_align = static_cast<byte*>(ut_malloc_nokey(2 * UNIV_PAGE_SIZE));
+    byte *read_buf =  static_cast<byte*>(ut_align(read_buf_no_align, UNIV_PAGE_SIZE));
+    memcpy(read_buf, reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame, UNIV_PAGE_SIZE);
+
     buf_flush_init_for_writing(
         reinterpret_cast<const buf_block_t*>(nvm_bpage),
-        reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame,
+        //reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame,
+        read_buf,
         nvm_bpage->zip.data ? &nvm_bpage->zip : NULL,
         nvm_bpage->newest_modification,
         fsp_is_checksum_disabled(nvm_bpage->id.space()));
 
-    pm_mmap_mtrlogbuf_write_undo(
-        //read_buf
-        reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame
+    uint64_t offset = pm_mmap_mtrlogbuf_write_undo(
+        read_buf
+        //reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame
         , 4096, log_sys->lsn
         , block->page.id.space()
         , block->page.id.page_no(),3);
 
-    if ( btr_cur_get_block(cursor)->page.cached_in_nvdimm == true) {
-      fprintf(stderr, "[ERROR] FAIL!!!!! (%u:%u)\n", block->page.id.space(), block->page.id.page_no());
-    }
+    if (thr != NULL) {
+      trx_t* trx = thr_get_trx(thr);  
+      trx->nc_pages_list.push_back(
+        trx_nc_pages_list_t::value_type(
+        std::make_pair(nvm_bpage->id.space(), nvm_bpage->id.page_no())
+        , offset));
+    } 
 
+    ut_free(read_buf_no_align);
   }
   
 #endif
@@ -5694,33 +5715,35 @@ btr_cur_pessimistic_delete(
 #ifdef UNIV_NVDIMM_CACHE
 // HOT DEBUG 7
  
-  
 bool is_nvm_page = block->page.cached_in_nvdimm; 
 if (is_nvm_page) {
   //block->page.cached_in_nvdimm = false;
 
   buf_page_t* nvm_bpage = &(block->page);
+
+  byte* read_buf_no_align = static_cast<byte*>(ut_malloc_nokey(2 * UNIV_PAGE_SIZE));
+  byte *read_buf =  static_cast<byte*>(ut_align(read_buf_no_align, UNIV_PAGE_SIZE));
+  memcpy(read_buf, reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame, UNIV_PAGE_SIZE);
+
   buf_flush_init_for_writing(
         reinterpret_cast<const buf_block_t*>(nvm_bpage),
-        reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame,
+        //reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame,
+        read_buf,
         nvm_bpage->zip.data ? &nvm_bpage->zip : NULL,
         nvm_bpage->newest_modification,
         fsp_is_checksum_disabled(nvm_bpage->id.space()));
 
  
-  if (btr_cur_get_block(cursor)->page.cached_in_nvdimm == true) {
-    pm_mmap_mtrlogbuf_write_undo(
-        //read_buf
-        reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame
+    uint64_t offset = pm_mmap_mtrlogbuf_write_undo(
+        read_buf
+        //reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame
         , 4096, log_sys->lsn
         , block->page.id.space()
         , block->page.id.page_no(),3);
 
-    fprintf(stderr, "[ERROR] FAIL!!!!! (%u:%u)\n", block->page.id.space(), block->page.id.page_no());     
-  }
+    ut_free(read_buf_no_align);
 
 }
-
 #endif
 
 	ulint rec_size_est = dict_index_node_ptr_max_size(index);

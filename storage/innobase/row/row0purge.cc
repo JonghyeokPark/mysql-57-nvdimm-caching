@@ -193,7 +193,7 @@ func_exit:
 
 	// jhpark: blcok calling REDO logging 
 	//				 instead, persist NVDIMM region
-
+/*
 #ifdef UNIV_NVDIMM_CACHE
     if (index->space == 27) {
         if (node->found_clust) {
@@ -208,7 +208,7 @@ func_exit:
         return (success);
     }
 #endif
-
+*/
 	if (node->found_clust) {
 		btr_pcur_commit_specify_mtr(&node->pcur, &mtr);
 	} else {

@@ -484,7 +484,7 @@ void pm_mmap_mtrlogbuf_commit_v1(ulint space, ulint page_no) {
 
 // HOT DEBUG //
 // invalidate current mtr log 
-void pm_mmap_invalidate_undo(uint64_t offset) {
+void pm_mmap_invalidate_undo(uint64_t offset, int type) {
   pthread_mutex_lock(&mmap_mtrlogbuf->mtrMutex);
 
   PMEM_MMAP_MTRLOG_HDR *mtr_hdr;
@@ -492,7 +492,11 @@ void pm_mmap_invalidate_undo(uint64_t offset) {
   if (mtr_hdr->need_recv == 0) {
     fprintf(stderr, "[ERROR] already invalidate!!!\n");
   }
-  mtr_hdr->need_recv = 0;
+  if (type == 0) {
+    mtr_hdr->need_recv = 0;
+  } else {
+    mtr_hdr->need_recv = 3;
+  }
   flush_cache(gb_pm_mmap+offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
 
   pthread_mutex_unlock(&mmap_mtrlogbuf->mtrMutex);
