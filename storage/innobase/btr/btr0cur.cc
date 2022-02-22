@@ -2957,32 +2957,6 @@ btr_cur_ins_lock_and_undo(
 	rec = btr_cur_get_rec(cursor);
 	index = cursor->index;
 
-
-  {
-
-    buf_block_t* nvm_block = btr_cur_get_block(cursor);
-    buf_page_t* nvm_bpage = &(nvm_block->page);
-
-    bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
-
-    if (is_nvm_page) {
-    const page_size_t page_size(
-         dict_table_page_size(index->table));
-
-    int is_query =0;
-    if (thr !=NULL) is_query = 1;
-
-    if (buf_page_is_corrupted(true, nvm_block->frame, page_size, false)) {
-      fprintf(stderr, "[DEBUG] (ins-1) what buffer is already corrupted! %u:%u is_query %d\n"
-          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query);
-    } else {
-      fprintf(stderr, "[DEBUG] (ins-2) what buffer is safe! %u:%u is_query %d\n"
-          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query); 
-    }
-
-    }
-  }
-
 	ut_ad(!dict_index_is_online_ddl(index)
 	      || dict_index_is_clust(index)
 	      || (flags & BTR_CREATE_FLAG));
@@ -3025,19 +2999,6 @@ btr_cur_ins_lock_and_undo(
 
     bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
 
-    /*
-    extern uint64_t pmem_recv_tmp_buf_offset;
-    extern unsigned char* gb_pm_mmap;
-    memcpy(gb_pm_mmap + pmem_recv_tmp_buf_offset, (buf_block_t *)nvm_block->frame, UNIV_PAGE_SIZE);
-    flush_cache(gb_pm_mmap + pmem_recv_tmp_buf_offset, UNIV_PAGE_SIZE);
-    pmem_recv_tmp_buf_offset += UNIV_PAGE_SIZE;
-
-    if (pmem_recv_tmp_buf_offset >= (6*1024*1024*1024UL)) {
-      fprintf(stderr, "[DEBUG] exit !! for debugging !!\n");
-      exit(1);
-    }
-    */
-
     // keep undo nc here!
     if (is_nvm_page) {
     
@@ -3057,21 +3018,6 @@ btr_cur_ins_lock_and_undo(
         nvm_bpage->newest_modification,
         //nvm_bpage->oldest_modification,
         fsp_is_checksum_disabled(nvm_bpage->id.space()));
-
-
-    if (buf_page_is_corrupted(true, nvm_block->frame, page_size, false)) {
-
-      ulint ck1 = mach_read_from_4(          
-          nvm_block->frame + FIL_PAGE_SPACE_OR_CHKSUM);                
-      ulint ck2 = mach_read_from_4(           
-          nvm_block->frame + page_size.logical() - FIL_PAGE_END_LSN_OLD_CHKSUM);        
-
-      fprintf(stderr, "[DEBUG] (ins) what buffer is already corrupted! %u:%u is_query %d ck1: %u ck2: %u\n"
-          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query, ck1, ck2);
-    } else {
-      fprintf(stderr, "[DEBUG] (ins) what buffer is safe! %u:%u is_query %d\n"
-          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query); 
-    }
 
     uint64_t offset = pm_mmap_mtrlogbuf_write_undo(
         nvm_block->frame, 4096
@@ -3199,23 +3145,6 @@ btr_cur_optimistic_insert(
 	block = btr_cur_get_block(cursor);
 	page = buf_block_get_frame(block);
 	index = cursor->index;
-
-#ifdef UNIV_NVDIMM_CACHE
-  buf_page_t* nvm_bpage = &(block->page);
-  bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
-  if (is_nvm_page) {                              
-    const page_size_t page_size(  
-         dict_table_page_size(index->table));
-    if (buf_page_is_corrupted(true, block->frame, page_size, false)) {       
-      fprintf(stderr, "[DEBUG] (ins-1) what buffer is already corrupted! %u:%u\n"
-          ,nvm_bpage->id.space(), nvm_bpage->id.page_no());
-    } else {
-      fprintf(stderr, "[DEBUG] (ins-1) what buffer is safe! %u:%u\n"
-          , nvm_bpage->id.space(), nvm_bpage->id.page_no());
-    }
-  }
-
-#endif
 
 	/* Block are not latched for insert if table is intrinsic
 	and index is auto-generated clustered index. */
@@ -3695,29 +3624,6 @@ btr_cur_upd_lock_and_undo(
 	rec = btr_cur_get_rec(cursor);
 	index = cursor->index;
 
-  {
-    buf_block_t* nvm_block = btr_cur_get_block(cursor);
-    buf_page_t* nvm_bpage = &(nvm_block->page);
-
-    bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
-
-    if (is_nvm_page) {
-    const page_size_t page_size(
-         dict_table_page_size(index->table));
-    int is_query =0;
-    if (thr !=NULL) is_query = 1;
-
-
-    if (buf_page_is_corrupted(true, nvm_block->frame, page_size, false)) {
-      fprintf(stderr, "[DEBUG] (upd-1) what buffer is already corrupted! %u:%u is_query %d\n"
-          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query);
-    } else {
-      fprintf(stderr, "[DEBUG] (upd-1) what buffer is safe! %u:%u is_query %d\n"
-          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query);
-    }
-    }
-
-  }
 
 	ut_ad(rec_offs_validate(rec, index, offsets));
 	ut_ad(mtr->is_named_space(index->space));
@@ -3754,20 +3660,6 @@ btr_cur_upd_lock_and_undo(
 
   // HOT DEBUG 4 //
   if (is_nvm_page) {
-    /*
-    extern uint64_t pmem_recv_tmp_buf_offset;
-    extern unsigned char* gb_pm_mmap;
-    memcpy(gb_pm_mmap + pmem_recv_tmp_buf_offset, (buf_block_t *)nvm_block->frame, UNIV_PAGE_SIZE);
-    flush_cache(gb_pm_mmap + pmem_recv_tmp_buf_offset, UNIV_PAGE_SIZE);
-    pmem_recv_tmp_buf_offset += UNIV_PAGE_SIZE;
-
-    if (pmem_recv_tmp_buf_offset >= (6*1024*1024*1024UL)) {
-      fprintf(stderr, "[DEBUG] exit !! for debugging !!\n");
-      exit(1);
-    }
-    */
-    // KEEP UNDO NC HERE!
-
     const page_size_t page_size(
          dict_table_page_size(index->table));
     int is_query =0;
@@ -3779,23 +3671,6 @@ btr_cur_upd_lock_and_undo(
         nvm_bpage->zip.data ? &nvm_bpage->zip : NULL,
         nvm_bpage->newest_modification,
         fsp_is_checksum_disabled(nvm_bpage->id.space()));
-
-
-    if (buf_page_is_corrupted(true, nvm_block->frame, page_size, false)) {
-
-      ulint ck1 = mach_read_from_4(          
-          nvm_block->frame + FIL_PAGE_SPACE_OR_CHKSUM);                
-      ulint ck2 = mach_read_from_4(           
-          nvm_block->frame + page_size.logical() - FIL_PAGE_END_LSN_OLD_CHKSUM);        
-
-      fprintf(stderr, "[DEBUG] (upd) what buffer is already corrupted! %u:%u is_query %d ck1:%u ck2:%u\n"
-          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query, ck1, ck2);
-    } else {
-      fprintf(stderr, "[DEBUG] (upd) what buffer is safe! %u:%u is_query %d\n"
-          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query);
-
-    }
-
 
     uint64_t offset = pm_mmap_mtrlogbuf_write_undo(
         nvm_block->frame, 4096,  log_sys->lsn, nvm_bpage->id.space(), nvm_bpage->id.page_no());
@@ -5153,29 +5028,7 @@ btr_cur_del_mark_set_clust_rec(
 
 #ifdef UNIV_NVDIMM_CACHE
     buf_page_t* nvm_bpage;
-    bool is_nvm_page;
-
-    {
-     nvm_bpage = &(block->page);
-     is_nvm_page = nvm_bpage->cached_in_nvdimm;
-
-     if (is_nvm_page) {
-     const page_size_t page_size(
-         dict_table_page_size(index->table));
-
-    int is_query =0;
-    if (thr !=NULL) is_query = 1;
-
-    if (buf_page_is_corrupted(true, block->frame, page_size, false)) {
-      fprintf(stderr, "[DEBUG] (del-1) what buffer is already corrupted! %u:%u is_query %d\n"
-          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query);
-    } else {
-      fprintf(stderr, "[DEBUG] (del-1) what buffer is safe! %u:%u is_query %d\n"
-          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query); 
-    }
-     }
-    }
-  
+    bool is_nvm_page;  
 #endif /* UNIV_NVDIMM_CACHE */
 
 	ut_ad(dict_index_is_clust(index));
@@ -5232,23 +5085,6 @@ btr_cur_del_mark_set_clust_rec(
         nvm_bpage->newest_modification,
         fsp_is_checksum_disabled(nvm_bpage->id.space()));
 
-
-    if (buf_page_is_corrupted(true, block->frame, page_size, false)) {
-
-      ulint ck1 = mach_read_from_4(          
-          block->frame + FIL_PAGE_SPACE_OR_CHKSUM);                
-      ulint ck2 = mach_read_from_4(           
-          block->frame + page_size.logical() - FIL_PAGE_END_LSN_OLD_CHKSUM);        
-
-      fprintf(stderr, "[DEBUG] (del) what buffer is already corrupted! %u:%u is_query %d ck1:%u ck2:%u\n"
-          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query, ck1, ck2);
-    } else {
-      fprintf(stderr, "[DEBUG] (del) what buffer is safe! %u:%u is_query %d\n"
-          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), is_query); 
-    }
-
-
-   
     uint64_t offset = pm_mmap_mtrlogbuf_write_undo(
         block->frame, 4096,  log_sys->lsn, nvm_bpage->id.space(), nvm_bpage->id.page_no());
 

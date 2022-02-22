@@ -2671,6 +2671,9 @@ func_start:
         , new_block->page.id.space(), new_block->page.id.page_no()
         , new_block->page.cached_in_nvdimm, new_block->page.moved_to_nvdimm);
 
+    if (new_block->page.cached_in_nvdimm) {
+      debug_func();
+    }
 //     new_block->page.cached_in_nvdimm = false;
   }
 #else

@@ -242,4 +242,5 @@ uint64_t pm_mmap_mtrlogbuf_write_undo_flush(
 
 bool read_disk_nc_page (uint32_t space, uint32_t page_no, unsigned char* read_buf);
 
+void debug_func();
 #endif  /* __PMEMMAPOBJ_H__ */

@@ -889,7 +889,6 @@ buf_read_recv_pages(
 
 		while (buf_pool->n_pend_reads >= recv_n_pool_free_frames / 2) {
 
-      fprintf(stderr, "[DEBUG] what??? buffer id: %lu pend_red: %lu\n", buf_pool->instance_no, buf_pool->n_pend_reads);
 			os_aio_simulated_wake_handler_threads();
 			os_thread_sleep(10000);
 

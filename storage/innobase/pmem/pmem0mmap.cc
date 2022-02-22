@@ -247,12 +247,6 @@ void pm_mmap_log_commit(ulint cur_space, ulint cur_page, ulint cur_offset) {
 uint64_t pm_mmap_log_checkpoint(uint64_t cur_offset) {
 	size_t finish_offset = mmap_mtrlogbuf->ckpt_offset;
 
-	///////////////////////////////////////////////////
-	// recovery test
-//	PMEMMMAP_ERROR_PRINT("RECOVERY TEST !!!");
-//	exit(1);
-	///////////////////////////////////////////////////
-
 	// invalidate all offset;
 	memset(gb_pm_mmap + PMEM_MMAP_MTR_FIL_HDR_SIZE, 0x00, (finish_offset - PMEM_MMAP_MTR_FIL_HDR_SIZE));
 	// copy existing offset;
@@ -301,18 +295,22 @@ ssize_t pm_mmap_mtrlogbuf_write(
 		// debug
 		PMEMMMAP_INFO_PRINT("[WRNING] mmap_mtrlogbuf is FULL!\n");
     // HOT DEBUG //
-    exit(1);
+    //exit(1);
     // HOT DEBUG //
 
-		ut_ad(offset < mmap_mtrlogbuf->size);
+    // (jhpark): we need 
 
-		offset = pm_mmap_log_checkpoint(offset);
-		mmap_mtrlogbuf->prev_offset = offset;
-		mmap_mtrlogbuf->cur_offset = offset;
+//		ut_ad(offset < mmap_mtrlogbuf->size);
+//		offset = pm_mmap_log_checkpoint(offset);
+//		mmap_mtrlogbuf->prev_offset = offset;
+//		mmap_mtrlogbuf->cur_offset = offset;
+
 	}
-
-	// Fill the mmap_mtr log header info.
   
+  // check we need 
+
+
+	// Fill the mmap_mtr log header info. 
   PMEM_MMAP_MTRLOG_HDR mtr_hdr;
   mtr_hdr.len = n;
   mtr_hdr.lsn = lsn;
@@ -527,25 +525,34 @@ uint64_t pm_mmap_mtrlogbuf_write_undo(
   // jhpark: Force to trigger mtr_log_checkpoint if the offset becomes larger than threshold
 	size_t offset = mmap_mtrlogbuf->cur_offset;
   uint64_t ret_offset = offset;
-	size_t limit = mmap_mtrlogbuf->size * 0.1;
+	size_t limit = mmap_mtrlogbuf->size * 0.8;
 
 	// checkopint occurred
   if (offset + n > limit) {
 		// debug
 		PMEMMMAP_INFO_PRINT("[WRNING] mmap_mtrlogbuf is FULL!\n");
     // HOT DEBUG //
-    exit(1);
+    //exit(1);
     // HOT DEBUG //
+		//ut_ad(offset < mmap_mtrlogbuf->size);
+		//offset = pm_mmap_log_checkpoint(offset);
+		//mmap_mtrlogbuf->prev_offset = offset;
+		//mmap_mtrlogbuf->cur_offset = offset;
 
-		ut_ad(offset < mmap_mtrlogbuf->size);
-
-		offset = pm_mmap_log_checkpoint(offset);
-		mmap_mtrlogbuf->prev_offset = offset;
-		mmap_mtrlogbuf->cur_offset = offset;
+    mmap_mtrlogbuf->cur_offset = PMEM_MMAP_MTR_FIL_HDR_SIZE;
+    offset = mmap_mtrlogbuf->cur_offset;
 	}
 
-	// Fill the mmap_mtr log header info.
-  
+  // check we need recovery !!!
+  PMEM_MMAP_MTRLOG_HDR tmp_mtr_hdr;
+  memcpy(gb_pm_mmap+offset, &tmp_mtr_hdr, sizeof(PMEM_MMAP_MTRLOG_HDR));
+  if (tmp_mtr_hdr.need_recv == true) {
+    fprintf(stderr, "[DEBUG] hrrr, this nc log buffer still have active nc log!\n");
+    exit(1);
+  }
+
+
+	// Fill the mmap_mtr log header info. 
   PMEM_MMAP_MTRLOG_HDR mtr_hdr;
   if (type != 0) {
     mtr_hdr.type = type;

@@ -1124,13 +1124,6 @@ buf_flush_write_block_low(
             << " flush-type = " << bpage->flush_type;*/
         memcpy(((buf_block_t *)nvdimm_page)->frame, ((buf_block_t *)bpage)->frame, UNIV_PAGE_SIZE);
 
-        // debug
-        if (buf_page_is_corrupted(true, ((buf_block_t *)nvdimm_page)->frame, page_size, false)) {
-          fprintf(stderr, "[DEBUG] dram - nvdimm buffer corrupt! (%u:%u)\n", bpage->id.space(), bpage->id.page_no());
-        } else {
-          fprintf(stderr, "[DEBUG] dram - nvdimm buffer safe! (%u:%u)\n", bpage->id.space(), bpage->id.page_no());
-        }
-
         /* Set the oldest LSN of the NVDIMM page to the previous newest LSN. */
         buf_flush_note_modification((buf_block_t *)nvdimm_page, bpage->newest_modification, bpage->newest_modification, nvdimm_page->flush_observer);
 
@@ -1145,21 +1138,16 @@ buf_flush_write_block_low(
             ,((buf_block_t *)bpage)->frame, UNIV_PAGE_SIZE);
         flush_cache(gb_pm_mmap + pmem_recv_tmp_buf_offset, UNIV_PAGE_SIZE);
         pmem_recv_tmp_buf_offset += UNIV_PAGE_SIZE;
-        fprintf(stderr, "[DEBUG] offset: %lu (%u:%u)\n", pmem_recv_tmp_buf_offset, bpage->id.space(), bpage->id.page_no());
 
-//        pm_mmap_mtrlogbuf_write_undo_flush(
-//              reinterpret_cast<const buf_block_t*>(bpage)->frame, 4096, log_sys->lsn,
-//              bpage->id.space(), bpage->id.page_no(), 0);
-
-
-         /* Remove the target page from the original buffer pool. */
+        /* Remove the target page from the original buffer pool. */
         buf_page_io_complete(bpage, true);
         buf_page_io_complete(nvdimm_page);
         
         buf_pool_t*	buf_pool = buf_pool_from_bpage(nvdimm_page);
-        ib::info() << nvdimm_page->id.space() << " "
-                << nvdimm_page->id.page_no() << " is moved to "
-                << nvdimm_page->buf_pool_index << " from " << bpage->buf_pool_index;
+
+//        ib::info() << nvdimm_page->id.space() << " "
+//                << nvdimm_page->id.page_no() << " is moved to "
+//                << nvdimm_page->buf_pool_index << " from " << bpage->buf_pool_index;
         
     } else {
 normal:
@@ -1167,19 +1155,9 @@ normal:
         // HOT DEBUG//
       
         if (bpage->cached_in_nvdimm) {
-          fprintf(stderr, "[DEBUG] NC page is flushed to disk (%lu:%lu)\n", bpage->id.space(), bpage->id.page_no());
-          pm_mmap_mtrlogbuf_write_undo_flush(
+          pm_mmap_mtrlogbuf_write_undo(
               reinterpret_cast<const buf_block_t*>(bpage)->frame, 4096, log_sys->lsn,
-              bpage->id.space(), bpage->id.page_no(), 0);
-
-          if (buf_page_is_corrupted(true, ((buf_block_t *)bpage)->frame, bpage->size, false)) {
-            fprintf(stderr, "[DEBUG] nvdimm - disk buffer corrupt! (%u:%u)\n", bpage->id.space(), bpage->id.page_no());
-          } else {
-            fprintf(stderr, "[DEBUG] nvdimm - disk buffer safe! (%u:%u)\n", bpage->id.space(), bpage->id.page_no());
-          }
-
-
-          //exit(1);
+              bpage->id.space(), bpage->id.page_no(), 2);
         }
      
         // HOT DEBUG// 

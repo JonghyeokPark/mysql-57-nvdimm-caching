@@ -502,21 +502,13 @@ void pmem_recv_recvoer_nc_page() {
 
     } else {
       fprintf(stderr, "(%lu:%lu) page is good!\n", space, page_no);
-/*    
-      pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*4096);
-      mtr_t tmp_mtr;
-      mtr_start(&tmp_mtr);
-      buf_block_t* tmp = buf_page_get_gen(
-          page_id, page_size, RW_NO_LATCH, NULL, BUF_GET, __FILE__, __LINE__, &tmp_mtr);
-      
-      mtr_commit(&tmp_mtr);
-      fprintf(stderr, "[DEBUG] (%u:%u) we get from buffer\n",space, page_no);
-      memcpy(tmp->frame, frame, 4096);
-*/
       pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*4096);
     }
 
    }
 }
 
+void debug_func() {
+  fprintf(stderr, "[DEBUG] !!!!\n");
+}
 
