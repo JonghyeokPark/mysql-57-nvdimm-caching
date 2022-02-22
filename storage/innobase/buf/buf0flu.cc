@@ -1056,9 +1056,8 @@ buf_flush_write_block_low(
 	/* Force the log to the disk before writing the modified block */
 	if (!srv_read_only_mode) {
 #ifdef UNIV_NVDIMM_CACHE
-			//if (bpage->buf_pool_index < srv_buf_pool_instances) {
-				log_write_up_to(bpage->newest_modification, true);
-			//}
+    // jhpark
+		  log_write_up_to(bpage->newest_modification, true);
 #else
 			log_write_up_to(bpage->newest_modification, true);
 #endif /* UNIV_NVDIMM_CACHE */
@@ -1120,12 +1119,16 @@ buf_flush_write_block_low(
   
         /*ib::info() << "page_id = " << bpage->id.space()
             << " offset = " << bpage->id.page_no() 
-            << " dst = " << &(((buf_block_t *)nvdimm_page)->frame) << " src = " << &(((buf_block_t *)bpage)->frame)
+            << " dst = " << &(((buf_block_t *)nvdimm_page)->frame) 
+            << " src = " << &(((buf_block_t *)bpage)->frame)
             << " flush-type = " << bpage->flush_type;*/
         memcpy(((buf_block_t *)nvdimm_page)->frame, ((buf_block_t *)bpage)->frame, UNIV_PAGE_SIZE);
 
         /* Set the oldest LSN of the NVDIMM page to the previous newest LSN. */
-        buf_flush_note_modification((buf_block_t *)nvdimm_page, bpage->newest_modification, bpage->newest_modification, nvdimm_page->flush_observer);
+        buf_flush_note_modification((buf_block_t *)nvdimm_page
+            , bpage->newest_modification
+            , bpage->newest_modification
+            , nvdimm_page->flush_observer);
 
 
         // (jhpark): is this right?
@@ -1151,16 +1154,6 @@ buf_flush_write_block_low(
         
     } else {
 normal:
-
-        // HOT DEBUG//
-      
-        if (bpage->cached_in_nvdimm) {
-          pm_mmap_mtrlogbuf_write_undo(
-              reinterpret_cast<const buf_block_t*>(bpage)->frame, 4096, log_sys->lsn,
-              bpage->id.space(), bpage->id.page_no(), 2);
-        }
-     
-        // HOT DEBUG// 
 
         bpage->moved_to_nvdimm = false;
 

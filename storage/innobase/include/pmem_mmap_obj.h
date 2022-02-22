@@ -201,7 +201,6 @@ void pm_mmap_buf_write(unsigned long len, void* buf);
 void pm_mmap_recv(uint64_t start_offset, uint64_t end_offset);
 uint64_t pm_mmap_recv_check(PMEM_MMAP_MTRLOGFILE_HDR* log_fil_hdr);
 void pm_mmap_recv_flush_buffer();
-void pm_mmap_flush_nc_buffer();
 
 // TODO(jhpark): covert these variables as structure (i.e., recv_sys_t)
 extern bool is_pmem_recv;

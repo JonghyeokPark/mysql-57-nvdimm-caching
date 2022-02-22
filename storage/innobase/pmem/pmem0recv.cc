@@ -25,61 +25,6 @@ extern unsigned char* gb_pm_mmap;
 extern uint64_t pmem_recv_size;
 
 
-void pm_mmap_recv(uint64_t start_offset, uint64_t end_offset) {
-  // parse log records
-  // TODO(jhpark): we need to use start_offset
-
-  ulint offset = PMEM_MMAP_MTR_FIL_HDR_SIZE;
-  mlog_id_t type;
-  ulint space, page_no;
-  byte* body; 
-
-  is_pmem_recv = false;
-  fprintf(stderr, "[DEBUG] mtr_log_recovery end_offset: %lu\n", end_offset);
-//  while (offset <= end_offset) {
-  while (1) {
-
-    // read mtr log header 
-    PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr;
-    memcpy(&mtr_recv_hdr, gb_pm_mmap+offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
- 
-    if (mtr_recv_hdr.len == 0) {
-      break;
-    }
-
-    fprintf(stderr, "[DEBUG] mtr log header check need_recv: %d len: %lu lsn: %lu mtr_lsn: %lu prev_offset: %lu space: %lu page: %lu\n"
-        ,mtr_recv_hdr.need_recv, mtr_recv_hdr.len, mtr_recv_hdr.lsn, mtr_recv_hdr.mtr_lsn
-        ,mtr_recv_hdr.prev_offset, mtr_recv_hdr.space, mtr_recv_hdr.page_no);
-
-    uint64_t cur_hdr_offset = offset;
-    offset += sizeof(PMEM_MMAP_MTRLOG_HDR);
-    
-    ulint ret = wrap_recv_parse_log_rec(&type, gb_pm_mmap + offset
-        , gb_pm_mmap + offset + mtr_recv_hdr.len
-        , &space, &page_no, false, &body);
-
-
-    fprintf(stderr, "[DEBUG] ret: %lu type: %d space: %lu pange_no: %lu\n",ret, type, space ,page_no);
-
-    // apply log records
-    // HOT DEBUG we skip applying now !!
-    
-//    if (mtr_recv_hdr.need_recv) {
-//      pmem_recv_recover_page_func(space, page_no, cur_hdr_offset);
-//    }
-
-    offset += mtr_recv_hdr.len;
-  }
-
-  // HOT DEBUG 3 // 
-  // copy 4GB+2GB
-  //memcpy(gb_pm_mmap + (4*1024*1024*1024UL), gb_pm_buf, (2*1024*1024*1024UL));
-
-  fprintf(stderr, "[DEBUG] mtr log applying is finished!\n");
-  is_pmem_recv=true;
-}
-
-
 uint64_t pm_mmap_recv_check(PMEM_MMAP_MTRLOGFILE_HDR* log_fil_hdr) {
 	size_t tmp_offset = log_fil_hdr->ckpt_offset;
 	while (true) {
@@ -158,19 +103,6 @@ bool pm_mmap_recv_check_nc_buffer(uint64_t space, uint64_t page_no) {
 // fill map
 void pm_mmap_recv_prepare() {
 
-  /*
-    ulint offset = PMEM_MMAP_MTR_FIL_HDR_SIZE;
-    while (true) {
-      PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr;
-      memcpy(&mtr_recv_hdr, gb_pm_mmap+offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
-      if (mtr_recv_hdr.len == 0) break;
-
-      pmem_nc_log_map[std::make_pair(mtr_recv_hdr.space, mtr_recv_hdr.page_no)].push_back(offset);
-
-      offset += sizeof(PMEM_MMAP_MTRLOG_HDR);
-      offset += mtr_recv_hdr.len;
-    }
-  */
     // buffer
     uint64_t space, page_no;
     unsigned char *addr = gb_pm_mmap + (1*1024*1024*1024UL);
@@ -283,94 +215,6 @@ void pm_mmap_recv_flush_buffer() {
   }
 }
 #endif
-
-void pm_mmap_flush_nc_buffer() {
-  // read from nc dummy buffer
-  uint64_t cur_offset = 0;
-  uint64_t space, page_no, page_lsn;
-
-  //unsigned char * cur_tmp_buf = gb_pm_mmap + 4*1024*1024*1024UL;
-  //uint64_t page_num_chunks = static_cast<uint64_t>( (2*1024*1024*1024UL)/4096);
-
-  unsigned char *addr = gb_pm_buf;
-  uint64_t page_num_chunks = static_cast<uint64_t>( (2*1024*1024*1024UL)/4096);
-
-
-  is_pmem_recv=false;
-  for (uint64_t i=0 ; i< page_num_chunks; ++i) {
-
-    space = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.space();
-    page_no = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.page_no();
-    unsigned char *frame = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->frame;
-    if (space != 27 && space != 29) continue;
-    //if (frame == NULL) break;
-    if (page_no > 1000000) continue;
- 
-    fprintf(stderr, "[DEBUG] (%lu:%lu) (3) page exists in temp NVDIMM Buffer! pageLsn: %u i: %lu\n"
-        ,space, page_no, mach_read_from_4(reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->frame+FIL_PAGE_LSN), i);
-
-   
-    // (jhpark): check mtr log and determine recovery
-    ulint offset = PMEM_MMAP_MTR_FIL_HDR_SIZE;
-
-    while (true) {
-      PMEM_MMAP_MTRLOG_HDR mtr_recv_hdr;
-      memcpy(&mtr_recv_hdr, gb_pm_mmap+offset, sizeof(PMEM_MMAP_MTRLOG_HDR));
-      if (mtr_recv_hdr.len == 0) break;
-
-      if (mtr_recv_hdr.space == space 
-          && mtr_recv_hdr.page_no == page_no) {
-        fprintf(stderr, "[DEBUG] --recovery  mtr log header check need_recv: %d len: %lu lsn: %lu mtr_lsn: %lu prev_offset: %lu space: %lu page: %lu\n"
-            ,mtr_recv_hdr.need_recv, mtr_recv_hdr.len, mtr_recv_hdr.lsn, mtr_recv_hdr.mtr_lsn
-            ,mtr_recv_hdr.prev_offset, mtr_recv_hdr.space, mtr_recv_hdr.page_no);
-
-
-        if (mtr_recv_hdr.need_recv) { 
-          buf_block_t *tmp_block;
-          fil_space_t* space_t = fil_space_get(space);
-          const page_id_t cur_page_id(space,page_no);
-          const page_size_t cur_page_size(space_t->flags);
-          mtr_t recv_mtr;
-          mtr_start(&recv_mtr);
-          buf_block_t* cur_block = buf_page_get(cur_page_id, cur_page_size, RW_NO_LATCH,
-              &recv_mtr);
-
-          uint64_t cur_pageLsn = mach_read_from_8(cur_block->frame + FIL_PAGE_LSN);
-          fprintf(stderr, "[DEBUG] check (%u:%u) real: (%u:%u) cur_page_lsn:%u\n", space, page_no
-            ,cur_block->page.id.space(), cur_block->page.id.page_no(), cur_pageLsn);
-
-
-          if (cur_pageLsn <= mtr_recv_hdr.lsn) {
-            pmem_recv_recover_page_func(space, page_no, offset, cur_block);
-            mtr_recv_hdr.need_recv = false;
-            memcpy(gb_pm_mmap+offset, &mtr_recv_hdr, sizeof(PMEM_MMAP_MTRLOG_HDR));
-          }
-        }
-
-      }
-
-      offset += sizeof(PMEM_MMAP_MTRLOG_HDR);
-      offset += mtr_recv_hdr.len;
-    }
-  
-
-  // page write test
-    fil_space_t* space_t = fil_space_acquire_silent(space); 
-    const page_id_t page_id(space,page_no);
-    const page_size_t page_size(space_t->flags);
-    IORequest write_request(IORequest::WRITE);
-    write_request.disable_compression();
-    int check = fil_io(write_request, true, page_id, page_size, 0
-        , 4096, const_cast<byte*>(reinterpret_cast<buf_block_t*>(addr + i * sizeof(buf_block_t))->frame), NULL);
-    fprintf(stderr, "fil_io check! %d\n", check);
-  }
-
-
-  //fprintf(stderr, "[DEBUG] (%lu:%lu) (3) page exists in temp NVDIMM Buffer! pageLSN: %lu i: %lu (%lu)\n"
-  //      ,space, page_no, page_lsn, i, i*4096);
-  is_pmem_recv=true;
-  
-}
 
 void pmem_recv_recvoer_nc_page() {
 

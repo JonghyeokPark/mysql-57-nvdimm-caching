@@ -2339,12 +2339,11 @@ files_checked:
 			err = dict_boot();
     }
 
-    // HOT DEBUG //
-    
-    if (is_pmem_recv) {
-      nc_fil_io_test();
-      pmem_recv_recvoer_nc_page();
-    }
+    // HOT DEBUG //    
+    // if (is_pmem_recv) {
+    //   nc_fil_io_test();
+    //  pmem_recv_recvoer_nc_page();
+    //}
     
 
 		if (err != DB_SUCCESS) {
@@ -2364,13 +2363,6 @@ files_checked:
 
 #ifdef UNIV_NVDIMM_CACHE		
 		fprintf(stderr, "[JONGQ] ---- pass force recovery!\n"); 
-
-// TODO(jhpark): NC recovery check !!!!!
-		if (is_pmem_recv)  {
-			PMEMMMAP_INFO_PRINT("YES!!!! recovery!!!! start_offset: %lu end_offset: %lu\n"
-				,pmem_recv_offset, pmem_recv_size);
-		}
-
 #endif /* UNIV_NVDIMM_CACHE */
 
 		purge_queue = trx_sys_init_at_db_start();
@@ -2847,7 +2839,6 @@ files_checked:
   // HOT DEBUG 3//
 #ifdef UNIV_NVDIMM_CACHE
   is_pmem_recv=false;
-  //memset(gb_pm_mmap, 0x0, 1*1024*1024*1024UL);
   pm_mmap_mtrlogbuf_init(1*1024*1024*1024UL);
 #endif
 

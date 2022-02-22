@@ -2999,41 +2999,6 @@ btr_cur_ins_lock_and_undo(
 
     bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
 
-    // keep undo nc here!
-    if (is_nvm_page) {
-    
-    const page_size_t page_size(
-         dict_table_page_size(index->table));
-
-    int is_query = 0;
-    if (thr != NULL) {
-      is_query = 1;
-    }
-
-    buf_flush_init_for_writing(
-        reinterpret_cast<const buf_block_t*>(nvm_bpage),  
-        reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame,           
-        nvm_bpage->zip.data ? &nvm_bpage->zip : NULL,
-        // HOT DEBUG //
-        nvm_bpage->newest_modification,
-        //nvm_bpage->oldest_modification,
-        fsp_is_checksum_disabled(nvm_bpage->id.space()));
-
-    uint64_t offset = pm_mmap_mtrlogbuf_write_undo(
-        nvm_block->frame, 4096
-        , log_sys->lsn
-        , nvm_bpage->id.space(), nvm_bpage->id.page_no()); 
- 
-    if (thr != NULL) {
-      trx_t* trx = thr_get_trx(thr);  
-      trx->nc_pages_list.push_back(
-        trx_nc_pages_list_t::value_type(
-        std::make_pair(nvm_bpage->id.space(), nvm_bpage->id.page_no())
-        , offset));
-    }
-
-    }
-
 	  err = trx_undo_report_row_operation(is_nvm_page, flags, TRX_UNDO_INSERT_OP,
 					    thr, index, entry,
 					    NULL, 0, NULL, NULL,
@@ -3416,49 +3381,6 @@ btr_cur_pessimistic_insert(
 
 	ut_ad(dtuple_check_typed(entry));
 
-#ifdef UNIV_NVDIMM_CACHE
-  
-  buf_block_t *check_block = btr_cur_get_block(cursor);
-  buf_page_t *check_page = &(check_block->page);
-  bool is_nvm_page = check_page->cached_in_nvdimm;
-
-  // HOT DEBUG 7 
-  if (is_nvm_page) {
-    //check_block->page.cached_in_nvdimm = false; 
-
-    buf_page_t* nvm_bpage = &(check_block->page);
-
-    byte* read_buf_no_align = static_cast<byte*>(ut_malloc_nokey(2 * UNIV_PAGE_SIZE));
-    byte *read_buf =  static_cast<byte*>(ut_align(read_buf_no_align, UNIV_PAGE_SIZE));
-    memcpy(read_buf, reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame, UNIV_PAGE_SIZE);
-
-
-    buf_flush_init_for_writing(
-        reinterpret_cast<const buf_block_t*>(nvm_bpage),
-        //reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame,
-        read_buf,
-        nvm_bpage->zip.data ? &nvm_bpage->zip : NULL,
-        nvm_bpage->newest_modification,
-        fsp_is_checksum_disabled(nvm_bpage->id.space()));
-
-      uint64_t offset = pm_mmap_mtrlogbuf_write_undo(
-        //check_block->frame,
-        read_buf,
-        4096, log_sys->lsn
-        , check_block->page.id.space()
-        , check_block->page.id.page_no(), 3);
-
-      if (thr != NULL) {
-      trx_t* trx = thr_get_trx(thr);  
-      trx->nc_pages_list.push_back(
-        trx_nc_pages_list_t::value_type(
-        std::make_pair(nvm_bpage->id.space(), nvm_bpage->id.page_no())
-        , offset));
-    }
-    ut_free(read_buf_no_align);
-  }
-#endif
-
 	*big_rec = NULL;
 
 	ut_ad(mtr_memo_contains_flagged(
@@ -3526,6 +3448,7 @@ btr_cur_pessimistic_insert(
 	}
 
 #ifdef UNIV_NVDIMM_CACHE
+  bool is_nvm_page = false;
   if (dict_index_get_page(index)
 	    == btr_cur_get_block(cursor)->page.id.page_no()) {
 		/* The page is the root page */
@@ -3653,39 +3576,8 @@ btr_cur_upd_lock_and_undo(
 
 	/* Append the info about the update in the undo log */
 #ifdef UNIV_NVDIMM_CACHE
-    buf_block_t* nvm_block = btr_cur_get_block(cursor);
-    buf_page_t* nvm_bpage = &(nvm_block->page);
-
-    bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
-
-  // HOT DEBUG 4 //
-  if (is_nvm_page) {
-    const page_size_t page_size(
-         dict_table_page_size(index->table));
-    int is_query =0;
-    if (thr !=NULL) is_query = 1;
-
-    buf_flush_init_for_writing(
-        reinterpret_cast<const buf_block_t*>(nvm_bpage),  
-        reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame,           
-        nvm_bpage->zip.data ? &nvm_bpage->zip : NULL,
-        nvm_bpage->newest_modification,
-        fsp_is_checksum_disabled(nvm_bpage->id.space()));
-
-    uint64_t offset = pm_mmap_mtrlogbuf_write_undo(
-        nvm_block->frame, 4096,  log_sys->lsn, nvm_bpage->id.space(), nvm_bpage->id.page_no());
-
-    if (thr != NULL) {
-      trx_t* trx = thr_get_trx(thr);
-      trx->nc_pages_list.push_back(
-        trx_nc_pages_list_t::value_type(
-        std::make_pair(nvm_bpage->id.space(), nvm_bpage->id.page_no())
-        , offset));
-    }
-
-  }
-
-
+  // jhpark
+  bool is_nvm_page = false;
 	return(trx_undo_report_row_operation(
 		       is_nvm_page, flags, TRX_UNDO_MODIFY_OP, thr,
 		       index, NULL, update,
@@ -4044,6 +3936,7 @@ btr_cur_update_in_place(
 		rw_lock_x_unlock(btr_get_search_latch(index));
 	}
 
+// jhpark
 #ifdef UNIV_NVDIMM_CACHE
     nvm_block = btr_cur_get_block(cursor);
     nvm_bpage = &(nvm_block->page);
@@ -4467,46 +4360,6 @@ btr_cur_pessimistic_update(
 
 	block = btr_cur_get_block(cursor);
 	page = buf_block_get_frame(block);
-
-#ifdef UNIV_NVDIMM_CACHE
-  // HOT DEBUG 7
-  
-  bool is_nvm_page = block->page.cached_in_nvdimm; 
-  if (is_nvm_page) {
-    //block->page.cached_in_nvdimm = false; 
-
-    buf_page_t* nvm_bpage = &(block->page); 
-    byte* read_buf_no_align = static_cast<byte*>(ut_malloc_nokey(2 * UNIV_PAGE_SIZE));
-    byte *read_buf =  static_cast<byte*>(ut_align(read_buf_no_align, UNIV_PAGE_SIZE));
-    memcpy(read_buf, reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame, UNIV_PAGE_SIZE);
-
-    buf_flush_init_for_writing(
-        reinterpret_cast<const buf_block_t*>(nvm_bpage),
-        //reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame,
-        read_buf,
-        nvm_bpage->zip.data ? &nvm_bpage->zip : NULL,
-        nvm_bpage->newest_modification,
-        fsp_is_checksum_disabled(nvm_bpage->id.space()));
-
-    uint64_t offset = pm_mmap_mtrlogbuf_write_undo(
-        read_buf
-        //reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame
-        , 4096, log_sys->lsn
-        , block->page.id.space()
-        , block->page.id.page_no(),3);
-
-    if (thr != NULL) {
-      trx_t* trx = thr_get_trx(thr);  
-      trx->nc_pages_list.push_back(
-        trx_nc_pages_list_t::value_type(
-        std::make_pair(nvm_bpage->id.space(), nvm_bpage->id.page_no())
-        , offset));
-    } 
-
-    ut_free(read_buf_no_align);
-  }
-  
-#endif
 
 	page_zip = buf_block_get_page_zip(block);
 	index = cursor->index;
@@ -5056,52 +4909,6 @@ btr_cur_del_mark_set_clust_rec(
     nvm_bpage = &(block->page);
     is_nvm_page = nvm_bpage->cached_in_nvdimm;
 
-  // HOT DEBUG 4 //
-  if (is_nvm_page) {
-    /*
-    extern uint64_t pmem_recv_tmp_buf_offset;
-    extern unsigned char* gb_pm_mmap;
-    memcpy(gb_pm_mmap + pmem_recv_tmp_buf_offset, block->frame, UNIV_PAGE_SIZE);
-		flush_cache(gb_pm_mmap + pmem_recv_tmp_buf_offset, UNIV_PAGE_SIZE);
-
-    pmem_recv_tmp_buf_offset += UNIV_PAGE_SIZE;
-    if (pmem_recv_tmp_buf_offset >= (6*1024*1024*1024UL)) {
-      fprintf(stderr, "[DEBUG] exit !! for debugging !!\n");
-      exit(1);
-    }
-    */
-    // KEEP UNDO NC HERE!
-
-    const page_size_t page_size(
-         dict_table_page_size(index->table));
-
-    int is_query =0;
-    if (thr !=NULL) is_query = 1;
-
-    buf_flush_init_for_writing(
-        reinterpret_cast<const buf_block_t*>(nvm_bpage),  
-        reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame,           
-        nvm_bpage->zip.data ? &nvm_bpage->zip : NULL,
-        nvm_bpage->newest_modification,
-        fsp_is_checksum_disabled(nvm_bpage->id.space()));
-
-    uint64_t offset = pm_mmap_mtrlogbuf_write_undo(
-        block->frame, 4096,  log_sys->lsn, nvm_bpage->id.space(), nvm_bpage->id.page_no());
-
-    
-    if (thr != NULL) {
-      trx_t* tmp_trx = thr_get_trx(thr);
-      fprintf(stderr, "[DEBUG] (%lu:%lu) offset: %lu\n"
-          , nvm_bpage->id.space(), nvm_bpage->id.page_no(), offset);
-      tmp_trx->nc_pages_list.push_back(
-        trx_nc_pages_list_t::value_type(
-        std::make_pair(nvm_bpage->id.space(), nvm_bpage->id.page_no())
-        ,offset));
-    }
-
-  }
-
-
 	err = trx_undo_report_row_operation(is_nvm_page, flags, TRX_UNDO_MODIFY_OP, thr,
 					    index, entry, NULL, 0, rec, offsets,
 					    &roll_ptr);
@@ -5148,6 +4955,7 @@ btr_cur_del_mark_set_clust_rec(
 
 	row_upd_rec_sys_fields(rec, page_zip, index, offsets, trx, roll_ptr);
 
+  // jhpark
 #ifdef UNIV_NVDIMM_CACHE
     if (is_nvm_page) {
     	// (XXX) skip REDO log for delete operation
@@ -5294,7 +5102,7 @@ btr_cur_del_mark_set_sec_rec(
 	hash index does not depend on it. */
 	btr_rec_set_deleted_flag(rec, buf_block_get_page_zip(block), val);
 
-  // (jhpark): debug?
+  // jhpark
 #ifdef UNIV_NVDIMM_CACHE
   fprintf(stderr, "[DEBUG] secondary delete!\n");
   buf_page_t* nvm_bpage = &block->page;
@@ -5547,40 +5355,6 @@ btr_cur_pessimistic_delete(
 	block = btr_cur_get_block(cursor);
 	page = buf_block_get_frame(block);
 	index = btr_cur_get_index(cursor);
-
-#ifdef UNIV_NVDIMM_CACHE
-// HOT DEBUG 7
- 
-bool is_nvm_page = block->page.cached_in_nvdimm; 
-if (is_nvm_page) {
-  //block->page.cached_in_nvdimm = false;
-
-  buf_page_t* nvm_bpage = &(block->page);
-
-  byte* read_buf_no_align = static_cast<byte*>(ut_malloc_nokey(2 * UNIV_PAGE_SIZE));
-  byte *read_buf =  static_cast<byte*>(ut_align(read_buf_no_align, UNIV_PAGE_SIZE));
-  memcpy(read_buf, reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame, UNIV_PAGE_SIZE);
-
-  buf_flush_init_for_writing(
-        reinterpret_cast<const buf_block_t*>(nvm_bpage),
-        //reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame,
-        read_buf,
-        nvm_bpage->zip.data ? &nvm_bpage->zip : NULL,
-        nvm_bpage->newest_modification,
-        fsp_is_checksum_disabled(nvm_bpage->id.space()));
-
- 
-    uint64_t offset = pm_mmap_mtrlogbuf_write_undo(
-        read_buf
-        //reinterpret_cast<const buf_block_t*>(nvm_bpage)->frame
-        , 4096, log_sys->lsn
-        , block->page.id.space()
-        , block->page.id.page_no(),3);
-
-    ut_free(read_buf_no_align);
-
-}
-#endif
 
 	ulint rec_size_est = dict_index_node_ptr_max_size(index);
 	const page_size_t       page_size(dict_table_page_size(index->table));

@@ -6239,7 +6239,7 @@ corrupt:
 				page_not_corrupt:  bpage = bpage; );
 		if (recv_recovery_is_on()) {
 			/* Pages must be uncompressed for crash recovery. */
-      // HOT DEBUG 3 //
+      // jhpark
       // (jhpark): we ignore nc page recvoer here
 			  ut_a(uncompressed);
 			  recv_recover_page(TRUE, (buf_block_t*) bpage);

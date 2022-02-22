@@ -2663,19 +2663,9 @@ func_start:
 
 	/* 2. Allocate a new page to the index */
 #ifdef UNIV_NVDIMM_CACHE
-  // HOT DEBUG 7
+  // jhpark
 	new_block = btr_page_alloc(cursor->index, hint_page_no, direction,
 				   btr_page_get_level(page, mtr), mtr, mtr, is_nvm_page);
-  if(is_nvm_page) {
-    fprintf(stderr, "[DEBUG] split page info : %u:%u caching info: %d:%d\n"
-        , new_block->page.id.space(), new_block->page.id.page_no()
-        , new_block->page.cached_in_nvdimm, new_block->page.moved_to_nvdimm);
-
-    if (new_block->page.cached_in_nvdimm) {
-      debug_func();
-    }
-//     new_block->page.cached_in_nvdimm = false;
-  }
 #else
 	new_block = btr_page_alloc(cursor->index, hint_page_no, direction,
 				   btr_page_get_level(page, mtr), mtr, mtr);
@@ -3102,10 +3092,9 @@ btr_set_min_rec_mark(
 		info_bits = rec_get_info_bits(rec, TRUE);
 
 		rec_set_info_bits_new(rec, info_bits | REC_INFO_MIN_REC_FLAG);
+    // jhpark
 #ifdef UNIV_NVDIMM_CACHE
-    //if (!is_nvm_page) {
-      btr_set_min_rec_mark_log(rec, MLOG_COMP_REC_MIN_MARK, mtr);
-    //}
+    btr_set_min_rec_mark_log(rec, MLOG_COMP_REC_MIN_MARK, mtr);
 #else
 		btr_set_min_rec_mark_log(rec, MLOG_COMP_REC_MIN_MARK, mtr);
 #endif
@@ -3114,9 +3103,7 @@ btr_set_min_rec_mark(
 
 		rec_set_info_bits_old(rec, info_bits | REC_INFO_MIN_REC_FLAG);
 #ifdef UNIV_NVDIMM_CAHE
-    //if (!is_nvm_page) {
   		btr_set_min_rec_mark_log(rec, MLOG_REC_MIN_MARK, mtr);
-    //}
 #else
 		btr_set_min_rec_mark_log(rec, MLOG_REC_MIN_MARK, mtr);
 #endif

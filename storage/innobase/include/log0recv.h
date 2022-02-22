@@ -418,16 +418,6 @@ extern ulint	recv_n_pool_free_frames;
 #endif
 
 // (jhpark): RECOVERY
-ulint
-wrap_recv_parse_log_rec(
-    mlog_id_t*  type,
-    byte*   ptr,
-    byte*   end_ptr,
-    ulint*    space,
-    ulint*    page_no,
-    bool    apply,
-    byte**    body);
-
 byte*
 recv_parse_or_apply_log_rec_body(
     mlog_id_t type,
