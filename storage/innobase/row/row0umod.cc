@@ -1205,6 +1205,24 @@ row_undo_mod(
 
 		return(DB_SUCCESS);
 	}
+/* nc-logging */
+  /*
+#ifdef UNIV_NVDIMM_CACHE
+  {
+    btr_cur_t* btr_cur = btr_pcur_get_btr_cur(&node->pcur);       
+    buf_block_t * block = btr_cur_get_block(btr_cur);  
+    fprintf(stderr, "[DEBGU] undo modify this block %lu:%lu\n"
+        , block->page.id.space(), block->page.id.page_no()); 
+    uint64_t cur_nc_buf_offset = pm_mmap_recv_check_nc_buf(block->page.id.space(), block->page.id.page_no()); 
+    if (cur_nc_buf_offset != -1) { 
+      fprintf(stderr, "[DEBUG} current block is nc page!\n");
+      dict_table_close(node->table, dict_locked, FALSE);  
+      node->table = NULL;     
+      return (DB_SUCCESS);
+    }
+  }
+#endif
+  */
 
 	node->index = dict_table_get_first_index(node->table);
 	ut_ad(dict_index_is_clust(node->index));

@@ -2424,13 +2424,63 @@ recv_recover_page_func(
 	modification_to_page = FALSE;
 	start_lsn = end_lsn = 0;
 
+  // (jhpark): we get the recovery info structure here
 	recv = UT_LIST_GET_FIRST(recv_addr->rec_list);
 
   bool split_nc_flag = false;
   uint64_t split_nc_lsn = -1;
 
+  /* nc-logging */
+#ifdef UNIV_NVDIMM_CACHE
+    extern unsigned char* gb_pm_mmap;
+    bool nc_page_flag = false;
+    bool nc_corrupt_flag = false;
+    uint64_t cur_nc_page_lsn = -1;
+
+    uint64_t cur_nc_buf_offset = -1;
+        //pm_mmap_recv_check_nc_buf(
+        //block->page.id.space(), block->page.id.page_no());
+
+    if (cur_nc_buf_offset != -1) {
+      // (jhpark): now, we know this page reside in the NVDIMM buffer.
+      nc_page_flag = true;
+      unsigned char *nc_frame = reinterpret_cast<buf_block_t*>
+        ((gb_pm_mmap + (6*1024*1024*1024UL) + cur_nc_buf_offset))->frame;
+
+      uint64_t cur_disk_page_lsn = mach_read_from_8(block->frame + FIL_PAGE_LSN);
+      cur_nc_page_lsn = mach_read_from_8(nc_frame+FIL_PAGE_LSN);
+
+      // check nc buffer page corruption or not
+      if (buf_page_is_corrupted(true
+            , nc_frame
+            , block->page.size
+            , fsp_is_checksum_disabled(block->page.id.space()))) {
+        nc_corrupt_flag = true;
+      }
+
+      fprintf(stderr, "[DEBUG] offset: %lu current page is NC page and LSN : %lu disk lsn: %lu page_lsn: %lu corupted? %d recv_start_lsn :%lu\n"
+          , cur_nc_buf_offset, cur_nc_page_lsn, cur_disk_page_lsn, page_lsn, nc_corrupt_flag
+          , recv->start_lsn);
+
+      // recover from NC buffer
+      
+      if (!nc_corrupt_flag) {
+        memcpy(block->frame, nc_frame, UNIV_PAGE_SIZE);
+        goto skip_redo;
+      }
+      
+
+    } // end-of-if
+#endif
 
 	while (recv) {
+
+    /*
+    fprintf(stderr,"[DEBUG] (%u:%u) recv_start_lsn :%lu recv_end_lsn: %lu\n"
+        , block->page.id.space(), block->page.id.page_no()
+        , recv->start_lsn, recv->end_lsn);
+    */
+
 		end_lsn = recv->end_lsn;
 
 		ut_ad(end_lsn
@@ -2525,7 +2575,9 @@ recv_recover_page_func(
 		}
 
 		recv = UT_LIST_GET_NEXT(rec_list, recv);
-	}
+	} // end-of while (recv)
+
+skip_redo:
 
 #ifdef UNIV_ZIP_DEBUG
 	if (fil_page_index_page_check(page)) {
@@ -2716,9 +2768,6 @@ loop:
 
 					recv_recover_page(FALSE, block);
 					mtr_commit(&mtr);
-
-          fprintf(stderr, "[JONGQ] check-xxx! arleady in the buffer %u:%u\n"
-              , page_id.space(), page_id.page_no());
 	
 				} else {
           recv_read_in_area(page_id);
@@ -3860,6 +3909,25 @@ recv_group_scan_log_recs(
 		DBUG_RETURN(false);
 	}
 
+  /* nc-logging */
+#ifdef UNIV_NVDIMM_CACHE
+  // (jhpark): so far we scan from log files; now we read from persistent log buffer
+  extern unsigned char* gb_pm_mmap;
+  memcpy(log_sys->buf, gb_pm_mmap, log_sys->buf_size);
+
+  fprintf(stderr, "[DEBUG] begin scan and parse persist redo log buffer size: %d\n", log_sys->buf_size);
+  start_lsn = end_lsn;
+  end_lsn += RECV_SCAN_SIZE;
+
+  bool ret = recv_scan_log_recs(
+      available_mem, &store_to_hash, log_sys->buf,
+      RECV_SCAN_SIZE, checkpoint_lsn,
+      start_lsn, contiguous_lsn,&group->scanned_lsn);
+
+  fprintf(stderr, "[DEBUG] finsish scan and parse persist redo log buffer size: %d ret: %d\n", log_sys->buf_size, ret);
+
+#endif
+
 	DBUG_PRINT("ib_log", ("%s " LSN_PF
 			      " completed for log group " ULINTPF,
 			      last_phase ? "rescan" : "scan",
@@ -4149,6 +4217,7 @@ recv_recovery_from_checkpoint_start(
 	contiguous_lsn = checkpoint_lsn;
 	switch (group->format) {
 	case 0:
+    fprintf(stderr, "[DEBUG] 1111\n");
 		log_mutex_exit();
 		return(recv_log_format_0_recover(checkpoint_lsn));
 	case LOG_HEADER_FORMAT_CURRENT:

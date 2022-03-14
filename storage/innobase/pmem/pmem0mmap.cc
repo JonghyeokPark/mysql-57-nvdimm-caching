@@ -25,11 +25,11 @@ std::map<std::pair<uint64_t,uint64_t> ,std::vector<uint64_t> > pmem_nc_log_map;
 std::map<std::pair<uint64_t,uint64_t> , bool> pmem_nc_log_check;
 
 bool is_pmem_recv = false;
+bool nc_start_flag = false;
+
 uint64_t pmem_recv_offset = 0;
 uint64_t pmem_recv_size = 0;
 uint64_t pmem_recv_latest_offset = 0;
-// HOT DEBUG // 
-uint64_t pmem_recv_tmp_buf_offset = (4*1024*1024*1024UL);
 bool nc_buffer_flag = false;
 uint64_t pmem_recv_commit_offset = sizeof(PMEM_MMAP_MTRLOGFILE_HDR);
 
@@ -69,6 +69,7 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
       PMEMMMAP_ERROR_PRINT("pm_mmap mmap() faild recovery failed\n");
     }
 
+    /*
 		// get file construct
 		PMEM_MMAP_MTRLOGFILE_HDR* recv_mmap_mtrlog_fil_hdr = (PMEM_MMAP_MTRLOGFILE_HDR*) 
 																													malloc(PMEM_MMAP_LOGFILE_HEADER_SZ);
@@ -79,12 +80,6 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
 						recv_mmap_mtrlog_fil_hdr->size, recv_mmap_mtrlog_fil_hdr->flushed_lsn, 
 						recv_mmap_mtrlog_fil_hdr->ckpt_lsn, recv_mmap_mtrlog_fil_hdr->ckpt_offset);
 
-    // HOT DEBUG 3//
-    // (jhpark): we copy the original NVDIMM buffer contents another space 
-    //pmem_recv_recvoer_nc_page();
-    pm_mmap_recv_prepare();
-    memcpy(gb_pm_mmap + (6*1024*1024*1024UL), gb_pm_mmap + (1*1024*1024*1024UL), (2*1024*1024*1024UL));
-
     // recvoery check
     PMEM_MMAP_MTRLOG_HDR* recv_mmap_mtrlog_hdr = (PMEM_MMAP_MTRLOG_HDR*) malloc(PMEM_MMAP_MTRLOG_HDR_SIZE);
     memcpy(recv_mmap_mtrlog_hdr, gb_pm_mmap+recv_mmap_mtrlog_fil_hdr->ckpt_offset, PMEM_MMAP_MTRLOG_HDR_SIZE);
@@ -94,6 +89,7 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
 			PMEMMMAP_INFO_PRINT("Normal Shutdown case, don't need to recveory; Recovery process is terminated\n");
       is_pmem_recv = true;
 		} else {
+    
 			// TODO(jhpark): real recovery process
 			is_pmem_recv = true;
 			pmem_recv_offset = pm_mmap_recv_check(recv_mmap_mtrlog_fil_hdr);
@@ -105,14 +101,19 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
 
     free(recv_mmap_mtrlog_fil_hdr);
     free(recv_mmap_mtrlog_hdr);
-  }
+  //}
+  */
 
+  memcpy(gb_pm_mmap + (6*1024*1024*1024UL), gb_pm_mmap + (1*1024*1024*1024UL), srv_nvdimm_buf_pool_size);
+  //nc_recv_analysis();
+  is_pmem_recv = true;
+}
   // Force to set NVIMMM
   setenv("PMEM_IS_PMEM_FORCE", "1", 1);
   PMEMMMAP_INFO_PRINT("Current kernel does not recognize NVDIMM as the persistenct memory \
       We force to set the environment variable PMEM_IS_PMEM_FORCE \
       We call mync() instead of mfense()\n");
-
+  
   return gb_pm_mmap;
 }
 

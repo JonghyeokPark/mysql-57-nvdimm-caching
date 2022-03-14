@@ -83,6 +83,10 @@ bool	innodb_calling_exit;
 #include <mysqld.h>
 #include <mysql/service_mysql_keyring.h>
 
+#ifdef UNIV_NVDIMM_CACHE
+extern PMEM_FILE_COLL* gb_pfc;
+#endif
+
 /** Insert buffer segment id */
 static const ulint IO_IBUF_SEGMENT = 0;
 
@@ -3267,6 +3271,15 @@ os_file_create_simple_func(
 	do {
 		file.m_file = ::open(name, create_flag, os_innodb_umask);
 
+/*nc-logging*/
+#ifdef UNIV_NVDIMM_CACHE
+    if (strstr(name, "logfile") != 0) {
+      if( (pfc_append_or_set(gb_pfc, create_mode, name, (int)(file.m_file), gb_pfc->file_size)) == -1) {
+        fprintf(stderr, "[ERROR] os_file_create_func can not map! %s\n", name);
+      }
+    }
+#endif
+
 		if (file.m_file == -1) {
 			*success = false;
 
@@ -3586,6 +3599,15 @@ os_file_create_func(
 	do {
 		file.m_file = ::open(name, create_flag, os_innodb_umask);
 
+    /* nc-logging */
+#ifdef UNIV_NVDIMM_CACHE
+    if (type == OS_LOG_FILE) {
+      if( (pfc_append_or_set(gb_pfc, create_mode, name, (int)(file.m_file), gb_pfc->file_size)) == -1) {
+        fprintf(stderr, "[ERROR] At os_file_create_func(), cannot map file %s from NVM\n", name);
+      }
+    }
+#endif
+
 		if (file.m_file == -1) {
 			const char*	operation;
 
@@ -3716,6 +3738,15 @@ os_file_create_simple_no_error_handling_func(
 	}
 
 	file.m_file = ::open(name, create_flag, os_innodb_umask);
+
+/* nc-logging */
+#ifdef UNIV_NVDIMM_CACHE
+  if ( strstr(name, "logfile") != 0){
+    if( (pfc_append_or_set(gb_pfc, create_mode, name, (int)(file.m_file), gb_pfc->file_size)) == -1) {
+       fprintf(stderr,"[ERROR] At os_file_create_func(), cannot map file %s from NVM\n", name);
+    }
+  }
+#endif
 
 	*success = (file.m_file != -1);
 
@@ -5396,6 +5427,22 @@ os_file_io(
 	ulint		original_n = n;
 	IORequest	type = in_type;
 	ssize_t		bytes_returned = 0;
+
+/* nc-logging */
+ 
+#ifdef UNIV_NVDIMM_CACHE
+  if (type.is_log()) {
+    if (type.is_read()) {
+      bytes_returned = pfc_pmem_io(gb_pfc, PMEM_READ, file, buf, offset, n);
+    } else if (type.is_write()) {
+      bytes_returned = pfc_pmem_io(gb_pfc, PMEM_WRITE, file, buf, offset, n);
+    } else {
+      fprintf(stderr, "[ERROR] unknown IO type in os_file_io()\n");
+    }
+    *err =DB_SUCCESS;
+    return bytes_returned;
+  }
+#endif 
 
 	if (type.is_compressed()) {
 
@@ -7417,6 +7464,31 @@ os_aio_func(
 #ifdef WIN_ASYNC_IO
 	ut_ad((n & 0xFFFFFFFFUL) == n);
 #endif /* WIN_ASYNC_IO */
+
+
+  /* nc-logging */
+  // need?
+  /*
+#ifdef UNIV_NVDIMM_CACHE
+  ssize_t bytes_returned = 0;
+  if (type.is_log() 
+      && mode == OS_AIO_LOG) {
+    if (type.is_read()) {
+      fprintf(stderr, "[DEBUG] read AIO log fd: %d offset: %zu n_bytes: %zu\n", file.m_file, offset, n);
+      bytes_returned = pfc_pmem_io(gb_pfc, PMEM_READ, file.m_file, buf, offset, n);
+    } else if (type.is_write()) {
+      fprintf(stderr, "[DEBUG] write AIO log fd: %d offset: %zu n_bytes: %zu\n", file.m_file, offset, n);
+      bytes_returned = pfc_pmem_io(gb_pfc, PMEM_WRITE, file.m_file, buf, offset, n);
+    } else {
+      fprintf(stderr, "[ERROR] unknown IO type in os_file_io()\n");
+    }
+    if (bytes_returned <= 0) {
+      fprintf(stderr, "ERROR!!!\n");
+    }
+    return ((bytes_returned >0) ? DB_SUCCESS : DB_ERROR);
+  }
+#endif
+  */
 
 	if (mode == OS_AIO_SYNC
 #ifdef WIN_ASYNC_IO

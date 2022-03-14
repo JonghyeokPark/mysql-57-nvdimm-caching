@@ -460,16 +460,9 @@ btr_page_alloc_low(
 	reservation for free extents, and thus we know that a page can
 	be allocated: */
 
-#ifdef UNIV_NVDIMM_CACHE
-	return(fseg_alloc_free_page_general(
-		       seg_header, hint_page_no, file_direction,
-		       TRUE, mtr, init_mtr, is_nvm_page));
-
-#else
 	return(fseg_alloc_free_page_general(
 		       seg_header, hint_page_no, file_direction,
 		       TRUE, mtr, init_mtr));
-#endif
 }
 
 /**************************************************************//**
@@ -504,13 +497,8 @@ btr_page_alloc(
 
 		return(btr_page_alloc_for_ibuf(index, mtr));
 	}
-#ifdef UNIV_NVDIMM_CACHE
-	new_block = btr_page_alloc_low(
-		index, hint_page_no, file_direction, level, mtr, init_mtr, is_nvm_page);
-#else
 	new_block = btr_page_alloc_low(
 		index, hint_page_no, file_direction, level, mtr, init_mtr);
-#endif
 	if (new_block) {
 		buf_block_dbg_add_level(new_block, SYNC_TREE_NODE_NEW);
 	}
@@ -1668,16 +1656,7 @@ btr_root_raise_and_insert(
 	a node pointer to the new page, and then splitting the new page. */
 
 	level = btr_page_get_level(root, mtr);
-#ifdef UNIV_NVDIMM_CACHE
-  // HOT DEBUG 7
-	new_block = btr_page_alloc(index, 0, FSP_NO_DIR, level, mtr, mtr, is_nvm_page);
-  if (new_block->page.cached_in_nvdimm == true) {
-    fprintf(stderr, "[DEBUG] splited page but cached in nvdimm! (%u:%u)\n"
-        , new_block->page.id.space(), new_block->page.id.page_no());
-  }
-#else
 	new_block = btr_page_alloc(index, 0, FSP_NO_DIR, level, mtr, mtr);
-#endif
 	new_page = buf_block_get_frame(new_block);
 	new_page_zip = buf_block_get_page_zip(new_block);
 	ut_a(!new_page_zip == !root_page_zip);
@@ -2662,14 +2641,8 @@ func_start:
 	}
 
 	/* 2. Allocate a new page to the index */
-#ifdef UNIV_NVDIMM_CACHE
-  // jhpark
-	new_block = btr_page_alloc(cursor->index, hint_page_no, direction,
-				   btr_page_get_level(page, mtr), mtr, mtr, is_nvm_page);
-#else
 	new_block = btr_page_alloc(cursor->index, hint_page_no, direction,
 				   btr_page_get_level(page, mtr), mtr, mtr);
-#endif
 
 	new_page = buf_block_get_frame(new_block);
 	new_page_zip = buf_block_get_page_zip(new_block);
@@ -3090,23 +3063,13 @@ btr_set_min_rec_mark(
 
 	if (page_rec_is_comp(rec)) {
 		info_bits = rec_get_info_bits(rec, TRUE);
-
 		rec_set_info_bits_new(rec, info_bits | REC_INFO_MIN_REC_FLAG);
-    // jhpark
-#ifdef UNIV_NVDIMM_CACHE
-    btr_set_min_rec_mark_log(rec, MLOG_COMP_REC_MIN_MARK, mtr);
-#else
 		btr_set_min_rec_mark_log(rec, MLOG_COMP_REC_MIN_MARK, mtr);
-#endif
 	} else {
 		info_bits = rec_get_info_bits(rec, FALSE);
 
 		rec_set_info_bits_old(rec, info_bits | REC_INFO_MIN_REC_FLAG);
-#ifdef UNIV_NVDIMM_CAHE
-  		btr_set_min_rec_mark_log(rec, MLOG_REC_MIN_MARK, mtr);
-#else
 		btr_set_min_rec_mark_log(rec, MLOG_REC_MIN_MARK, mtr);
-#endif
 	}
 }
 
@@ -4049,14 +4012,7 @@ btr_discard_page(
 		because everything will take place within a single
 		mini-transaction and because writing to the redo log
 		is an atomic operation (performed by mtr_commit()). */
-#ifdef UNIV_NVDIMM_CACHE
-    bool is_nvm_page = block->page.cached_in_nvdimm;
-    if (!is_nvm_page) {
-      btr_set_min_rec_mark(node_ptr, mtr, is_nvm_page);
-    }
-#else
 		btr_set_min_rec_mark(node_ptr, mtr);
-#endif
 	}
 
 	if (dict_index_is_spatial(index)) {

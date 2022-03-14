@@ -57,6 +57,11 @@ Created 12/9/1995 Heikki Tuuri
 #include "sync0sync.h"
 #endif /* !UNIV_HOTBACKUP */
 
+#ifdef UNIV_NVDIMM_CACHE
+#include "pmem_mmap_obj.h"
+extern unsigned char* gb_pm_mmap;
+#endif
+
 /*
 General philosophy of InnoDB redo-logs:
 
@@ -429,7 +434,13 @@ part_loop:
 			- LOG_BLOCK_TRL_SIZE;
 	}
 
+#ifdef UNIV_NVDIMM_CACHE
+  //TODO(jhpark): what if crash occured during this step
+  ut_memcpy(log->buf + log->buf_free, str, len);
+  flush_cache(log->buf+log->buf_free, len);
+#else
 	ut_memcpy(log->buf + log->buf_free, str, len);
+#endif
 
 	str_len -= len;
 	str = str + len;
@@ -807,10 +818,20 @@ log_init(void)
 
 	log_sys->buf_size = LOG_BUFFER_SIZE;
 
+  /* nc-logging */
+#ifdef UNIV_NVDIMM_CACHE
+  // TODO(jhpark): recovery
+  //  allocate log buffer on NVDIMM, we already allocate log buffer at start 
+	log_sys->buf_ptr = static_cast<byte*>(gb_pm_mmap);
+  log_sys->buf = static_cast<byte*>(
+      ut_align(log_sys->buf_ptr, OS_FILE_LOG_BLOCK_SIZE));
+#else
+  // original
 	log_sys->buf_ptr = static_cast<byte*>(
 		ut_zalloc_nokey(log_sys->buf_size * 2 + OS_FILE_LOG_BLOCK_SIZE));
 	log_sys->buf = static_cast<byte*>(
 		ut_align(log_sys->buf_ptr, OS_FILE_LOG_BLOCK_SIZE));
+#endif
 
 	log_sys->first_in_use = true;
 
@@ -1193,6 +1214,8 @@ log_buffer_switch()
 	ut_memcpy(log_sys->buf,
 		  old_buf + area_end - OS_FILE_LOG_BLOCK_SIZE,
 		  OS_FILE_LOG_BLOCK_SIZE);
+  
+  // TODO(jhpark): need flsuhcache !!!
 
 	log_sys->buf_free %= OS_FILE_LOG_BLOCK_SIZE;
 	log_sys->buf_next_to_write = log_sys->buf_free;
@@ -1644,7 +1667,6 @@ log_group_checkpoint(
 	       ? LOG_CHECKPOINT_2 : LOG_CHECKPOINT_1,
 	       OS_FILE_LOG_BLOCK_SIZE,
 	       buf, (byte*) group + 1);
-
 	ut_ad(((ulint) group & 0x1UL) == 0);
 }
 
@@ -1793,7 +1815,7 @@ log_checkpoint(
 		fil_flush_file_spaces(FIL_TYPE_TABLESPACE);
 	}
 #endif /* !_WIN32 */
-
+ 
 	log_mutex_enter();
 
 	ut_ad(!recv_no_log_write);

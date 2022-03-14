@@ -56,57 +56,13 @@ uint64_t pm_mmap_recv_check(PMEM_MMAP_MTRLOGFILE_HDR* log_fil_hdr) {
   return -1;
 }
 
-bool pm_mmap_recv_check_nc_buffer(uint64_t space, uint64_t page_no) {
-  
-  uint64_t cur_offset = 0;
-  uint64_t tmp_space, tmp_page_no;
-  unsigned char *addr = gb_pm_mmap + (4*1024*1024*1024UL);
-  uint64_t page_num_chunks = static_cast<uint64_t>( (2*1024*1024*1024UL)/4096);
-  bool flag = false;
-
-  for (uint64_t i=0; i<page_num_chunks; ++i) {
-
-    tmp_space = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.space();
-    tmp_page_no = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.page_no();
-
-    if (!(tmp_space == 27 || tmp_space == 29)) {
-      continue;
-    }
-
-    if (tmp_space == space 
-        && tmp_page_no == page_no) {
-
-      flag = true;
-      unsigned char *frame = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->frame;
-
-      fprintf(stderr, "[DEBUG] (%lu:%lu) (3) page exists in temp NVDIMM Buffer! pageLsn: %u i: %lu\n"
-          ,space, page_no, mach_read_from_4(reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->frame+FIL_PAGE_LSN), i);
-
-    /*
-    fil_space_t* space_t = fil_space_get(space);
-    const page_id_t page_id(space,page_no);
-    const page_size_t page_size(space_t->flags);
-    if (buf_page_is_corrupted(true, frame, page_size,
-          fsp_is_checksum_disabled(space))) {
-      fprintf(stderr, "(%lu:%lu) page is corruptted!\n", space, page_no);
-    } else {
-      fprintf(stderr, "(%lu:%lu) page is good!\n", space, page_no);
-    }
-    */
-  
-    }
-
-  }
-  return flag;
-}
-
 // fill map
 void pm_mmap_recv_prepare() {
 
     // buffer
     uint64_t space, page_no;
     unsigned char *addr = gb_pm_mmap + (1*1024*1024*1024UL);
-    uint64_t page_num_chunks = static_cast<uint64_t>( (2*1024*1024*1024UL)/4096);
+    uint64_t page_num_chunks = static_cast<uint64_t>( (srv_nvdimm_buf_pool_size)/4096);
 
     for (uint64_t i=0 ; i< page_num_chunks; ++i) {
 
@@ -119,29 +75,6 @@ void pm_mmap_recv_prepare() {
       pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*sizeof(buf_block_t));
    }
  
-}
-
-uint64_t pm_mmap_recv_check_nc_buf(uint64_t space, uint64_t page_no) {
-  std::map<std::pair<uint64_t,uint64_t>, std::vector<uint64_t> >::iterator ncbuf_iter;
-  ncbuf_iter = pmem_nc_buffer_map.find(std::make_pair(space,page_no));
-  if (ncbuf_iter != pmem_nc_buffer_map.end()) { 
-    std::vector<uint64_t> nc_offset_vec = (*ncbuf_iter).second;
-    uint64_t nc_offset;
-    for (uint64_t i=0; i<nc_offset_vec.size(); i++) {
-      nc_offset = nc_offset_vec[i];
-      fprintf(stderr, "[DEBUG] NC BUF (%lu:%lu) offset: %lu page_lsn: %lu i: %d\n", 
-          space, page_no, mach_read_from_8(gb_pm_mmap + (6*1024*1024*1024UL) + nc_offset + FIL_PAGE_LSN), i);
-      if (space != mach_read_from_4(gb_pm_mmap + (6*1024*1024*1024UL) + nc_offset + FIL_PAGE_SPACE_ID)
-          || page_no != mach_read_from_4(gb_pm_mmap + (6*1024*1024*1024UL) + nc_offset + FIL_PAGE_OFFSET)) {
-        fprintf(stderr, "[DEBUG] wrong buffer page info! %u:%u\n", space, page_no);
-      } else {
-        fprintf(stderr, "[DEBUG] buffer page is good! %u:%u\n", space, page_no);
-      }
-    }
-    return nc_offset;
-  } else {
-    return -1;
-  }
 }
 
 uint64_t pm_mmap_recv_check_nc_log(uint64_t space, uint64_t page_no) {
@@ -179,7 +112,7 @@ void pm_mmap_recv_flush_buffer() {
   uint64_t cur_offset = 0;
   uint64_t space, page_no;
   unsigned char *addr = gb_pm_mmap + (1*1024*1024*1024UL);
-  uint64_t page_num_chunks = static_cast<uint64_t>( (2*1024*1024*1024UL)/4096);
+  uint64_t page_num_chunks = static_cast<uint64_t>( (srv_nvdimm_buf_pool_size)/4096);
 
   for (uint64_t i=0 ; i< page_num_chunks; ++i) {
 
@@ -221,7 +154,7 @@ void pmem_recv_recvoer_nc_page() {
   uint64_t cur_offset = 0;
   uint64_t space, page_no;
   unsigned char *addr = gb_pm_mmap + (6*1024*1024*1024UL);
-  uint64_t page_num_chunks = static_cast<uint64_t>( (2*1024*1024*1024UL)/4096);
+  uint64_t page_num_chunks = static_cast<uint64_t>( (srv_nvdimm_buf_pool_size)/4096);
 
   fprintf(stderr, "[DEBUG] log check begin !!!!\n");
 
@@ -355,4 +288,84 @@ void pmem_recv_recvoer_nc_page() {
 void debug_func() {
   fprintf(stderr, "[DEBUG] !!!!\n");
 }
+
+/* nc logging */
+
+void nc_recv_analysis() {
+ uint64_t space, page_no;
+ unsigned char *addr = gb_pm_mmap + (6*1024*1024*1024UL);
+ uint64_t page_num_chunks = static_cast<uint64_t>( (srv_nvdimm_buf_pool_size)/4096);
+
+ fprintf(stderr, "[DEBUG] NVDIMM Caching page analysis begin! total pages: %lu\n", page_num_chunks);
+
+ //for (uint64_t i=0; i < page_num_chunks; ++i) {
+ for (uint64_t i=0; i < srv_nvdimm_buf_pool_size; i+= UNIV_PAGE_SIZE) {
+
+  //space = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.space();
+  //page_no = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.page_no();
+  //unsigned char *frame = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->frame;
+
+  space = reinterpret_cast<buf_block_t*>((addr+ i ))->page.id.space();
+  page_no = reinterpret_cast<buf_block_t*>((addr+ i ))->page.id.page_no();
+  unsigned char *frame = (unsigned char*)(addr+ i);
+
+
+  if (space != 27 && space != 29) {
+    fprintf(stderr, "[DEBUG] we miss the pages %lu:%lu\n", space, page_no);
+    continue;
+  } else {
+    fprintf(stderr, "[DEBUG] we get this page %lu:%lu\n", space, page_no);
+  }
+
+  // check 
+  if (space != mach_read_from_4(frame + FIL_PAGE_SPACE_ID)
+      || page_no != mach_read_from_4(frame + FIL_PAGE_OFFSET)) {
+    fprintf(stderr, "[DEBUG] wrong frame info!\n (%lu:%lu) (%lu:%lu)", space, page_no
+        , mach_read_from_4(frame + FIL_PAGE_SPACE_ID)
+        , mach_read_from_4(frame + FIL_PAGE_OFFSET));
+  }
+
+#ifdef PMEM_RECV_DEBUG  
+  fil_space_t* space_t = fil_space_get(space);
+  const page_id_t page_id(space,page_no);
+  const page_size_t page_size(space_t->flags);
+  if (buf_page_is_corrupted(true, frame, page_size,
+        fsp_is_checksum_disabled(space))) {
+    fprintf(stderr, "(%lu:%lu) page is corruptted! lsn: %lu\n", space, page_no, mach_read_from_8(frame + FIL_PAGE_LSN));
+  } else {
+    fprintf(stderr, "(%lu:%lu) page is good! lsn: %lu\n", space, page_no, mach_read_from_8(frame + FIL_PAGE_LSN));
+  }
+#endif
+
+  // we store relative position of nc page
+  pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*sizeof(buf_block_t));
+ }
+}
+
+uint64_t pm_mmap_recv_check_nc_buf(uint64_t space, uint64_t page_no) {
+  std::map<std::pair<uint64_t,uint64_t>, std::vector<uint64_t> >::iterator ncbuf_iter;
+  ncbuf_iter = pmem_nc_buffer_map.find(std::make_pair(space,page_no));
+  if (ncbuf_iter != pmem_nc_buffer_map.end()) { 
+    std::vector<uint64_t> nc_offset_vec = (*ncbuf_iter).second;
+    uint64_t nc_offset;
+    for (uint64_t i=0; i<nc_offset_vec.size(); i++) {
+      nc_offset = nc_offset_vec[i];
+      unsigned char *nc_frame = reinterpret_cast<buf_block_t*>
+        ((gb_pm_mmap + (6*1024*1024*1024UL) + nc_offset))->frame;
+
+      fprintf(stderr, "[DEBUG] NC BUF (%lu:%lu) offset: %lu page_lsn: %lu i: %lu vec:size: %d\n", 
+          space, page_no, nc_offset
+          , mach_read_from_8(nc_frame + FIL_PAGE_LSN)
+          , i, nc_offset_vec.size());
+      if (space != mach_read_from_4(nc_frame + FIL_PAGE_SPACE_ID)
+          || page_no != mach_read_from_4(nc_frame + FIL_PAGE_OFFSET)) {
+        fprintf(stderr, "[DEBUG] wrong buffer page info! %u:%u\n", space, page_no);
+      }     
+    }
+    return nc_offset;
+  } else {
+    return -1;
+  }
+}
+
 

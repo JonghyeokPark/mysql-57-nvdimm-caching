@@ -435,6 +435,4 @@ pmem_recv_recover_page_func(
     uint64_t offset,
     buf_block_t* block);
 
-bool 
-pm_mmap_recv_check_nc_buffer(uint64_t space, uint64_t page_no);
 #endif

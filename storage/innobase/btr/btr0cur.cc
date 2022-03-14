@@ -3447,18 +3447,6 @@ btr_cur_pessimistic_insert(
 		}
 	}
 
-#ifdef UNIV_NVDIMM_CACHE
-  bool is_nvm_page = false;
-  if (dict_index_get_page(index)
-	    == btr_cur_get_block(cursor)->page.id.page_no()) {
-		/* The page is the root page */
-		*rec = btr_root_raise_and_insert(
-			flags, cursor, offsets, heap, entry, n_ext, mtr, is_nvm_page);
-	} else {
-		*rec = btr_page_split_and_insert(
-			flags, cursor, offsets, heap, entry, n_ext, mtr, is_nvm_page);
-	}
-#else
 	if (dict_index_get_page(index)
 	    == btr_cur_get_block(cursor)->page.id.page_no()) {
 		/* The page is the root page */
@@ -3468,7 +3456,6 @@ btr_cur_pessimistic_insert(
 		*rec = btr_page_split_and_insert(
 			flags, cursor, offsets, heap, entry, n_ext, mtr);
 	}
-#endif
 
 	ut_ad(page_rec_get_next(btr_cur_get_rec(cursor)) == *rec
 	      || dict_index_is_spatial(index));
@@ -3938,26 +3925,22 @@ btr_cur_update_in_place(
 
 // jhpark
 #ifdef UNIV_NVDIMM_CACHE
-    nvm_block = btr_cur_get_block(cursor);
-    nvm_bpage = &(nvm_block->page);
+  // skip version (old)
+  /*
+  nvm_block = btr_cur_get_block(cursor);
+  nvm_bpage = &(nvm_block->page);
 
-    if (nvm_bpage->cached_in_nvdimm) {
-        // skip generating REDO logs for NVM-resident pages
-				// write NC page on NVDIMM
-        /*
-        if (!is_pmem_recv) {
+  if (nvm_bpage->cached_in_nvdimm) {
+    // skip generating REDO logs for NVM-resident pages
+  } else {
+    btr_cur_update_in_place_log(flags, rec, index, update,
+        trx_id, roll_ptr, mtr);
+  }
+  */
 
-          mtr_t nvdimm_mtr;
-          mtr_start(&nvdimm_mtr);
-          btr_cur_update_in_place_log(flags, rec, index, update,
-                        trx_id, roll_ptr, &nvdimm_mtr);
-          nvdimm_mtr.commit_nvm();
-        }
-        */
-    } else {
-        btr_cur_update_in_place_log(flags, rec, index, update,
-                        trx_id, roll_ptr, mtr);
-    }
+  // nc redo logging version (new)
+  btr_cur_update_in_place_log(flags, rec, index, update,
+      trx_id, roll_ptr, mtr);
 #else
 	btr_cur_update_in_place_log(flags, rec, index, update,
 				    trx_id, roll_ptr, mtr);
@@ -4957,21 +4940,19 @@ btr_cur_del_mark_set_clust_rec(
 
   // jhpark
 #ifdef UNIV_NVDIMM_CACHE
+  // skip version (old)
+  /*
     if (is_nvm_page) {
-    	// (XXX) skip REDO log for delete operation
-      /*
-      if (!is_pmem_recv) {
-        mtr_t nvdimm_mtr;
-        mtr_start(&nvdimm_mtr);
-        btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
-            roll_ptr, &nvdimm_mtr);
-        nvdimm_mtr.commit_nvm();
-      }
-      */
-		} else {
+      // do nothing
+    } else {
       btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
          roll_ptr, mtr);
     }
+  */
+
+  // we allowe redo logging on NVM
+  btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
+      roll_ptr, mtr);
 #else
 	btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
 					   roll_ptr, mtr);
@@ -5102,23 +5083,7 @@ btr_cur_del_mark_set_sec_rec(
 	hash index does not depend on it. */
 	btr_rec_set_deleted_flag(rec, buf_block_get_page_zip(block), val);
 
-  // jhpark
-#ifdef UNIV_NVDIMM_CACHE
-  fprintf(stderr, "[DEBUG] secondary delete!\n");
-  buf_page_t* nvm_bpage = &block->page;
-  if (nvm_bpage->cached_in_nvdimm) {
-    /*
-    mtr_t nvdimm_mtr; 
-    mtr_start(&nvdimm_mtr); 
-    btr_cur_del_mark_set_sec_rec_log(rec, val, &nvdimm_mtr);
-    nvdimm_mtr.commit_nvm();
-    */
-  } else {
-    btr_cur_del_mark_set_sec_rec_log(rec, val, mtr);
-  }
-#else
 	btr_cur_del_mark_set_sec_rec_log(rec, val, mtr);
-#endif
 
 	return(DB_SUCCESS);
 }
@@ -5443,12 +5408,7 @@ btr_cur_pessimistic_delete(
 			because everything will take place within a single
 			mini-transaction and because writing to the redo log
 			is an atomic operation (performed by mtr_commit()). */
-#ifdef UNIV_NVDIMM_CACHE
-      bool is_nvm_page = block->page.cached_in_nvdimm; 
-    	btr_set_min_rec_mark(next_rec, mtr, is_nvm_page);
-#else
 			btr_set_min_rec_mark(next_rec, mtr);
-#endif
 		} else if (dict_index_is_spatial(index)) {
 			/* For rtree, if delete the leftmost node pointer,
 			we need to update parent page. */

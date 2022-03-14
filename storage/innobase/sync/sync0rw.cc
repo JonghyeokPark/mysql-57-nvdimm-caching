@@ -908,6 +908,29 @@ lock_loop:
 	goto lock_loop;
 }
 
+/* nc-logging */
+#ifdef UNIV_NVDIMM_CACHE
+bool
+rw_lock_is_locked_nc(
+/*==============*/
+	rw_lock_t*	lock)		/*!< in: rw-lock */
+{
+	ut_ad(rw_lock_validate(lock));
+  
+  if (lock->waiters !=0) { 
+    return true;
+  }
+
+  if ( (rw_lock_get_reader_count(lock) > 0)
+      ||  (rw_lock_get_writer(lock) == RW_LOCK_X) 
+      // (jhpark): we accept SX lock for flush
+      || (rw_lock_get_sx_lock_count(lock) > 0) ) {
+      return true;
+  } 
+  return false;
+}
+#endif
+
 #ifdef UNIV_DEBUG
 
 /******************************************************************//**

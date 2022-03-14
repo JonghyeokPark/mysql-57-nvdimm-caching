@@ -440,7 +440,6 @@ public:
 #ifdef UNIV_NVDIMM_CACHE
   /** Write the mtr log (undo + redo of undo) record,and release the resorces */
   void execute_nvm();
-	void execute_no_nvm();
   /** Append the redo log records to the NVDIMM mtr log buffer.
 	@param[in]	len	number of bytes to write */
 	void finish_write_nvm(ulint len);
@@ -617,8 +616,11 @@ mtr_t::commit()
 
 		ut_ad(!srv_read_only_mode
 		      || m_impl.m_log_mode == MTR_LOG_NO_REDO);
-
+#ifdef UNIV_NVDIMM_CACHE
+    cmd.execute_nvm();
+#else
 		cmd.execute();
+#endif
 	} else {
 		cmd.release_all();
 		cmd.release_resources();
@@ -718,49 +720,6 @@ mtr_t::is_named_space(ulint space) const
 	return(false);
 }
 #endif /* UNIV_DEBUG */
-
-#ifdef UNIV_NVDIMM_CACHE
-/** Commit a mini-transaction for NVDIMM resident page. */
-void mtr_t::commit_nvm() {
-	ut_ad(is_active());
-  ut_ad(!is_inside_ibuf());
-  ut_ad(m_impl.m_magic_n == MTR_MAGIC_N);
-  m_impl.m_state = MTR_STATE_COMMITTING;
-  // jhpark: release the mtr structure 
-  Command cmd(this);
-  if (m_impl.m_modifications
-	    && (m_impl.m_n_log_recs > 0
-		|| m_impl.m_log_mode == MTR_LOG_NO_REDO)) {
-    cmd.execute_nvm();
-  } else {
-    cmd.release_all();
-    cmd.release_resources();
-  }
-}
-
-// just release for row_purge_remove_clust_if_poss_low() function 
-void mtr_t::commit_no_nvm() {
-    commit();
-/*	ut_ad(is_active());
-  ut_ad(!is_inside_ibuf());
-  ut_ad(m_impl.m_magic_n == MTR_MAGIC_N);
-  m_impl.m_state = MTR_STATE_COMMITTING;
-  // jhpark: release the mtr structure 
-  Command cmd(this);
-	if (m_impl.m_modifications
-	    && (m_impl.m_n_log_recs > 0
-		|| m_impl.m_log_mode == MTR_LOG_NO_REDO)) {
-    cmd.execute_no_nvm();
-  } else {
-    cmd.release_all();
-    cmd.release_resources();
-  }
-*/
-  //cmd.release_all();
-  //cmd.release_resources();
-}
-
-#endif /* UNIV_NVDIMM_CACHE */
 
 /** Acquire a tablespace X-latch.
 NOTE: use mtr_x_lock_space().
@@ -1181,52 +1140,134 @@ mtr_t::Command::execute()
 void mtr_t::Command::execute_nvm() {
 	ut_ad(m_impl->m_log_mode != MTR_LOG_NONE);
 
-	if (const ulint len = prepare_write_nvm()) {
-    finish_write_nvm(len);
+  // (jhpark): pull prepare_write() fucntion here
+  ulint len, n_recs;
+  fil_space_t*  space;
+
+  switch (m_impl->m_log_mode) {
+    case MTR_LOG_SHORT_INSERTS:
+      ut_ad(0);
+    /* fall through (write no redo log) */
+    case MTR_LOG_NO_REDO:
+    case MTR_LOG_NONE:
+      ut_ad(m_impl->m_log.size() == 0);
+      log_mutex_enter();
+      m_end_lsn = m_start_lsn = log_sys->lsn;
+      len = 0;
+      break;
+    case MTR_LOG_ALL:
+      break;
+  }
+
+  if (m_impl->m_log_mode == MTR_LOG_ALL) {
+    len = m_impl->m_log.size();
+    n_recs  = m_impl->m_n_log_recs;
+    ut_ad(len > 0);
+    ut_ad(n_recs > 0);
+
+    // (jhpark): call log_buffer_extend here!!!
+    if (len > log_sys->buf_size / 2) {
+      log_buffer_extend((len + 1) * 2);
+    }
+
+    ut_ad(m_impl->m_n_log_recs == n_recs);
+    space = m_impl->m_user_space;
+
+    if (space != NULL && is_system_or_undo_tablespace(space->id)) {
+      /* Omit MLOG_FILE_NAME for predefined tablespaces. */
+      space = NULL;
+    }
+
+    log_mutex_enter();
+    
+    if (fil_names_write_if_was_clean(space, m_impl->m_mtr)) {
+		  /* This mini-transaction was the first one to modify
+  		this tablespace since the latest checkpoint, so
+	  	some MLOG_FILE_NAME records were appended to m_log. */
+		  ut_ad(m_impl->m_n_log_recs > n_recs);
+  		mlog_catenate_ulint(
+	  		&m_impl->m_log, MLOG_MULTI_REC_END, MLOG_1BYTE);
+		  len = m_impl->m_log.size();
+    } else {
+		  /* This was not the first time of dirtying a
+  		tablespace since the latest checkpoint. */
+
+	  	ut_ad(n_recs == m_impl->m_n_log_recs);
+
+		if (n_recs <= 1) {
+			ut_ad(n_recs == 1);
+
+			/* Flag the single log record as the
+			only record in this mini-transaction. */
+			*m_impl->m_log.front()->begin()
+				|= MLOG_SINGLE_REC_FLAG;
+		} else {
+			/* Because this mini-transaction comprises
+			multiple log records, append MLOG_MULTI_REC_END
+			at the end. */
+
+			mlog_catenate_ulint(
+				&m_impl->m_log, MLOG_MULTI_REC_END,
+				MLOG_1BYTE);
+			len++;
+		}
+	 }
+
+  	/* check and attempt a checkpoint if exceeding capacity */
+	  log_margin_checkpoint_age(len);
+  }
+  // (jhpark): end-of-prepare_write()
+
+  // (jhpark): pull finish_write() 
+  if (len > 0) {
+    ut_ad(m_impl->m_log_mode == MTR_LOG_ALL);
+    ut_ad(log_mutex_own());
+    ut_ad(m_impl->m_log.size() == len);
+    ut_ad(len > 0);
+    
+    if (m_impl->m_log.is_small()) {
+      const mtr_buf_t::block_t*	front = m_impl->m_log.front();
+      ut_ad(len <= front->used());
+
+      m_end_lsn = log_reserve_and_write_fast(
+          front->begin(), len, &m_start_lsn);
+
+      if (m_end_lsn > 0) {
+        goto skip_redo;
+      }
+	  }
+
+  	/* Open the database log for log_write_low */
+	  m_start_lsn = log_reserve_and_open(len);
+  	mtr_write_log_t	write_log;
+	  m_impl->m_log.for_each_block(write_log);
+
+  	m_end_lsn = log_close();
+  }
+  // (jhpark): end-of-finish_write() 
+
+skip_redo: 
+  if (m_impl->m_made_dirty) {
+		log_flush_order_mutex_enter();
 	}
+
+	/* It is now safe to release the log mutex because the
+	flush_order mutex will ensure that we are the first one
+	to insert into the flush list. */
+	log_mutex_exit();
 
 	m_impl->m_mtr->m_commit_lsn = m_end_lsn;
+
 	release_blocks();
-	release_latches();
-	release_resources();
 
-// TODO(jhpark): add flush_order mutex when nvdimm caching page is flushed.
-//	if (m_impl->m_made_dirty) {
-//		log_flush_order_mutex_enter();
-//	}
-//	/* It is now safe to release the log mutex because the
-//	flush_order mutex will ensure that we are the first one
-//	to insert into the flush list. */
-//  
-//  fprintf(stderr, "log_mutex_exit() called! m_end_lsn: %lu\n", m_end_lsn);
-//	log_mutex_exit();
-//  fprintf(stderr, "log_mutex_exit() called! -- finished\n");
-//	m_impl->m_mtr->m_commit_lsn = m_end_lsn;
-//	release_blocks();
-//	if (m_impl->m_made_dirty) {
-//		log_flush_order_mutex_exit();
-//	}
-//	release_latches();
-//	release_resources();
-
-}
-
-void mtr_t::Command::execute_no_nvm() {
-	ut_ad(m_impl->m_log_mode != MTR_LOG_NONE);
-	fil_space_t* space = m_impl->m_user_space;
-	if (space != NULL && is_system_or_undo_tablespace(space->id)) {
-		space = NULL;
+	if (m_impl->m_made_dirty) {
+		log_flush_order_mutex_exit();
 	}
 
-	if (fil_names_write_if_was_clean(space, m_impl->m_mtr)) {
-		fprintf(stderr, "[JONGQ] fil_names_write_if_was_clean!!!\n");
-	}
-
-	//m_impl->m_mtr->m_commit_lsn = m_end_lsn;
-	release_blocks();
 	release_latches();
 	release_resources();
 }
+
 #endif /* UNIV_NVDIMM_CACHE */
 
 /** Release the free extents that was reserved using

@@ -203,12 +203,12 @@ uint64_t pm_mmap_recv_check(PMEM_MMAP_MTRLOGFILE_HDR* log_fil_hdr);
 void pm_mmap_recv_flush_buffer();
 
 // TODO(jhpark): covert these variables as structure (i.e., recv_sys_t)
+extern bool nc_start_flag;
 extern bool is_pmem_recv;
 extern uint64_t pmem_recv_offset;
 extern uint64_t pmem_recv_size;
 
 extern uint64_t pmem_recv_latest_offset;
-extern uint64_t pmem_recv_tmp_buf_offset;
 extern uint64_t pmem_recv_commit_offset;
 
 
@@ -242,4 +242,53 @@ uint64_t pm_mmap_mtrlogbuf_write_undo_flush(
 bool read_disk_nc_page (uint32_t space, uint32_t page_no, unsigned char* read_buf);
 
 void debug_func();
+
+
+/* pmem file IO communication */
+struct __pmem_file;
+typedef struct __pmem_file PMEM_FILE;
+struct __pmem_file_coll;
+typedef struct __pmem_file_coll PMEM_FILE_COLL;
+
+struct __pmem_file {
+  char *addr; // mapping address (on NVDIMM mapping)
+  char *name; // file name
+  int fd;     // file descriptor
+  size_t len; // file length
+};
+
+struct __pmem_file_coll{
+ PMEM_FILE **pfile;
+ int size;
+ uint64_t file_size;
+};
+
+PMEM_FILE_COLL* pfc_new(uint64_t file_size);
+void pfc_free(PMEM_FILE_COLL* pfc);
+int pfc_find_by_name(PMEM_FILE_COLL* pfc, const char* name);
+int pfc_find_by_fd(PMEM_FILE_COLL* pfc, const int fd);
+int pfc_append(PMEM_FILE_COLL* pfc, PMEM_FILE* pf);
+int pfc_append_or_set(PMEM_FILE_COLL* pfc
+    , unsigned long int create_mode
+    , const char* name
+    , const int fd, const size_t len);
+ssize_t pfc_pmem_io(PMEM_FILE_COLL* pfc,
+    const int type,
+    const int fd,
+    void *buf,
+    const uint64_t offset,
+    unsigned long int n);
+
+PMEM_FILE* pf_init(const char* name);
+
+#define PMEM_MAX_FILES 1000
+#define PMEM_MAX_FILE_NAME_LENGTH 10000
+enum {
+  PMEM_READ = 1,
+  PMEM_WRITE = 2
+};
+extern PMEM_FILE_COLL* gb_pfc;
+
+/* nc logging */
+void nc_recv_analysis();
 #endif  /* __PMEMMAPOBJ_H__ */

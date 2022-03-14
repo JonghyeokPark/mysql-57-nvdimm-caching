@@ -438,6 +438,12 @@ buf_pool_get_oldest_modification(void)
 		residing in system temporary doesn't generate REDO logging. */
 		for (bpage = UT_LIST_GET_LAST(buf_pool->flush_list);
 		     bpage != NULL
+      
+/* nc-logging */
+// we need to keep NC page log info          
+#ifdef UNIV_NVDIMM_CACHE
+      && !bpage->cached_in_nvdimm
+#endif
 			&& fsp_is_system_temporary(bpage->id.space());
 		     bpage = UT_LIST_GET_PREV(list, bpage)) {
 			/* Do nothing. */
@@ -792,9 +798,6 @@ buf_page_is_corrupted(
 )
 {
 
-  // HOT DEBUG 4 //
-  //return false;
-
 	ulint		checksum_field1;
 	ulint		checksum_field2;
 
@@ -812,6 +815,7 @@ buf_page_is_corrupted(
 		return(TRUE);
 	}
 
+  // (jhpark): we can ignore pagelsn for NC pages
 #if !defined(UNIV_HOTBACKUP) && !defined(UNIV_INNOCHECKSUM) && !defined(UNIV_NVDIMM_CACHE)
 	if (check_lsn && recv_lsn_checks_on) {
 		lsn_t		current_lsn;
@@ -4357,10 +4361,6 @@ void
 buf_wait_for_read(
 	buf_block_t*	block)
 {
-  // HOT DEBUG 3//
-#ifdef UNIV_NVDIMM_CACHE
-  if (is_pmem_recv) return;
-#endif
 
 	/* Note:
 
@@ -4567,18 +4567,19 @@ loop:
 			);
 
 #ifdef UNIV_NVDIMM_CACHE
-            buf_pool_t* after_buf_pool = buf_pool_get(page_id);
+      buf_pool_t* after_buf_pool = buf_pool_get(page_id);
 
-            if (buf_pool->instance_no != after_buf_pool->instance_no) {
-                /*ib::info() << buf_pool->instance_no << " != " 
-                    << after_buf_pool->instance_no << " for " 
-                    << page_id.space() << " " << page_id.page_no();*/    
-                buf_pool = after_buf_pool;
-            }
+      if (buf_pool->instance_no != after_buf_pool->instance_no) {
+        /*ib::info() << buf_pool->instance_no << " != " 
+          << after_buf_pool->instance_no << " for " 
+          << page_id.space() << " " << page_id.page_no();*/    
+        buf_pool = after_buf_pool;
+      }
+
 #endif /* UNIV_NVDIMM_CACHE */
 		} else {
-            /* mijin */
-            buf_pool_t* after_buf_pool = buf_pool_get(page_id);
+      /* mijin */
+      buf_pool_t* after_buf_pool = buf_pool_get(page_id);
 
 			ib::fatal() << "Unable to read page " << page_id
 				<< " into the buffer pool after "
@@ -5525,9 +5526,11 @@ buf_page_init_for_read(
 	buf_pool_t*	buf_pool;
     
 #ifdef UNIV_NVDIMM_CACHE
-    if (mode == BUF_MOVE_TO_NVDIMM) {
+  /* nc-logging */
+    if (mode == BUF_MOVE_TO_NVDIMM /* && !is_pmem_recv */) {
         if (page_id.space() == 27 /* NEW ORDER */
             || page_id.space() == 29
+//          if (page_id.space() == 29
 #ifdef UNIV_NVDIMM_CACHE_OD
             || page_id.space() == 29
 #endif /* UNIV_NVDIMM_CACHE_OD */
@@ -7500,9 +7503,10 @@ buf_print_io(
 #ifdef UNIV_NVDIMM_CACHE
 /** Checks whether this page should be moved to the NVDIMM buffer. */
 bool buf_block_will_be_moved_to_nvdimm(const page_id_t& page_id) {
-    // HOT DEBUG 7
+    // HOT DEBUG 7 !!! comeback
     return (false);
-    if (page_id.space() == 27 /* New-Orders table */) {
+
+    if (page_id.space() == 27 /* New-Orders table */ /* && !is_pmem_recv */) {
         return (true);
     } else {
         return (false);

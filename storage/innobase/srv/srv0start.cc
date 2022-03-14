@@ -109,6 +109,8 @@ Created 2/16/1996 Heikki Tuuri
 #include "pmem_mmap_obj.h" 
 extern unsigned char* gb_pm_mmap;
 char  PMEM_FILE_PATH [PMEM_MMAP_MAX_FILE_NAME_LENGTH];
+/* nc-logging */
+PMEM_FILE_COLL* gb_pfc;
 #endif /* UNIV_NVDIMM_CACHE */
 
 #ifdef HAVE_LZO1X
@@ -1768,6 +1770,10 @@ innobase_start_or_create_for_mysql(void)
 		srv_n_page_cleaners = srv_buf_pool_instances;
 	}
 
+#ifdef UNIV_NVDIMM_CACHE
+  gb_pfc = pfc_new(srv_log_file_size);
+#endif
+
 	srv_boot();
 
 	ib::info() << (ut_crc32_sse2_enabled ? "Using" : "Not using")
@@ -2312,6 +2318,10 @@ files_checked:
 		and there must be no page in the buf_flush list. */
 		buf_pool_invalidate();
 
+#ifdef UNIV_NVDIMM_CACHE
+    nc_start_flag = true;
+#endif
+
 		/* Scan and locate truncate log files. Parsed located files
 		and add table to truncate information to central vector for
 		truncate fix-up action post recovery. */
@@ -2326,7 +2336,21 @@ files_checked:
 		/* We always try to do a recovery, even if the database had
 		been shut down normally: this is the normal startup path */
 
+    // HOT DEBUG //  
+#ifdef UNIV_NVDIMM_CACHE
+     if (is_pmem_recv) {
+      //nc_fil_io_test();
+      nc_recv_analysis();
+    }
+#endif
+ 
+
+#if UNIV_NVDIMM_CACHE
+    // TODO(jhpark): recovery
+    err = recv_recovery_from_checkpoint_start(flushed_lsn);
+#else
 		err = recv_recovery_from_checkpoint_start(flushed_lsn);
+#endif
 
 		fprintf(stderr, "[JONGQ] ---- recv_recovery_from_checkpoint() finished\n");
 
@@ -2338,14 +2362,7 @@ files_checked:
 			/* Initialize the change buffer. */
 			err = dict_boot();
     }
-
-    // HOT DEBUG //    
-    // if (is_pmem_recv) {
-    //   nc_fil_io_test();
-    //  pmem_recv_recvoer_nc_page();
-    //}
-    
-
+   
 		if (err != DB_SUCCESS) {
 
 			/* A tablespace was not found during recovery. The
@@ -2838,8 +2855,10 @@ files_checked:
 
   // HOT DEBUG 3//
 #ifdef UNIV_NVDIMM_CACHE
+  // check purge_queue
+	//srv_was_started = TRUE;
   is_pmem_recv=false;
-  pm_mmap_mtrlogbuf_init(1*1024*1024*1024UL);
+  //pm_mmap_mtrlogbuf_init(1*1024*1024*1024UL);
 #endif
 
 	srv_was_started = TRUE;
@@ -2999,7 +3018,9 @@ innobase_shutdown_for_mysql(void)
 
 	srv_was_started = FALSE;
 	srv_start_has_been_called = FALSE;
-
+#ifdef UNIV_NVDIMM_CACHE
+  pfc_free(gb_pfc);
+#endif
 	return(DB_SUCCESS);
 }
 #endif /* !UNIV_HOTBACKUP */

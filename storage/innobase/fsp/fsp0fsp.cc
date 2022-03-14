@@ -144,8 +144,6 @@ fseg_alloc_free_page_low(
 #ifdef UNIV_DEBUG
 	, ibool			has_done_reservation
 #endif /* UNIV_DEBUG */
-  // HOT DEBUG
-  , bool is_nvm_page
 )
 	MY_ATTRIBUTE((warn_unused_result));
 
@@ -797,18 +795,8 @@ fsp_init_file_page(
 	fsp_init_file_page_low(block);
 
 	ut_d(fsp_space_modify_check(block->page.id.space(), mtr));
-#ifdef UNIV_NVDIMM_CACHE
-  if (is_nvm_page) {
-  	mlog_write_initial_log_record(buf_block_get_frame(block),
-				      MLOG_INIT_FILE_PAGE2, mtr);
-  } else {
-  	mlog_write_initial_log_record(buf_block_get_frame(block),
-				      MLOG_INIT_FILE_PAGE2, mtr);
-  }
-#else
 	mlog_write_initial_log_record(buf_block_get_frame(block),
 				      MLOG_INIT_FILE_PAGE2, mtr);
-#endif
 }
 #endif /* !UNIV_HOTBACKUP */
 
@@ -1916,11 +1904,7 @@ fsp_page_create(
 		      || !mtr_memo_contains_flagged(mtr, block,
 						    MTR_MEMO_PAGE_X_FIX
 						    | MTR_MEMO_PAGE_SX_FIX));
-#ifdef UNIV_NVDIMM_CACHE
-		fsp_init_file_page(block, init_mtr, is_nvm_page);
-#else
 		fsp_init_file_page(block, init_mtr);
-#endif
 	}
 
 	return(block);
@@ -2705,8 +2689,6 @@ fseg_create_general(
 #ifdef UNIV_DEBUG
 						 , has_done_reservation
 #endif /* UNIV_DEBUG */
-             // HOT DEBUG //
-             ,false
 						 );
 
 
@@ -2985,9 +2967,6 @@ fseg_alloc_free_page_low(
 #ifdef UNIV_DEBUG
 	, ibool			has_done_reservation
 #endif /* UNIV_DEBUG */
-#ifdef UNIV_NVDIMM_CACHE
-  , bool is_nvm_page = false
-#endif
 )
 {
 	fsp_header_t*	space_header;
@@ -3212,13 +3191,8 @@ got_hinted_page:
 
 	ut_ad(space->flags
 	      == mach_read_from_4(FSP_SPACE_FLAGS + space_header));
-#ifdef UNIV_NVDIMM_CACHE
-	return(fsp_page_create(page_id_t(space_id, ret_page), page_size,
-			       rw_latch, mtr, init_mtr, is_nvm_page));
-#else
 	return(fsp_page_create(page_id_t(space_id, ret_page), page_size,
 			       rw_latch, mtr, init_mtr));
-#endif
 }
 
 /**********************************************************************//**
@@ -3290,9 +3264,6 @@ fseg_alloc_free_page_general(
 #ifdef UNIV_DEBUG
 					 , has_done_reservation
 #endif /* UNIV_DEBUG */
-#ifdef UNIV_NVDIMM_CACHE
-           ,is_nvm_page
-#endif
 					 );
 
 	/* The allocation cannot fail if we have already reserved a
