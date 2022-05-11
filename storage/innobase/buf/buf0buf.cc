@@ -408,6 +408,52 @@ buf_pool_register_chunk(
 	buf_chunk_map_reg->insert(buf_pool_chunk_map_t::value_type(
 		chunk->blocks->frame, chunk));
 }
+// HOT DEBUG
+lsn_t
+nvdimmbuf_pool_get_oldest_modification(void)
+/*==================================*/
+{
+	lsn_t		lsn = 0;
+  lsn_t nvdimm_lsn = 0;
+
+	/* When we traverse all the flush lists we don't want another
+	thread to add a dirty page to any flush list. */
+	log_flush_order_mutex_enter();
+
+  // HOT DEBUG
+  for (ulint i = srv_buf_pool_instances; i<srv_buf_pool_instances+1; i++) {
+		buf_pool_t*	buf_pool;
+
+		buf_pool = buf_pool_from_array(i);
+
+		buf_flush_list_mutex_enter(buf_pool);
+
+		buf_page_t*	bpage;
+
+		// We don't let log-checkpoint halt because pages from system
+		//temporary are not yet flushed to the disk. Anyway, object
+		//residing in system temporary doesn't generate REDO logging. 
+		for (bpage = UT_LIST_GET_LAST(buf_pool->flush_list);
+		     bpage != NULL
+			&& fsp_is_system_temporary(bpage->id.space());
+		     bpage = UT_LIST_GET_PREV(list, bpage)) {
+			// Do nothing. 
+		}
+    
+     if (bpage != NULL) {
+   		ut_ad(bpage->in_flush_list);
+			lsn = bpage->oldest_modification;
+     }
+
+     buf_flush_list_mutex_exit(buf_pool);
+		 if (!nvdimm_lsn || nvdimm_lsn > lsn) {
+			  nvdimm_lsn = lsn;
+		 }
+  }
+
+  log_flush_order_mutex_exit();
+  return nvdimm_lsn;
+}
 
 /********************************************************************//**
 Gets the smallest oldest_modification lsn for any page in the pool. Returns
@@ -424,6 +470,40 @@ buf_pool_get_oldest_modification(void)
 	thread to add a dirty page to any flush list. */
 	log_flush_order_mutex_enter();
 
+  // HOT DEBUG
+  // (jhpark): now, we do not use the oldest_modification of the page in NVDIMM
+  // (jhpark): check the oldest modification lsn in NVDIMM buffer pool 
+  lsn_t nvdimm_lsn = 0;
+  for (ulint i = srv_buf_pool_instances; i<srv_buf_pool_instances+1; i++) {
+		buf_pool_t*	buf_pool;
+
+		buf_pool = buf_pool_from_array(i);
+
+		buf_flush_list_mutex_enter(buf_pool);
+
+		buf_page_t*	bpage;
+
+		// We don't let log-checkpoint halt because pages from system
+		//temporary are not yet flushed to the disk. Anyway, object
+		//residing in system temporary doesn't generate REDO logging. 
+		for (bpage = UT_LIST_GET_LAST(buf_pool->flush_list);
+		     bpage != NULL
+			&& fsp_is_system_temporary(bpage->id.space());
+		     bpage = UT_LIST_GET_PREV(list, bpage)) {
+			// Do nothing. 
+		}
+    
+     if (bpage != NULL) {
+   		ut_ad(bpage->in_flush_list);
+			lsn = bpage->oldest_modification;
+     }
+
+     buf_flush_list_mutex_exit(buf_pool);
+		 if (!nvdimm_lsn || nvdimm_lsn > lsn) {
+			  nvdimm_lsn = lsn;
+		 }
+  }
+
 	for (ulint i = 0; i < srv_buf_pool_instances; i++) {
 		buf_pool_t*	buf_pool;
 
@@ -438,12 +518,6 @@ buf_pool_get_oldest_modification(void)
 		residing in system temporary doesn't generate REDO logging. */
 		for (bpage = UT_LIST_GET_LAST(buf_pool->flush_list);
 		     bpage != NULL
-      
-/* nc-logging */
-// we need to keep NC page log info          
-#ifdef UNIV_NVDIMM_CACHE
-      && !bpage->cached_in_nvdimm
-#endif
 			&& fsp_is_system_temporary(bpage->id.space());
 		     bpage = UT_LIST_GET_PREV(list, bpage)) {
 			/* Do nothing. */
@@ -456,10 +530,18 @@ buf_pool_get_oldest_modification(void)
 
 		buf_flush_list_mutex_exit(buf_pool);
 
-		if (!oldest_lsn || oldest_lsn > lsn) {
+		if (!oldest_lsn || oldest_lsn > lsn 
+        /* || (nvdimm_lsn && oldest_lsn > nvdimm_lsn )*/) {
 			oldest_lsn = lsn;
 		}
 	}
+
+    if (nvdimm_lsn != 0 
+        && nvdimm_lsn < oldest_lsn) {
+      oldest_lsn = nvdimm_lsn;
+    }
+//  ib::info() << "nvdimm_lsn : " << nvdimm_lsn
+//    << " oldest_lsn : " << oldest_lsn;
 
 	log_flush_order_mutex_exit();
 
@@ -5530,7 +5612,6 @@ buf_page_init_for_read(
     if (mode == BUF_MOVE_TO_NVDIMM /* && !is_pmem_recv */) {
         if (page_id.space() == 27 /* NEW ORDER */
             || page_id.space() == 29
-//          if (page_id.space() == 29
 #ifdef UNIV_NVDIMM_CACHE_OD
             || page_id.space() == 29
 #endif /* UNIV_NVDIMM_CACHE_OD */
@@ -6391,6 +6472,7 @@ corrupt:
 		if (evict) {
 			mutex_exit(buf_page_get_mutex(bpage));
 			buf_LRU_free_page(bpage, true);
+      // (jhpark): ???
 #ifdef NVDIMM_CACHE
             bpage->moved_to_nvdimm = false;
             //bpage->cached_in_nvdimm = false;

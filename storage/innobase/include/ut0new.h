@@ -652,8 +652,8 @@ public:
 		if (n_elements == 0 || n_elements > max_size()) {
 			return(NULL);
 		}
-
-		ulint	n_bytes = n_elements * sizeof(T);
+   	
+    ulint	n_bytes = n_elements * sizeof(T);
     size_t offset = mmap_buf_sys->cur_offset;
 		pointer	ptr = reinterpret_cast<pointer>(
       gb_pm_buf + offset

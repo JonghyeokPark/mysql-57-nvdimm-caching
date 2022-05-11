@@ -3925,8 +3925,9 @@ btr_cur_update_in_place(
 
 // jhpark
 #ifdef UNIV_NVDIMM_CACHE
-  // skip version (old)
-  /*
+
+#ifdef UNIV_NVDIMM_SKIP_REDO
+  
   nvm_block = btr_cur_get_block(cursor);
   nvm_bpage = &(nvm_block->page);
 
@@ -3936,11 +3937,12 @@ btr_cur_update_in_place(
     btr_cur_update_in_place_log(flags, rec, index, update,
         trx_id, roll_ptr, mtr);
   }
-  */
-
+#else
   // nc redo logging version (new)
   btr_cur_update_in_place_log(flags, rec, index, update,
       trx_id, roll_ptr, mtr);
+#endif
+
 #else
 	btr_cur_update_in_place_log(flags, rec, index, update,
 				    trx_id, roll_ptr, mtr);
@@ -4941,18 +4943,19 @@ btr_cur_del_mark_set_clust_rec(
   // jhpark
 #ifdef UNIV_NVDIMM_CACHE
   // skip version (old)
-  /*
+#ifdef UNIV_NVDIMM_SKIP_REDO
     if (is_nvm_page) {
       // do nothing
     } else {
       btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
          roll_ptr, mtr);
     }
-  */
-
+#else
   // we allowe redo logging on NVM
   btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
       roll_ptr, mtr);
+#endif
+
 #else
 	btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
 					   roll_ptr, mtr);

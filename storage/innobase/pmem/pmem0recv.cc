@@ -293,26 +293,34 @@ void debug_func() {
 
 void nc_recv_analysis() {
  uint64_t space, page_no;
- unsigned char *addr = gb_pm_mmap + (6*1024*1024*1024UL);
- uint64_t page_num_chunks = static_cast<uint64_t>( (srv_nvdimm_buf_pool_size)/4096);
+ unsigned char *addr = gb_pm_mmap + (1*1024*1024*1024UL);
+ uint64_t page_num_chunks = static_cast<uint64_t>( (8*147324928UL)/4096);
 
- fprintf(stderr, "[DEBUG] NVDIMM Caching page analysis begin! total pages: %lu\n", page_num_chunks);
+ uint64_t lsn = 0;
+ uint64_t oldest_lsn = 0;
 
- //for (uint64_t i=0; i < page_num_chunks; ++i) {
- for (uint64_t i=0; i < srv_nvdimm_buf_pool_size; i+= UNIV_PAGE_SIZE) {
+ fprintf(stderr, "[DEBUG] NVDIMM Caching page analysis begin! total pages v2: %lu\n", page_num_chunks);
 
-  //space = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.space();
-  //page_no = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.page_no();
-  //unsigned char *frame = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->frame;
+ for (uint64_t i=0; i < page_num_chunks; ++i) {
+ //for (uint64_t i=0; i < srv_nvdimm_buf_pool_size; i+= UNIV_PAGE_SIZE) {
 
-  space = reinterpret_cast<buf_block_t*>((addr+ i ))->page.id.space();
-  page_no = reinterpret_cast<buf_block_t*>((addr+ i ))->page.id.page_no();
-  unsigned char *frame = (unsigned char*)(addr+ i);
+  space = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.space();
+  page_no = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.page_no();
+  unsigned char *frame = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->frame;
 
+  // HOT DEBUG //
+  //space = reinterpret_cast<buf_block_t*>((addr+ i ))->page.id.space();
+  //page_no = reinterpret_cast<buf_block_t*>((addr+ i ))->page.id.page_no();
+  //unsigned char *frame = (unsigned char*)(addr+ i);
 
   if (space != 27 && space != 29) {
     fprintf(stderr, "[DEBUG] we miss the pages %lu:%lu\n", space, page_no);
-    continue;
+    if (space == 4294967295 
+         && page_no == 4294967295) {
+      continue;
+    } else {
+      break;
+    }
   } else {
     fprintf(stderr, "[DEBUG] we get this page %lu:%lu\n", space, page_no);
   }
@@ -323,6 +331,11 @@ void nc_recv_analysis() {
     fprintf(stderr, "[DEBUG] wrong frame info!\n (%lu:%lu) (%lu:%lu)", space, page_no
         , mach_read_from_4(frame + FIL_PAGE_SPACE_ID)
         , mach_read_from_4(frame + FIL_PAGE_OFFSET));
+  }
+
+  lsn =  mach_read_from_8(frame + FIL_PAGE_LSN);
+  if (!oldest_lsn || oldest_lsn > lsn ) {
+    oldest_lsn = lsn;
   }
 
 #ifdef PMEM_RECV_DEBUG  
@@ -339,6 +352,9 @@ void nc_recv_analysis() {
 
   // we store relative position of nc page
   pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*sizeof(buf_block_t));
+  nc_oldest_lsn = oldest_lsn;
+  ib::info() << "oldest_lsn in NC pages: " << oldest_lsn;
+
  }
 }
 
@@ -351,7 +367,7 @@ uint64_t pm_mmap_recv_check_nc_buf(uint64_t space, uint64_t page_no) {
     for (uint64_t i=0; i<nc_offset_vec.size(); i++) {
       nc_offset = nc_offset_vec[i];
       unsigned char *nc_frame = reinterpret_cast<buf_block_t*>
-        ((gb_pm_mmap + (6*1024*1024*1024UL) + nc_offset))->frame;
+        ((gb_pm_mmap + (1*1024*1024*1024UL) + nc_offset))->frame;
 
       fprintf(stderr, "[DEBUG] NC BUF (%lu:%lu) offset: %lu page_lsn: %lu i: %lu vec:size: %d\n", 
           space, page_no, nc_offset

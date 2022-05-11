@@ -617,7 +617,12 @@ mtr_t::commit()
 		ut_ad(!srv_read_only_mode
 		      || m_impl.m_log_mode == MTR_LOG_NO_REDO);
 #ifdef UNIV_NVDIMM_CACHE
+#ifdef UNIV_NVDIMM_SKIP_REDO
+		cmd.execute();
+#else
     cmd.execute_nvm();
+#endif
+
 #else
 		cmd.execute();
 #endif

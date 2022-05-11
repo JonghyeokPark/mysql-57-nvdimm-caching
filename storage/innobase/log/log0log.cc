@@ -820,11 +820,20 @@ log_init(void)
 
   /* nc-logging */
 #ifdef UNIV_NVDIMM_CACHE
+#ifndef UNIV_NVDIMM_SKIP_REDO
+  // original
+	log_sys->buf_ptr = static_cast<byte*>(
+		ut_zalloc_nokey(log_sys->buf_size * 2 + OS_FILE_LOG_BLOCK_SIZE));
+	log_sys->buf = static_cast<byte*>(
+		ut_align(log_sys->buf_ptr, OS_FILE_LOG_BLOCK_SIZE));
+#else
   // TODO(jhpark): recovery
   //  allocate log buffer on NVDIMM, we already allocate log buffer at start 
 	log_sys->buf_ptr = static_cast<byte*>(gb_pm_mmap);
   log_sys->buf = static_cast<byte*>(
       ut_align(log_sys->buf_ptr, OS_FILE_LOG_BLOCK_SIZE));
+#endif
+
 #else
   // original
 	log_sys->buf_ptr = static_cast<byte*>(
@@ -1901,6 +1910,15 @@ log_checkpoint(
 
 		return(false);
 	}
+
+  // HOT DEBUG
+  lsn_t tmp_oldest_lsn = nvdimmbuf_pool_get_oldest_modification();
+  if (log_sys->next_checkpoint_lsn 
+      > oldest_lsn) {
+    ib::info() << "checkpoint_lsn: " << oldest_lsn
+      << " oldest_lsn: " << tmp_oldest_lsn;
+  }
+
 
 	log_sys->next_checkpoint_lsn = oldest_lsn;
 	log_write_checkpoint_info(sync);

@@ -3272,6 +3272,8 @@ os_file_create_simple_func(
 		file.m_file = ::open(name, create_flag, os_innodb_umask);
 
 /*nc-logging*/
+// nc-logging-2
+/*
 #ifdef UNIV_NVDIMM_CACHE
     if (strstr(name, "logfile") != 0) {
       if( (pfc_append_or_set(gb_pfc, create_mode, name, (int)(file.m_file), gb_pfc->file_size)) == -1) {
@@ -3279,7 +3281,7 @@ os_file_create_simple_func(
       }
     }
 #endif
-
+*/
 		if (file.m_file == -1) {
 			*success = false;
 
@@ -3600,6 +3602,7 @@ os_file_create_func(
 		file.m_file = ::open(name, create_flag, os_innodb_umask);
 
     /* nc-logging */
+    /* nc-logging-2
 #ifdef UNIV_NVDIMM_CACHE
     if (type == OS_LOG_FILE) {
       if( (pfc_append_or_set(gb_pfc, create_mode, name, (int)(file.m_file), gb_pfc->file_size)) == -1) {
@@ -3607,7 +3610,7 @@ os_file_create_func(
       }
     }
 #endif
-
+  */
 		if (file.m_file == -1) {
 			const char*	operation;
 
@@ -3740,6 +3743,8 @@ os_file_create_simple_no_error_handling_func(
 	file.m_file = ::open(name, create_flag, os_innodb_umask);
 
 /* nc-logging */
+// nc-logging-2 
+/*
 #ifdef UNIV_NVDIMM_CACHE
   if ( strstr(name, "logfile") != 0){
     if( (pfc_append_or_set(gb_pfc, create_mode, name, (int)(file.m_file), gb_pfc->file_size)) == -1) {
@@ -3747,7 +3752,7 @@ os_file_create_simple_no_error_handling_func(
     }
   }
 #endif
-
+*/
 	*success = (file.m_file != -1);
 
 #ifdef USE_FILE_LOCK
@@ -5429,7 +5434,8 @@ os_file_io(
 	ssize_t		bytes_returned = 0;
 
 /* nc-logging */
- 
+// nc-logging-2
+/* 
 #ifdef UNIV_NVDIMM_CACHE
   if (type.is_log()) {
     if (type.is_read()) {
@@ -5443,7 +5449,7 @@ os_file_io(
     return bytes_returned;
   }
 #endif 
-
+*/
 	if (type.is_compressed()) {
 
 		/* We don't compress the first page of any file. */

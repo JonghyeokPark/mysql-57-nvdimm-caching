@@ -17,6 +17,7 @@
 // gloabl persistent memmory region
 unsigned char* gb_pm_mmap;
 int gb_pm_mmap_fd;
+uint64_t nc_oldest_lsn;
 PMEM_MMAP_MTRLOG_BUF* mmap_mtrlogbuf = NULL;
 
 // recovery
@@ -104,10 +105,11 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
   //}
   */
 
-  memcpy(gb_pm_mmap + (6*1024*1024*1024UL), gb_pm_mmap + (1*1024*1024*1024UL), srv_nvdimm_buf_pool_size);
+  memcpy(gb_pm_mmap + (6*1024*1024*1024UL), gb_pm_mmap + (1*1024*1024*1024UL), (8UL*147324928)); //, srv_nvdimm_buf_pool_size);
   //nc_recv_analysis();
   is_pmem_recv = true;
-}
+  }
+
   // Force to set NVIMMM
   setenv("PMEM_IS_PMEM_FORCE", "1", 1);
   PMEMMMAP_INFO_PRINT("Current kernel does not recognize NVDIMM as the persistenct memory \

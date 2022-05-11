@@ -291,4 +291,5 @@ extern PMEM_FILE_COLL* gb_pfc;
 
 /* nc logging */
 void nc_recv_analysis();
+extern uint64_t nc_oldest_lsn;
 #endif  /* __PMEMMAPOBJ_H__ */

@@ -465,6 +465,9 @@ zero if all modified pages have been flushed to disk.
 @return oldest modification in pool, zero if none */
 lsn_t
 buf_pool_get_oldest_modification(void);
+// HOT DEBUG
+lsn_t
+nvdimmbuf_pool_get_oldest_modification(void);
 /*==================================*/
 
 /********************************************************************//**

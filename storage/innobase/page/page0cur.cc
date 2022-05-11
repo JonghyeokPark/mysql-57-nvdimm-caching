@@ -1537,7 +1537,9 @@ use_heap:
 	/* 9. Write log record of the insert */
 	if (UNIV_LIKELY(mtr != NULL)) {
 #ifdef UNIV_NVDIMM_CACHE
-        /*
+
+#ifdef UNIV_NVDIMM_SKIP_REDO
+        
         mtr_t tmp_mtr;
         mtr_start(&tmp_mtr);
         ulint page_no = page_get_page_no(page);
@@ -1547,20 +1549,20 @@ use_heap:
         mtr_commit(&tmp_mtr);
         assert(nvm_block != NULL);
         buf_page_t* nvm_bpage = &nvm_block->page;
-        */
+        
         // skip version 
-        /*
+        
         if (nvm_bpage->cached_in_nvdimm) {
           // skip generating REDO log for nvm-page 
         } else {
           page_cur_insert_rec_write_log(insert_rec, rec_size,
           current_rec, index, mtr);
         }
-        */
-
+#else
         // we allow REDO logging on NC page
         page_cur_insert_rec_write_log(insert_rec, rec_size,
           current_rec, index, mtr);
+#endif
 
 #else
         page_cur_insert_rec_write_log(insert_rec, rec_size,
@@ -2738,10 +2740,9 @@ page_cur_delete_rec(
   buf_block_t* nvm_block = cursor->block;
   buf_page_t* nvm_bpage = &(nvm_block->page);
   bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
-  if (mtr != 0 && !is_nvm_page) {
+  if (mtr != 0 ) {
 		page_cur_delete_rec_write_log(current_rec, index, mtr);
 	}
-
 #else
 	if (mtr != 0) {
 		page_cur_delete_rec_write_log(current_rec, index, mtr);

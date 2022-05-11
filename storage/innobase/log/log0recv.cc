@@ -2437,15 +2437,14 @@ recv_recover_page_func(
     bool nc_corrupt_flag = false;
     uint64_t cur_nc_page_lsn = -1;
 
-    uint64_t cur_nc_buf_offset = -1;
-        //pm_mmap_recv_check_nc_buf(
-        //block->page.id.space(), block->page.id.page_no());
+    uint64_t cur_nc_buf_offset = pm_mmap_recv_check_nc_buf(
+               block->page.id.space(), block->page.id.page_no());
 
     if (cur_nc_buf_offset != -1) {
       // (jhpark): now, we know this page reside in the NVDIMM buffer.
       nc_page_flag = true;
       unsigned char *nc_frame = reinterpret_cast<buf_block_t*>
-        ((gb_pm_mmap + (6*1024*1024*1024UL) + cur_nc_buf_offset))->frame;
+        ((gb_pm_mmap + (1*1024*1024*1024UL) + cur_nc_buf_offset))->frame;
 
       uint64_t cur_disk_page_lsn = mach_read_from_8(block->frame + FIL_PAGE_LSN);
       cur_nc_page_lsn = mach_read_from_8(nc_frame+FIL_PAGE_LSN);
@@ -2461,25 +2460,29 @@ recv_recover_page_func(
       fprintf(stderr, "[DEBUG] offset: %lu current page is NC page and LSN : %lu disk lsn: %lu page_lsn: %lu corupted? %d recv_start_lsn :%lu\n"
           , cur_nc_buf_offset, cur_nc_page_lsn, cur_disk_page_lsn, page_lsn, nc_corrupt_flag
           , recv->start_lsn);
-
-      // recover from NC buffer
-      
+     
+      // recover from NC buffer 
       if (!nc_corrupt_flag) {
+        // check 
+        fprintf(stderr, "[DEBUG] we skip this page: %lu:%lu\n", block->page.id.space(), block->page.id.page_no());
         memcpy(block->frame, nc_frame, UNIV_PAGE_SIZE);
+        page_lsn = cur_nc_page_lsn;
+        end_lsn = recv->start_lsn + recv->len;
+      	mach_write_to_8(FIL_PAGE_LSN + (block->frame), end_lsn);
+		  	mach_write_to_8(UNIV_PAGE_SIZE
+					- FIL_PAGE_END_LSN_OLD_CHKSUM
+					+ (block->frame), end_lsn);
         goto skip_redo;
-      }
-      
+      } 
 
     } // end-of-if
 #endif
 
 	while (recv) {
 
-    /*
-    fprintf(stderr,"[DEBUG] (%u:%u) recv_start_lsn :%lu recv_end_lsn: %lu\n"
-        , block->page.id.space(), block->page.id.page_no()
-        , recv->start_lsn, recv->end_lsn);
-    */
+    //fprintf(stderr,"[DEBUG] (%u:%u) recv_start_lsn :%lu recv_end_lsn: %lu\n"
+    //    , block->page.id.space(), block->page.id.page_no()
+    //    , recv->start_lsn, recv->end_lsn);
 
 		end_lsn = recv->end_lsn;
 
@@ -3925,7 +3928,6 @@ recv_group_scan_log_recs(
       start_lsn, contiguous_lsn,&group->scanned_lsn);
 
   fprintf(stderr, "[DEBUG] finsish scan and parse persist redo log buffer size: %d ret: %d\n", log_sys->buf_size, ret);
-
 #endif
 
 	DBUG_PRINT("ib_log", ("%s " LSN_PF
@@ -4159,6 +4161,13 @@ recv_recovery_from_checkpoint_start(
 	checkpoint_lsn = mach_read_from_8(buf + LOG_CHECKPOINT_LSN);
 	checkpoint_no = mach_read_from_8(buf + LOG_CHECKPOINT_NO);
 
+  // HOT DEBUG
+  if (checkpoint_lsn > nc_oldest_lsn) {
+   ib::info() << "checkpoint lsn is old! checkpoinst_lsn: "
+     << checkpoint_lsn << " nc_oldest_lsn: " << nc_oldest_lsn;
+   checkpoint_lsn = nc_oldest_lsn; 
+  }
+
 	/* Read the first log file header to print a note if this is
 	a recovery from a restored InnoDB Hot Backup */
 
@@ -4242,6 +4251,9 @@ recv_recovery_from_checkpoint_start(
 	if (recv_sys->mlog_checkpoint_lsn == 0) {
 		if (!srv_read_only_mode
 		    && group->scanned_lsn != checkpoint_lsn) {
+#ifdef UNIV_NVDIMM_CACHE
+      // HOT DEBUG 
+#else
 			ib::error() << "Ignoring the redo log due to missing"
 				" MLOG_CHECKPOINT between the checkpoint "
 				<< checkpoint_lsn << " and the end "
@@ -4250,6 +4262,7 @@ recv_recovery_from_checkpoint_start(
 				log_mutex_exit();
 				return(DB_ERROR);
 			}
+#endif
 		}
 
 		group->scanned_lsn = checkpoint_lsn;

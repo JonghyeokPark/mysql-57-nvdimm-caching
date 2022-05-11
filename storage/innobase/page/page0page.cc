@@ -1067,11 +1067,11 @@ delete_all:
 
 #ifdef UNIV_NVDIMM_CACHE
   bool is_nvm_page = block->page.cached_in_nvdimm;
-  if (!is_nvm_page) {
+//  if (!is_nvm_page) {
     page_delete_rec_list_write_log(rec, index, page_is_comp(page)
 				       ? MLOG_COMP_LIST_END_DELETE
 				       : MLOG_LIST_END_DELETE, mtr);
-  }
+//  }
 #else
 	page_delete_rec_list_write_log(rec, index, page_is_comp(page)
 				       ? MLOG_COMP_LIST_END_DELETE
@@ -1253,9 +1253,9 @@ page_delete_rec_list_start(
 
 #ifdef UNIV_NVDIMM_CACHE
   bool is_nvm_page = block->page.cached_in_nvdimm;
-  if (!is_nvm_page) {
+//  if (!is_nvm_page) {
     page_delete_rec_list_write_log(rec, index, type, mtr);
-  }
+//  }
 #else
 	page_delete_rec_list_write_log(rec, index, type, mtr);
 #endif
