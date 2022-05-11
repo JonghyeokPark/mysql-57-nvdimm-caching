@@ -1116,10 +1116,7 @@ buf_flush_write_block_low(
         /* Set the oldest LSN of the NVDIMM page to the previous newest LSN. */
         buf_flush_note_modification((buf_block_t *)nvdimm_page, bpage->newest_modification, bpage->newest_modification, nvdimm_page->flush_observer);
 
-        // TODO: NVDIMM-porting
-        // 1
         flush_cache(((buf_block_t *)nvdimm_page)->frame, UNIV_PAGE_SIZE);
-        // 2
         
         /* Remove the target page from the original buffer pool. */
         buf_page_io_complete(bpage, true);
@@ -1141,7 +1138,7 @@ normal:
                 << " with oldest: " << bpage->oldest_modification
                 << " newest: " << bpage->newest_modification
                 << " lsn-gap: " << bpage->newest_modification - bpage->oldest_modification;
-*/
+        */
         if (!srv_use_doublewrite_buf
             || buf_dblwr == NULL
             || srv_read_only_mode
@@ -1169,10 +1166,7 @@ normal:
             fil_io(request,
                     sync, bpage->id, bpage->size, 0, bpage->size.physical(),
                     frame, bpage); 
-
-            // jhpark: write oldest_modification_lsn of current NVDIMM-caching page
-            pm_mmap_write_logfile_header_lsn(bpage->oldest_modification);
-
+ 
         } else if (flush_type == BUF_FLUSH_SINGLE_PAGE) {
             buf_dblwr_write_single_page(bpage, sync);
         } else {
@@ -1311,7 +1305,8 @@ buf_flush_page(
 
 #ifdef UNIV_NVDIMM_CACHE
         if (bpage->flush_type == BUF_FLUSH_LIST /* Flush list flushing */
-            && (bpage->id.space() == 28 || bpage->id.space() == 30 || bpage->id.space() == 32) /* TPC-C tablespaces */
+            // (jhpark): modified for 500 wh loading version
+            && (bpage->id.space() == 27 || bpage->id.space() == 29 || bpage->id.space() == 31) /* TPC-C tablespaces */
             && bpage->buf_fix_count == 0 /* Not fixed */
             && !bpage->cached_in_nvdimm) { /* Not cached in NVDIMM */
                 bpage->moved_to_nvdimm = true;

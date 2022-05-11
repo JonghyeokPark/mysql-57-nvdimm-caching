@@ -1510,8 +1510,6 @@ innobase_start_or_create_for_mysql(void)
 		// buffer retion initialization (2GB)
 		pm_mmap_buf_init(1024*1024*1024*2UL);
 	}
-	
-	//pm_mmap_buf_init(1024*1024*1024*3UL);
 
 #endif /* UNIV_NVDIMM_CACHE */
 
@@ -2332,31 +2330,13 @@ files_checked:
 			return(srv_init_abort(DB_ERROR));
 		}
 
-#ifdef UNIV_NVDIMM_CACHE		
-		fprintf(stderr, "[JONGQ] ---- pass force recovery!\n"); 
-		
-// TODO(jhpark): NC recovery check !!!!!
-		if (is_pmem_recv)  {
-			PMEMMMAP_INFO_PRINT("YES!!!! recovery!!!! start_offset: %lu end_offset: %lu\n"
-				,pmem_recv_offset, pmem_recv_size);
-//			pm_mmap_recv(pmem_recv_offset, pmem_recv_size);
-//			PMEMMMAP_INFO_PRINT("UNDO page is recoverd !!!!\n");
-//			//pm_mmap_recv_flush_buffer();
-		}
-#endif /* UNIV_NVDIMM_CACHE */
 
 		purge_queue = trx_sys_init_at_db_start();
-
-		fprintf(stderr, "[JONGQ] ---- trx_sys_init_at_db_start finished!\n");
 
 		if (srv_force_recovery < SRV_FORCE_NO_LOG_REDO) {
 			/* Apply the hashed log records to the
 			respective file pages, for the last batch of
 			recv_group_scan_log_recs(). */
-
-#ifdef UNIV_NVDIMM_CACHE		
-			PMEMMMAP_INFO_PRINT("JONGQ recovery-4-1\n");
-#endif /* UNIV_NVDIMM_CACHE */
 
 			recv_apply_hashed_log_recs(TRUE);
 			DBUG_PRINT("ib_log", ("apply completed"));
@@ -2365,10 +2345,6 @@ files_checked:
 				trx_sys_print_mysql_binlog_offset();
 			}
 		}
-
-#ifdef UNIV_NVDIMM_CACHE		
-		 PMEMMMAP_INFO_PRINT("JONGQ recovery-5\n"); 
-#endif /* UNIV_NVDIMM_CACHE */
 
 		if (recv_sys->found_corrupt_log) {
 			ib::warn()
@@ -2579,9 +2555,6 @@ files_checked:
 	variable srv_available_undo_logs. The number of rsegs to use can
 	be set using the dynamic global variable srv_rollback_segments. */
 	
-	// debug
-	fprintf(stderr, "[JONGQ] initialize undo log lists\n");	
-
 	srv_available_undo_logs = trx_sys_create_rsegs(
 		srv_undo_tablespaces, srv_rollback_segments, srv_tmp_undo_logs);
 
