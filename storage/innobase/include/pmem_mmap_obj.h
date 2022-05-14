@@ -11,6 +11,8 @@
 #include <unistd.h>
 
 #include <pthread.h>
+#include <map>
+#include <vector>
 //#include "ut0new.h"
 //#include "log0log.h"
 
@@ -199,10 +201,17 @@ bool pm_mmap_recv(uint64_t start_offset, uint64_t end_offset);
 uint64_t pm_mmap_recv_check(PMEM_MMAP_MTRLOGFILE_HDR* log_fil_hdr);
 void pm_mmap_recv_flush_buffer();
 
+// add
+extern std::map<std::pair<uint64_t,uint64_t> , std::vector<uint64_t> > pmem_nc_buffer_map;
+uint64_t pm_mmap_recv_check_nc_buf(uint64_t space, uint64_t page_no);
+void nc_recv_analysis();
+
 // TODO(jhpark): covert these variables as structure (i.e., recv_sys_t)
 extern bool is_pmem_recv;
 extern uint64_t pmem_recv_offset;
 extern uint64_t pmem_recv_size;
+extern uint64_t pmem_lsn;
+void nc_save_pmem_lsn();
 
 /** Recovery system data structure */
 //struct recv_sys_t{

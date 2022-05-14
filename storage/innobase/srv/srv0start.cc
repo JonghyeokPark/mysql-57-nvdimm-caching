@@ -1493,7 +1493,7 @@ innobase_start_or_create_for_mysql(void)
 
 #ifdef UNIV_NVDIMM_CACHE
   sprintf(PMEM_FILE_PATH, "%s/%s", srv_nvdimm_home_dir, NVDIMM_MMAP_FILE_NAME);
-  size_t srv_pmem_pool_size = 3 * 1024;
+  size_t srv_pmem_pool_size = 8 * 1024;
   uint64_t pool_size = srv_pmem_pool_size * 1024 * 1024UL;
   gb_pm_mmap = pm_mmap_create(PMEM_FILE_PATH, pool_size);
   if (!gb_pm_mmap) {
@@ -1501,7 +1501,7 @@ innobase_start_or_create_for_mysql(void)
     assert(gb_pm_mmap);
   }
 
-	if (!is_pmem_recv) {
+	//if (!is_pmem_recv) {
 		// for debugging : chagne the mtr log region size
 		// original : 1024*1024*1024*8UL (8GB)
 		pm_mmap_mtrlogbuf_init(1024*1024*1024*1UL); // 1GB for test
@@ -1509,7 +1509,7 @@ innobase_start_or_create_for_mysql(void)
 		// TODO(jhpark): change buffer pool recovery policy
 		// buffer retion initialization (2GB)
 		pm_mmap_buf_init(1024*1024*1024*2UL);
-	}
+	//}
 
 #endif /* UNIV_NVDIMM_CACHE */
 
@@ -2298,6 +2298,18 @@ files_checked:
 		}
 
 		fprintf(stderr, "[JONGQ] ---- scan_and_parse log file finished\n");
+
+#ifdef UNIV_NVDIMM_CACHE
+    if (is_pmem_recv) {
+      nc_recv_analysis();
+    } else {
+      // HOT DEBUG
+     pmem_lsn = flushed_lsn;
+     nc_save_pmem_lsn();
+    }
+#endif
+
+
 
 		/* We always try to do a recovery, even if the database had
 		been shut down normally: this is the normal startup path */

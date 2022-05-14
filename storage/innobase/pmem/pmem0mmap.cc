@@ -18,12 +18,14 @@
 unsigned char* gb_pm_mmap;
 int gb_pm_mmap_fd;
 PMEM_MMAP_MTRLOG_BUF* mmap_mtrlogbuf = NULL;
+// HOT DEBUG
+uint64_t pmem_lsn;
 
 // recovery
 bool is_pmem_recv = false;
 uint64_t pmem_recv_offset = 0;
 uint64_t pmem_recv_size = 0;
-
+std::map<std::pair<uint64_t,uint64_t> ,std::vector<uint64_t> > pmem_nc_buffer_map;
 
 unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
   
@@ -47,7 +49,7 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
 
   } else {
     // TODO(jhaprk) add the recovery logic
-    PMEMMMAP_INFO_PRINT("Start mtr recvoery process\n");
+    PMEMMMAP_INFO_PRINT("Start NC recvoery process\n");
     gb_pm_mmap_fd = open(path, O_RDWR, 0777);
 
     if (gb_pm_mmap_fd < 0) {
@@ -59,8 +61,9 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
     if (gb_pm_mmap == MAP_FAILED) {
       PMEMMMAP_ERROR_PRINT("pm_mmap mmap() faild recovery failed\n");
     }
+
     // TODO(jhpark): fix
-    memcpy(gb_pm_mmap + (6*1024*1024*1024UL), gb_pm_mmap + (1*1024*1024*1024UL), (8UL*147324928));
+    //memcpy(gb_pm_mmap + (6*1024*1024*1024UL), gb_pm_mmap + (1*1024*1024*1024UL), (8UL*147324928));
     is_pmem_recv = true;
   }
 
