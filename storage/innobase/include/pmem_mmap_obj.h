@@ -13,6 +13,10 @@
 #include <pthread.h>
 #include <map>
 #include <vector>
+
+#include<sys/time.h>
+#include<time.h>
+
 //#include "ut0new.h"
 //#include "log0log.h"
 
@@ -203,6 +207,7 @@ void pm_mmap_recv_flush_buffer();
 
 // add
 extern std::map<std::pair<uint64_t,uint64_t> , std::vector<uint64_t> > pmem_nc_buffer_map;
+extern std::map<std::pair<uint64_t,uint64_t> , std::vector<uint64_t> > pmem_nc_page_map;
 uint64_t pm_mmap_recv_check_nc_buf(uint64_t space, uint64_t page_no);
 void nc_recv_analysis();
 
@@ -211,7 +216,10 @@ extern bool is_pmem_recv;
 extern uint64_t pmem_recv_offset;
 extern uint64_t pmem_recv_size;
 extern uint64_t pmem_lsn;
+extern uint64_t pmem_page_offset;
 void nc_save_pmem_lsn();
+void pmem_copy_page(unsigned char* frame);
+uint64_t pm_mmap_recv_check_nc_page(uint64_t space, uint64_t page_no);
 
 /** Recovery system data structure */
 //struct recv_sys_t{
@@ -227,5 +235,23 @@ void nc_save_pmem_lsn();
 //  byte*   buf;  /*!< buffer for parsing log records */
 //  ulint   len;  /*!< amount of data in buf */
 //};
+
+// time measurement 
+typedef unsigned long long ticks;
+
+static __inline__ ticks getticks(void)
+{
+     unsigned a, d;
+     asm("cpuid");
+     asm volatile("rdtsc" : "=a" (a), "=d" (d));
+
+     return (((ticks)a) | (((ticks)d) << 32));
+}
+
+extern ticks start_time;
+extern ticks end_time;
+extern unsigned recovery_time;
+#define CPU_MHZ	1199703
+
 
 #endif  /* __PMEMMAPOBJ_H__ */

@@ -109,6 +109,10 @@ Created 2/16/1996 Heikki Tuuri
 #include "pmem_mmap_obj.h" 
 extern unsigned char* gb_pm_mmap;
 char  PMEM_FILE_PATH [PMEM_MMAP_MAX_FILE_NAME_LENGTH];
+pfs_os_file_t gb_pm_dwb_file;
+ticks start_time=0;
+ticks end_time=0;
+unsigned recovery_time=0;
 #endif /* UNIV_NVDIMM_CACHE */
 
 #ifdef HAVE_LZO1X
@@ -1473,6 +1477,11 @@ innobase_start_or_create_for_mysql(void)
 	size_t		dirnamelen;
 	unsigned	i = 0;
 
+  // HOT_DEBUG RECOVERY
+#ifdef UNIV_NVDIMM_CACHE
+  start_time = getticks();
+#endif
+
 	/* Reset the start state. */
 	srv_start_state = SRV_START_STATE_NONE;
 
@@ -1493,7 +1502,7 @@ innobase_start_or_create_for_mysql(void)
 
 #ifdef UNIV_NVDIMM_CACHE
   sprintf(PMEM_FILE_PATH, "%s/%s", srv_nvdimm_home_dir, NVDIMM_MMAP_FILE_NAME);
-  size_t srv_pmem_pool_size = 8 * 1024;
+  size_t srv_pmem_pool_size = 12 * 1024;
   uint64_t pool_size = srv_pmem_pool_size * 1024 * 1024UL;
   gb_pm_mmap = pm_mmap_create(PMEM_FILE_PATH, pool_size);
   if (!gb_pm_mmap) {
@@ -2302,11 +2311,15 @@ files_checked:
 #ifdef UNIV_NVDIMM_CACHE
     if (is_pmem_recv) {
       nc_recv_analysis();
-    } else {
+    }
+    // (jhpark): ignore now
+    /*
+    else {
       // HOT DEBUG
      pmem_lsn = flushed_lsn;
      nc_save_pmem_lsn();
     }
+    */
 #endif
 
 

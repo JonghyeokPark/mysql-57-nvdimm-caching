@@ -1815,8 +1815,13 @@ log_checkpoint(
 	ut_ad(!recv_no_log_write);
   oldest_lsn = log_buf_pool_get_oldest_modification();
 
-  // HOT DEBUG
-  /*
+  // HOT DEBUG 2 //
+#ifdef UNIV_NVDIMM_CACHE
+  if (recovery_time == 0) {
+    end_time = getticks();
+    recovery_time = (unsigned)((end_time-start_time)/CPU_MHZ);
+    fprintf(stderr, "[INFO] !!! RECOVERY TIME !!! : %u msec\n", recovery_time);
+  }
   lsn_t nvdimm_lsn = nvdimm_buf_pool_get_oldest_modification();
   if (nvdimm_lsn !=0 
       && nvdimm_lsn < oldest_lsn) {
@@ -1825,7 +1830,7 @@ log_checkpoint(
       << " the gap: " << oldest_lsn - nvdimm_lsn;
     oldest_lsn = nvdimm_lsn;
   }
-  */
+#endif
  
 
 	/* Because log also contains headers and dummy log records,

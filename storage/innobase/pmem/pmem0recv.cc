@@ -196,10 +196,32 @@ uint64_t pm_mmap_recv_check_nc_buf(uint64_t space, uint64_t page_no) {
       unsigned char *nc_frame = reinterpret_cast<buf_block_t*>
         ((gb_pm_mmap + (1*1024*1024*1024UL) + nc_offset))->frame;
 
-      fprintf(stderr, "[DEBUG] NC BUF (%lu:%lu) offset: %lu page_lsn: %lu i: %lu vec:size: %d\n",
-          space, page_no, nc_offset
-          , mach_read_from_8(nc_frame + FIL_PAGE_LSN)
-          , i, nc_offset_vec.size());
+        if (space != mach_read_from_4(nc_frame + FIL_PAGE_SPACE_ID)
+          || page_no != mach_read_from_4(nc_frame + FIL_PAGE_OFFSET)) {
+        fprintf(stderr, "[DEBUG] wrong buffer page info! %u:%u\n", space, page_no);
+      }
+    }
+    return nc_offset;
+  } else {
+    return -1;
+  }
+}
+
+uint64_t pm_mmap_recv_check_nc_page(uint64_t space, uint64_t page_no) {
+  std::map<std::pair<uint64_t,uint64_t>, std::vector<uint64_t> >::iterator ncbuf_iter;
+  ncbuf_iter = pmem_nc_page_map.find(std::make_pair(space,page_no));
+  if (ncbuf_iter != pmem_nc_buffer_map.end()) {
+    std::vector<uint64_t> nc_offset_vec = (*ncbuf_iter).second;
+    uint64_t nc_offset;
+    for (uint64_t i=0; i<nc_offset_vec.size(); i++) {
+      nc_offset = nc_offset_vec[i];
+      unsigned char *nc_frame = ((gb_pm_mmap + (10*1024*1024*1024UL) + nc_offset));
+
+//      fprintf(stderr, "[DEBUG] NC BUF (%lu:%lu) offset: %lu page_lsn: %lu i: %lu vec:size: %d\n",
+//          space, page_no, nc_offset
+//          , mach_read_from_8(nc_frame + FIL_PAGE_LSN)
+//          , i, nc_offset_vec.size());
+
       if (space != mach_read_from_4(nc_frame + FIL_PAGE_SPACE_ID)
           || page_no != mach_read_from_4(nc_frame + FIL_PAGE_OFFSET)) {
         fprintf(stderr, "[DEBUG] wrong buffer page info! %u:%u\n", space, page_no);
@@ -210,14 +232,14 @@ uint64_t pm_mmap_recv_check_nc_buf(uint64_t space, uint64_t page_no) {
     return -1;
   }
 }
+
+
 /* nc logging */
 
 void nc_recv_analysis() {
  uint64_t space, page_no;
  unsigned char *addr = gb_pm_mmap + (1*1024*1024*1024UL);
  uint64_t page_num_chunks = static_cast<uint64_t>( (8*147324928UL)/4096);
-
- fprintf(stderr, "[DEBUG] NVDIMM Caching page analysis begin! total pages v2: %lu\n", page_num_chunks);
 
  for (uint64_t i=0; i < page_num_chunks; ++i) {
  //for (uint64_t i=0; i < srv_nvdimm_buf_pool_size; i+= UNIV_PAGE_SIZE) {
@@ -232,7 +254,6 @@ void nc_recv_analysis() {
   //unsigned char *frame = (unsigned char*)(addr+ i);
 
   if (space != 27 && space != 29 && space != 31) {
-    fprintf(stderr, "[DEBUG] we miss the pages %lu:%lu\n", space, page_no);
     if (space == 4294967295
          && page_no == 4294967295) {
       continue;
@@ -240,16 +261,20 @@ void nc_recv_analysis() {
       break;
     }
   } else {
-    fprintf(stderr, "[DEBUG] we get this page %lu:%lu\n", space, page_no);
+#ifdef UNIV_DEBUG
+    ib::info() << "obtaine NC page: " << space << ":" << page_no;
+    // check
+    if (space != mach_read_from_4(frame + FIL_PAGE_SPACE_ID)
+      || page_no != mach_read_from_4(frame + FIL_PAGE_OFFSET)) {
+      ib::info() << " wrong NC page frame info expected: " 
+        << space << ":" << page_no
+        << " current value: " << mach_read_from_4(frame + FIL_PAGE_SPACE_ID)
+        << ":" << mach_read_from_4(frame + FIL_PAGE_OFFSET);
+    }
+#endif
   }
 
-  // check
-  if (space != mach_read_from_4(frame + FIL_PAGE_SPACE_ID)
-      || page_no != mach_read_from_4(frame + FIL_PAGE_OFFSET)) {
-    fprintf(stderr, "[DEBUG] wrong frame info!\n (%lu:%lu) (%lu:%lu)", space, page_no
-        , mach_read_from_4(frame + FIL_PAGE_SPACE_ID)
-        , mach_read_from_4(frame + FIL_PAGE_OFFSET));
-  }
+
 
 #ifdef PMEM_RECV_DEBUG
   fil_space_t* space_t = fil_space_get(space);
@@ -265,8 +290,44 @@ void nc_recv_analysis() {
 
   // we store relative position of nc page
   pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*sizeof(buf_block_t));
-
  }
+
+ // nc_page_map 
+ unsigned char *page_addr = gb_pm_mmap + (10*1024*1024*1024UL);
+ for (uint64_t i=0; i < page_num_chunks; ++i) { 
+
+  space = mach_read_from_4(
+      page_addr + (i*4096UL) + FIL_PAGE_SPACE_ID);
+  page_no = mach_read_from_4(
+      page_addr + (i*4096UL) + FIL_PAGE_OFFSET);
+
+  if (space != 27 && space != 29 && space != 31) {
+    fprintf(stderr, "[DEBUG] we miss the pages %lu:%lu\n", space, page_no);
+    if (space == 4294967295
+         && page_no == 4294967295) {
+      continue;
+    } else {
+      break;
+    }
+  } else {
+  
+#ifdef UNIV_DEBUG
+    ib::info() << "obtaine NC page in buffer: " << space << ":" << page_no;
+    // check
+    if (space != mach_read_from_4(frame + FIL_PAGE_SPACE_ID)
+      || page_no != mach_read_from_4(frame + FIL_PAGE_OFFSET)) {
+      ib::info() << " wrong NC page frame info expected: " 
+        << space << ":" << page_no
+        << " current value: " << mach_read_from_4(frame + FIL_PAGE_SPACE_ID)
+        << ":" << mach_read_from_4(frame + FIL_PAGE_OFFSET);
+    }
+#endif
+
+  }
+  pmem_nc_page_map[std::make_pair(space,page_no)].push_back(i*4096UL);
+ }
+
+ // 
 }
 
 void nc_save_pmem_lsn() {

@@ -6399,7 +6399,7 @@ corrupt:
 Asserts that all file pages in the buffer are in a replaceable state.
 @return TRUE */
 static
-ibool
+          ibool
 buf_all_freed_instance(
 /*===================*/
 	buf_pool_t*	buf_pool)	/*!< in: buffer pool instancce */

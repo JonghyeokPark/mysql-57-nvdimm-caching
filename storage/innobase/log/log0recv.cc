@@ -2453,14 +2453,17 @@ recv_recover_page_func(
         nc_corrupt_flag = true;
       }
 
-      fprintf(stderr, "[DEBUG] offset: %lu current page is NC page and LSN : %lu disk lsn: %lu page_lsn: %lu corupted? %d recv_start_lsn :%lu\n"
-          , cur_nc_buf_offset, cur_nc_page_lsn, cur_disk_page_lsn, page_lsn, nc_corrupt_flag
-          , recv->start_lsn);
+#ifdef UNIV_DEBUG
+      ib::info << "(recovery) offset: "
+        << cur_nc_buf_offset
+        << " current page is NC page and LSN: "
+        << cur_nc_page_lsn
+        << " disk lsn : " << cur_disk_page_lsn
+        << " corrupted? : " << nc_corrupt_flag;
+#endif
 
       // recover from NC buffer
       if (!nc_corrupt_flag || cur_disk_page_lsn == 0) {
-        // check
-        fprintf(stderr, "[DEBUG] we skip this page: %lu:%lu\n", block->page.id.space(), block->page.id.page_no());
         memcpy(block->frame, nc_frame, UNIV_PAGE_SIZE);
         page_lsn = cur_nc_page_lsn;
         end_lsn = recv->start_lsn + recv->len;
@@ -2469,6 +2472,20 @@ recv_recover_page_func(
           - FIL_PAGE_END_LSN_OLD_CHKSUM
           + (block->frame), end_lsn);
         goto skip_redo;
+      } else {
+        uint64_t cur_nc_page_offset = pm_mmap_recv_check_nc_buf(
+               block->page.id.space(), block->page.id.page_no());
+        if (cur_nc_page_offset != -1) {
+
+        memcpy(block->frame, nc_frame, UNIV_PAGE_SIZE);
+        page_lsn = cur_nc_page_lsn;
+        end_lsn = recv->start_lsn + recv->len;
+        mach_write_to_8(FIL_PAGE_LSN + (block->frame), end_lsn);
+        mach_write_to_8(UNIV_PAGE_SIZE
+          - FIL_PAGE_END_LSN_OLD_CHKSUM
+          + (block->frame), end_lsn);
+        goto skip_redo;        
+        } 
       }
 
     } // end-of-if 
@@ -3780,7 +3797,7 @@ recv_scan_log_recs(
 				= log_block_get_checkpoint_no(log_block);
 		}
 
-		if (data_len < OS_FILE_LOG_BLOCK_SIZE) {
+		if (data_len < OS_FILE_LOG_BLOCK_SIZE){
 			/* Log data for this group ends here */
 			finished = true;
 			break;
@@ -4134,7 +4151,7 @@ recv_recovery_from_checkpoint_start(
 #ifdef UNIV_NVDIMM_CACHE
   ib::info() << "Reocvery start from this checkpoint_lsn: " << checkpoint_lsn;
   // HOT DEBUG
-  /*
+ /* 
   extern unsigned char* gb_pm_mmap;
   if (is_pmem_recv) {
     uint64_t cur_pmem_lsn = 0;
@@ -4142,7 +4159,7 @@ recv_recovery_from_checkpoint_start(
     checkpoint_lsn = cur_pmem_lsn;
     ib::info() << "Reocvery start from this checkpoint_lsn (recv): " << checkpoint_lsn;
   }
-  */
+ */
 #endif
  
 	/* Read the first log file header to print a note if this is
@@ -4203,13 +4220,13 @@ recv_recovery_from_checkpoint_start(
   // HOT DEBUG
 #ifdef UNIV_NVDIMM_CACHE
   if (is_pmem_recv) {
-  /*
+/*
   extern unsigned char* gb_pm_mmap;
   uint64_t cur_pmem_lsn = 0;
   memcpy(&cur_pmem_lsn, gb_pm_mmap+6*1024*1024*1024UL ,sizeof(uint64_t));
   contiguous_lsn = cur_pmem_lsn;
   ib::info() << "log chopping we use this lsn for congiguous_lns : " << contiguous_lsn;
-  */
+*/  
     contiguous_lsn = checkpoint_lsn;
   } else {
     contiguous_lsn = checkpoint_lsn;
@@ -4242,6 +4259,9 @@ recv_recovery_from_checkpoint_start(
 	}
 
 	if (recv_sys->mlog_checkpoint_lsn == 0) {
+#ifdef UNIV_NVDIMM_CACHE
+    goto skip_2;
+#endif
 		if (!srv_read_only_mode
 		    && group->scanned_lsn != checkpoint_lsn) {
 			ib::error() << "Ignoring the redo log due to missing"

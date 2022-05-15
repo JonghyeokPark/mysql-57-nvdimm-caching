@@ -20,15 +20,21 @@ int gb_pm_mmap_fd;
 PMEM_MMAP_MTRLOG_BUF* mmap_mtrlogbuf = NULL;
 // HOT DEBUG
 uint64_t pmem_lsn;
+uint64_t pmem_page_offset;
 
 // recovery
 bool is_pmem_recv = false;
 uint64_t pmem_recv_offset = 0;
 uint64_t pmem_recv_size = 0;
 std::map<std::pair<uint64_t,uint64_t> ,std::vector<uint64_t> > pmem_nc_buffer_map;
+std::map<std::pair<uint64_t,uint64_t> , std::vector<uint64_t> > pmem_nc_page_map;
 
 unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
-  
+ 
+  if (srv_use_nvdimm_dwb) {
+    ib::info() << "INODB DWB ON!";
+  }
+
   if (access(path, F_OK) != 0) {
     gb_pm_mmap_fd = open(path, O_RDWR | O_CREAT, 0777); 
     if (gb_pm_mmap_fd < 0) {
@@ -355,3 +361,12 @@ ssize_t pm_mmap_mtrlogbuf_write(
   return ret;
 }
 
+
+// HOT DEBUG //
+void pmem_copy_page(unsigned char* frame) {
+  // key = page_id
+  // value = page frame
+  memcpy(gb_pm_mmap + 10*1024*1024*1024UL + pmem_page_offset, frame, UNIV_PAGE_SIZE);
+  pmem_page_offset += UNIV_PAGE_SIZE;
+  flush_cache(gb_pm_mmap + 10*1024*1024*1024UL + pmem_page_offset, UNIV_PAGE_SIZE);
+}

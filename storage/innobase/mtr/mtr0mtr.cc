@@ -675,7 +675,7 @@ mtr_t::commit_checkpoint(
 
     // HOT DEBUG
     // (jhpark): we need to leave the current NC pages
-    ib::info() << "checkpoint_lsn: " << checkpoint_lsn;
+    //ib::info() << "checkpoint_lsn: " << checkpoint_lsn;
 		mach_write_to_8(ptr + 1, checkpoint_lsn);
 	}
 
