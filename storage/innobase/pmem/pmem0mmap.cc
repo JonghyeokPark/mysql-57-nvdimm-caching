@@ -28,12 +28,23 @@ uint64_t pmem_recv_offset = 0;
 uint64_t pmem_recv_size = 0;
 std::map<std::pair<uint64_t,uint64_t> ,std::vector<uint64_t> > pmem_nc_buffer_map;
 std::map<std::pair<uint64_t,uint64_t> , std::vector<uint64_t> > pmem_nc_page_map;
+std::map<std::pair<uint64_t,uint64_t> , uint64_t > pmem_nc_page_offset_map;
+std::queue<uint64_t> pmem_nc_page_offset_list;
 
 unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
  
+#ifdef UNIV_NVDIMM_CACHE
   if (srv_use_nvdimm_dwb) {
     ib::info() << "INODB DWB ON!";
   }
+#endif
+
+  // (jhpark): initialize the pmem_page_offset_list here
+  // TODO(xxx): use server variable
+  for (int i=0; i< (1024*1024*1024/4096); i++) {
+    pmem_nc_page_offset_list.push(i*4096);
+  }
+  //
 
   if (access(path, F_OK) != 0) {
     gb_pm_mmap_fd = open(path, O_RDWR | O_CREAT, 0777); 
@@ -363,10 +374,28 @@ ssize_t pm_mmap_mtrlogbuf_write(
 
 
 // HOT DEBUG //
-void pmem_copy_page(unsigned char* frame) {
-  // key = page_id
-  // value = page frame
+void pmem_copy_page(unsigned char* frame, uint64_t space, uint64_t page_no) {
+  pthread_mutex_lock(&mmap_mtrlogbuf->mtrMutex);
+  uint64_t pmem_page_offset = pmem_nc_page_offset_list.front();
+  pmem_nc_page_offset_map[std::make_pair(space, page_no)] = pmem_page_offset;
+  pmem_nc_page_offset_list.pop();
+  pthread_mutex_unlock(&mmap_mtrlogbuf->mtrMutex);
+
   memcpy(gb_pm_mmap + 10*1024*1024*1024UL + pmem_page_offset, frame, UNIV_PAGE_SIZE);
-  pmem_page_offset += UNIV_PAGE_SIZE;
   flush_cache(gb_pm_mmap + 10*1024*1024*1024UL + pmem_page_offset, UNIV_PAGE_SIZE);
+}
+
+void pmem_evict_page(uint64_t space, uint64_t page_no) {
+
+  uint64_t offset = -1;
+  std::map<std::pair<uint64_t,uint64_t>,uint64_t>::iterator iter;
+  pthread_mutex_lock(&mmap_mtrlogbuf->mtrMutex);
+  iter = pmem_nc_page_offset_map.find(std::make_pair(space, page_no));
+  if (iter != pmem_nc_page_offset_map.end()) {
+    offset = iter->second;
+  } else {
+    ib::error() << "error : " << space << ":" << page_no;
+  }
+  pmem_nc_page_offset_list.push(offset);
+  pthread_mutex_unlock(&mmap_mtrlogbuf->mtrMutex);
 }

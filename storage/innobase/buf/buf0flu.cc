@@ -1120,7 +1120,7 @@ buf_flush_write_block_low(
             , bpage->newest_modification
             , nvdimm_page->flush_observer);
       
-       pmem_copy_page(((buf_block_t *)bpage)->frame);
+       pmem_copy_page(((buf_block_t *)bpage)->frame, bpage->id.space(), bpage->id.page_no());
 
 //        ib::info() << "oldest_modification: " 
 //          << nvdimm_page->oldest_modification
@@ -1168,6 +1168,10 @@ normal:
             ulint	type = IORequest::WRITE | IORequest::DO_NOT_WAKE;
 
             IORequest	request(type);
+
+            if (bpage->cached_in_nvdimm) {
+              pmem_evict_page(bpage->id.space(), bpage->id.page_no());
+            }
 
             /*
             lsn_t lsn_gap = bpage->newest_modification - bpage->oldest_modification;

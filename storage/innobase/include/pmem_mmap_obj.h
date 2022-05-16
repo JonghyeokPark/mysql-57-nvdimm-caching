@@ -13,6 +13,7 @@
 #include <pthread.h>
 #include <map>
 #include <vector>
+#include <queue>
 
 #include<sys/time.h>
 #include<time.h>
@@ -218,23 +219,14 @@ extern uint64_t pmem_recv_size;
 extern uint64_t pmem_lsn;
 extern uint64_t pmem_page_offset;
 void nc_save_pmem_lsn();
-void pmem_copy_page(unsigned char* frame);
+void pmem_copy_page(unsigned char* frame, uint64_t space, uint64_t page_no);
+void pmem_evict_page(uint64_t space, uint64_t page_no);
 uint64_t pm_mmap_recv_check_nc_page(uint64_t space, uint64_t page_no);
 
-/** Recovery system data structure */
-//struct recv_sys_t{
-//  ib_mutex_t    mutex;
-	/*!< mutex protecting the fields apply_log_recs,
-	n_addrs, and the state field in each recv_addr struct */
-//  ib_mutex_t    writer_mutex; 
-	/*!< mutex coordinating 
-	flushing between recv_writer_thread and the recovery thread. */
-//  ibool   apply_log_recs;
-	/*!< this is TRUE when log rec application to pages is allowed; this flag tells the
-  i/o-handler if it should do log record application */
-//  byte*   buf;  /*!< buffer for parsing log records */
-//  ulint   len;  /*!< amount of data in buf */
-//};
+// page map offset list
+// (key : page_id (space, page_no & value : offset in page offset
+extern std::map<std::pair<uint64_t,uint64_t> , uint64_t > pmem_nc_page_offset_map;
+extern std::queue<uint64_t> pmem_nc_page_offset_list;
 
 // time measurement 
 typedef unsigned long long ticks;
