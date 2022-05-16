@@ -1,7 +1,0 @@
-log/log0log.cc <unknown> 1567 	log_sys->last_checkpoint_lsn = log_sys->next_checkpoint_lsn;
-log/log0log.cc <unknown> 1619 			      log_sys->next_checkpoint_lsn,
-log/log0log.cc <unknown> 1626 	mach_write_to_8(buf + LOG_CHECKPOINT_LSN, log_sys->next_checkpoint_lsn);
-log/log0log.cc <unknown> 1628 	lsn_offset = log_group_calc_lsn_offset(log_sys->next_checkpoint_lsn,
-log/log0log.cc <unknown> 1899 	log_sys->next_checkpoint_lsn = oldest_lsn;
-log/log0recv.cc <unknown> 1271 	log_sys->last_checkpoint_lsn = log_sys->next_checkpoint_lsn
-log/log0recv.cc <unknown> 4320 	log_sys->next_checkpoint_lsn = checkpoint_lsn;
