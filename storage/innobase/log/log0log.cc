@@ -414,6 +414,10 @@ log_write_low(
 	ulint	data_len;
 	byte*	log_block;
 
+#ifdef UNIV_NVDIMM_CACHE
+  ulint org_len = str_len;
+#endif
+
 	ut_ad(log_mutex_own());
 part_loop:
 	ut_ad(!recv_no_log_write);
@@ -439,7 +443,7 @@ part_loop:
 #else
 	ut_memcpy(log->buf + log->buf_free, str, len);
 #endif
-
+ 
 	str_len -= len;
 	str = str + len;
 
@@ -471,7 +475,26 @@ part_loop:
 	if (str_len > 0) {
 		goto part_loop;
 	}
+/*
+#ifdef UNIV_NVDIMM_CACHE
+  byte *body;
+  uint64_t space, page_no, cur_len=0;
+  mlog_id_t type;
+  bool single_rec;
 
+  if (*str == MLOG_DUMMY_RECORD) {
+    single_rec = true; 
+  }
+
+  cur_len = recv_parse_log_rec(&type, (byte*)(str)
+      , (byte*)(str+org_len)
+      , &space, &page_no, false, &body);
+//  if (space == 27 || space == 29 || space == 31) {
+    fprintf(stderr, "[DEBUG] %lu:%lu type: %d len: %lu cur_len :%lu single_rec: %d str_len: %lu\n"
+      , space, page_no, type, len, cur_len, single_rec, org_len);
+//  }
+#endif
+*/
 	srv_stats.log_write_requests.inc();
 }
 
@@ -1817,11 +1840,13 @@ log_checkpoint(
 
   // HOT DEBUG 2 //
 #ifdef UNIV_NVDIMM_CACHE
+  
   if (recovery_time == 0) {
     end_time = getticks();
     recovery_time = (unsigned)((end_time-start_time)/CPU_MHZ);
     fprintf(stderr, "[INFO] !!! RECOVERY TIME !!! : %u msec\n", recovery_time);
   }
+  
   lsn_t nvdimm_lsn = nvdimm_buf_pool_get_oldest_modification();
   if (nvdimm_lsn !=0 
       && nvdimm_lsn < oldest_lsn) {
@@ -1830,6 +1855,7 @@ log_checkpoint(
       << " the gap: " << oldest_lsn - nvdimm_lsn;
     oldest_lsn = nvdimm_lsn;
   }
+  
 #endif
  
 

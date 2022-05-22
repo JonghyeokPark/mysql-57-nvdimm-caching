@@ -3033,7 +3033,8 @@ skip_this_recv_addr:
 @param[in]	apply		whether to apply MLOG_FILE_* records
 @param[out]	body		start of log record body
 @return length of the record, or 0 if the record was not complete */
-static
+// tIPL
+//static
 ulint
 recv_parse_log_rec(
 	mlog_id_t*	type,
@@ -3194,14 +3195,14 @@ recv_report_corrupt_log(
 }
 
 /** Whether to store redo log records to the hash table */
-enum store_t {
-	/** Do not store redo log records. */
-	STORE_NO,
-	/** Store redo log records. */
-	STORE_YES,
-	/** Store redo log records if the tablespace exists. */
-	STORE_IF_EXISTS
-};
+//enum store_t {
+//	/** Do not store redo log records. */
+//	STORE_NO,
+//	/** Store redo log records. */
+//	STORE_YES,
+//	/** Store redo log records if the tablespace exists. */
+//	STORE_IF_EXISTS
+//};
 
 /** Parse log records from a buffer and optionally store them to a
 hash table to wait merging to file pages.
@@ -3209,7 +3210,8 @@ hash table to wait merging to file pages.
 @param[in]	store		whether to store page operations
 @return whether MLOG_CHECKPOINT record was seen the first time,
 or corruption was noticed */
-static MY_ATTRIBUTE((warn_unused_result))
+//static MY_ATTRIBUTE((warn_unused_result))
+MY_ATTRIBUTE((warn_unused_result))
 bool
 recv_parse_log_recs(
 	lsn_t		checkpoint_lsn,

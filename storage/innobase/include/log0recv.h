@@ -37,6 +37,10 @@ Created 9/20/1997 Heikki Tuuri
 #include <list>
 #include <vector>
 
+#ifdef UNIV_NVDIMM_CACHE
+#include "nc_recv.h"
+#endif
+
 #ifdef UNIV_HOTBACKUP
 extern bool	recv_replay_file_ops;
 
@@ -416,5 +420,29 @@ extern ulint	recv_n_pool_free_frames;
 #ifndef UNIV_NONINL
 #include "log0recv.ic"
 #endif
+
+// tIPL
+enum store_t {
+  /** Do not store redo log records. */
+  STORE_NO,
+  /** Store redo log records. */
+  STORE_YES,
+  /** Store redo log records if the tablespace exists. */
+  STORE_IF_EXISTS
+};
+
+
+bool recv_parse_log_recs(
+    lsn_t   checkpoint_lsn, 
+    store_t   store);
+
+ulint recv_parse_log_rec(
+    mlog_id_t*  type,
+    byte*   ptr,
+    byte*   end_ptr,
+    ulint*    space,
+    ulint*    page_no,
+    bool    apply,
+    byte**    body);
 
 #endif

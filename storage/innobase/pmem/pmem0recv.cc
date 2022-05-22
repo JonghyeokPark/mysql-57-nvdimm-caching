@@ -241,6 +241,9 @@ void nc_recv_analysis() {
  unsigned char *addr = gb_pm_mmap + (1*1024*1024*1024UL);
  uint64_t page_num_chunks = static_cast<uint64_t>( (8*147324928UL)/4096);
 
+ // statisitics
+ uint64_t safe_num=0, corrupt_num=0;
+
  for (uint64_t i=0; i < page_num_chunks; ++i) {
  //for (uint64_t i=0; i < srv_nvdimm_buf_pool_size; i+= UNIV_PAGE_SIZE) {
 
@@ -275,21 +278,23 @@ void nc_recv_analysis() {
   }
 
 
-
-#ifdef PMEM_RECV_DEBUG
+//#ifdef PMEM_RECV_DEBUG
   fil_space_t* space_t = fil_space_get(space);
   const page_id_t page_id(space,page_no);
   const page_size_t page_size(space_t->flags);
   if (buf_page_is_corrupted(true, frame, page_size,
         fsp_is_checksum_disabled(space))) {
+    corrupt_num++;
     fprintf(stderr, "(%lu:%lu) page is corruptted! lsn: %lu\n", space, page_no, mach_read_from_8(frame + FIL_PAGE_LSN));
   } else {
+    safe_num++;
     fprintf(stderr, "(%lu:%lu) page is good! lsn: %lu\n", space, page_no, mach_read_from_8(frame + FIL_PAGE_LSN));
   }
-#endif
+//#endif
 
   // we store relative position of nc page
   pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*sizeof(buf_block_t));
+  ib::info() << "safe_num: " << safe_num << " courrpt_num: " << corrupt_num << " total: " << (safe_num+corrupt_num);
  }
 
  // nc_page_map 
@@ -335,4 +340,43 @@ void nc_save_pmem_lsn() {
   memcpy((gb_pm_mmap + 6*1024*1024*1024UL), &pmem_lsn, sizeof(uint64_t));
   flush_cache((gb_pm_mmap + 6*1024*1024*1024UL), sizeof(uint64_t));
 }
+
+// tIPL
+void nc_recv_sys_create() {
+
+  if (nc_recv_sys != NULL) {
+    return;
+  }
+
+  nc_recv_sys = static_cast<nc_recv_sys_t*>(ut_zalloc_nokey(sizeof(*nc_recv_sys)));
+
+  mutex_create(LATCH_ID_RECV_SYS, &nc_recv_sys->mutex);
+  mutex_create(LATCH_ID_RECV_WRITER, &nc_recv_sys->writer_mutex);
+
+  nc_recv_sys->heap = NULL;
+  nc_recv_sys->addr_hash = NULL;
+}
+
+void nc_recv_sys_init(uint64_t available_memory) {
+  if (nc_recv_sys->heap != NULL) {
+    return;
+  }
+
+  mutex_enter(&(nc_recv_sys->mutex));
+  nc_recv_sys->heap = mem_heap_create_typed(256,
+          MEM_HEAP_FOR_RECV_SYS);
+
+
+  nc_recv_sys->buf = static_cast<byte*>(
+    ut_malloc_nokey(RECV_PARSING_BUF_SIZE));
+  nc_recv_sys->addr_hash = hash_create(available_memory / 512);
+  nc_recv_sys->n_addrs = 0;
+  nc_recv_sys->len = 0;
+  nc_recv_sys->recovered_offset = 0;
+
+	nc_recv_sys->scanned_lsn = 0;
+	nc_recv_sys->recovered_lsn = 0;
+	nc_recv_sys->checkpoint_lsn = 0;
+}
+
 

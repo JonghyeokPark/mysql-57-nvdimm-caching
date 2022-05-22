@@ -14,6 +14,9 @@
 #include "mtr0log.h"
 #include "trx0undo.h"
 
+#include "nc_recv.h"
+nc_recv_sys_t* nc_recv_sys = NULL;
+
 // gloabl persistent memmory region
 unsigned char* gb_pm_mmap;
 int gb_pm_mmap_fd;

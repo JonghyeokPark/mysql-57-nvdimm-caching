@@ -1477,7 +1477,7 @@ innobase_start_or_create_for_mysql(void)
 	size_t		dirnamelen;
 	unsigned	i = 0;
 
-  // HOT_DEBUG RECOVERY
+  // HOT DEBUG RECOVERY
 #ifdef UNIV_NVDIMM_CACHE
   start_time = getticks();
 #endif
