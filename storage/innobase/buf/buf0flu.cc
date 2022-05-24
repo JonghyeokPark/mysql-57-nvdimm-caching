@@ -1101,37 +1101,52 @@ buf_flush_write_block_low(
         
         if (nvdimm_page == NULL)    goto normal;
         
-       /* 
-           ib::info() << "page_id = " << bpage->id.space()
-            << " offset = " << bpage->id.page_no() 
-            << " dst = " << &(((buf_block_t *)nvdimm_page)->frame) << " src = " << &(((buf_block_t *)bpage)->frame)
-            << " flush-type = " << bpage->flush_type;
-       */
-
         memcpy(((buf_block_t *)nvdimm_page)->frame, ((buf_block_t *)bpage)->frame, UNIV_PAGE_SIZE);
 
         /* Set the oldest LSN of the NVDIMM page to the previous newest LSN. */
 
-//        nvdimm_page->oldest_modification = bpage->oldest_modification;
-//        nvdimm_page->newest_modification = bpage->newest_modification;
+        //nvdimm_page->oldest_modification = bpage->oldest_modification;
+        //nvdimm_page->newest_modification = bpage->newest_modification;
+        
+        // HOT DEBUG
+        
+        unsigned long n_flushed=0;
+        lsn_t nvdimm_lsn = nvdimm_buf_pool_get_oldest_modification();
+        buf_pool_t* buf_pool = &nvdimm_buf_pool_ptr[0];
+        if (log_sys->lsn - nvdimm_lsn >= 100000000) {
+          buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
+          //ib::info() << "n_flushed:" << n_flushed;
+        }
+        
 
         buf_flush_note_modification((buf_block_t *)nvdimm_page
             , bpage->oldest_modification
             , bpage->newest_modification
             , nvdimm_page->flush_observer);
-      
-       pmem_copy_page(((buf_block_t *)bpage)->frame, bpage->id.space(), bpage->id.page_no());
-
+        
+//       pmem_copy_page(((buf_block_t *)bpage)->frame, bpage->id.space(), bpage->id.page_no());
 //        ib::info() << "oldest_modification: " 
 //          << nvdimm_page->oldest_modification
 //          << nvdimm_page->id.space() << ":" << nvdimm_page->id.page_no();
 
         flush_cache(((buf_block_t *)nvdimm_page)->frame, UNIV_PAGE_SIZE);
-        
-        /* Remove the target page from the original buffer pool. */
-        buf_page_io_complete(bpage, true);
-        buf_page_io_complete(nvdimm_page);
        
+        /* Remove the target page from the original buffer pool. */
+//        buf_page_io_complete(bpage, true);
+//        buf_page_io_complete(nvdimm_page);
+ 
+
+     
+      ulint	type = IORequest::WRITE | IORequest::DO_NOT_WAKE;
+	    IORequest	request(type);
+		  fil_io(request,
+		       false, bpage->id, bpage->size, 0, bpage->size.physical(),
+		       frame, bpage);
+     
+   
+    //buf_page_io_complete(bpage, true);
+    buf_page_io_complete(nvdimm_page);
+
         /* 
         buf_pool_t*	buf_pool = buf_pool_from_bpage(nvdimm_page);
         ib::info() << nvdimm_page->id.space() << " "
@@ -1144,7 +1159,6 @@ buf_flush_write_block_low(
     } else {
 normal:
         bpage->moved_to_nvdimm = false;
-
         /*
            ib::info() << bpage->id.space() << " " << bpage->id.page_no()
                 << " is batch written. cached? " << bpage->cached_in_nvdimm
@@ -1168,12 +1182,13 @@ normal:
             ulint	type = IORequest::WRITE | IORequest::DO_NOT_WAKE;
 
             IORequest	request(type);
-
+/*
             if (bpage->cached_in_nvdimm) {
               pmem_evict_page(bpage->id.space(), bpage->id.page_no());
             }
+*/
 
-            /*
+/*            
             lsn_t lsn_gap = bpage->newest_modification - bpage->oldest_modification;
             if (bpage->cached_in_nvdimm) {
               ib::info() << bpage->id.space() << " " << bpage->id.page_no()
@@ -1185,7 +1200,7 @@ normal:
               << " newest: " << bpage->newest_modification
               << " lsn-gap: " << lsn_gap;
             }
-            */
+*/           
             
             fil_io(request,
                     sync, bpage->id, bpage->size, 0, bpage->size.physical(),
@@ -4111,7 +4126,8 @@ buf_flush_do_nvdimm_batch(
 	}
 
 	if (!buf_flush_start(buf_pool, type)) {
-        ib::info() << "fail.." << buf_pool->n_flush[BUF_FLUSH_LRU] << " " << buf_pool->init_flush[BUF_FLUSH_LRU] << " in " << buf_pool->instance_no; 
+    // HOT DEBUG
+    //    ib::info() << "fail.." << buf_pool->n_flush[BUF_FLUSH_LRU] << " " << buf_pool->init_flush[BUF_FLUSH_LRU] << " in " << buf_pool->instance_no; 
 		return(false);
 	}
     
@@ -4203,7 +4219,9 @@ DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
     buf_nvdimm_page_cleaner_is_active = true;
 
     ulint n_flushed = 0;
+    // HOT DEBUG FLU
     ulint next_loop_time = ut_time_ms() + 1000;
+
     ulint last_activity = srv_get_activity_count();
 
     os_event_wait(buf_flush_nvdimm_event);

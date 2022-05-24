@@ -2446,12 +2446,28 @@ recv_recover_page_func(
       cur_nc_page_lsn = mach_read_from_8(nc_frame+FIL_PAGE_LSN);
 
       // check nc buffer page corruption or not
+      /*
       if (buf_page_is_corrupted(true
             , nc_frame
             , block->page.size
             , fsp_is_checksum_disabled(block->page.id.space()))) {
         nc_corrupt_flag = true;
       }
+      */
+
+      // HOT DEBUG
+      buf_page_t *check_page = &(reinterpret_cast<buf_block_t*>(
+           ((gb_pm_mmap + (1*1024*1024*1024UL) + cur_nc_buf_offset)))->page);
+      enum buf_io_fix check_io_fix;
+      check_io_fix = check_page->io_fix;
+      if (check_io_fix == BUF_IO_WRITE) {
+        ib::info() << "current page is corrupted! " 
+          << check_page->id.space() << ":" << check_page->id.page_no();
+      } else {
+        ib::info() << "current page is safe! " 
+          << check_page->id.space() << ":" << check_page->id.page_no() << "value: " << check_io_fix;
+      }
+
 
 #ifdef UNIV_DEBUG
       ib::info << "(recovery) offset: "
@@ -2473,6 +2489,8 @@ recv_recover_page_func(
           + (block->frame), end_lsn);
         goto skip_redo;
       } else {
+        
+        /*
         uint64_t cur_nc_page_offset = pm_mmap_recv_check_nc_buf(
                block->page.id.space(), block->page.id.page_no());
         if (cur_nc_page_offset != -1) {
@@ -2486,6 +2504,7 @@ recv_recover_page_func(
           + (block->frame), end_lsn);
         goto skip_redo;        
         } 
+        */
       }
 
     } // end-of-if 

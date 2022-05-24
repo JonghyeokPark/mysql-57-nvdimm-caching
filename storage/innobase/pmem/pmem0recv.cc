@@ -278,7 +278,7 @@ void nc_recv_analysis() {
   }
 
 
-//#ifdef PMEM_RECV_DEBUG
+#ifdef PMEM_RECV_DEBUG
   fil_space_t* space_t = fil_space_get(space);
   const page_id_t page_id(space,page_no);
   const page_size_t page_size(space_t->flags);
@@ -290,7 +290,27 @@ void nc_recv_analysis() {
     safe_num++;
     fprintf(stderr, "(%lu:%lu) page is good! lsn: %lu\n", space, page_no, mach_read_from_8(frame + FIL_PAGE_LSN));
   }
-//#endif
+#endif
+
+  /*
+  enum buf_io_fix check_io_fix 
+    = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.io_fix;
+  if (check_io_fix == BUF_IO_WRITE) {
+    corrupt_num++;
+  } else {
+    safe_num++;
+  }
+  */
+  unsigned long x_lock_cnt = rw_lock_get_x_lock_count(&(reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->lock));
+  unsigned long sx_lock_cnt = rw_lock_get_sx_lock_count(&(reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->lock));
+
+  if (x_lock_cnt || sx_lock_cnt) {
+    corrupt_num++;
+  } else {
+    ib::info() << "x_lock_cnt: " << x_lock_cnt << " sx_lock_cnt: " 
+      << sx_lock_cnt;
+    safe_num++;
+  }
 
   // we store relative position of nc page
   pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*sizeof(buf_block_t));
@@ -298,6 +318,7 @@ void nc_recv_analysis() {
  }
 
  // nc_page_map 
+ /*
  unsigned char *page_addr = gb_pm_mmap + (10*1024*1024*1024UL);
  for (uint64_t i=0; i < page_num_chunks; ++i) { 
 
@@ -331,7 +352,7 @@ void nc_recv_analysis() {
   }
   pmem_nc_page_map[std::make_pair(space,page_no)].push_back(i*4096UL);
  }
-
+ */
  // 
 }
 
@@ -378,5 +399,4 @@ void nc_recv_sys_init(uint64_t available_memory) {
 	nc_recv_sys->recovered_lsn = 0;
 	nc_recv_sys->checkpoint_lsn = 0;
 }
-
 

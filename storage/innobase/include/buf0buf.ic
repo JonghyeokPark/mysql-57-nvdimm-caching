@@ -496,6 +496,12 @@ buf_page_set_io_fix(
 	ut_ad(mutex_own(buf_page_get_mutex(bpage)));
 
 	bpage->io_fix = io_fix;
+  // HOT DEBUG
+#ifdef UNIV_NVDIMM_CACHE
+  if (bpage->cached_in_nvdimm) {
+    flush_cache(&(bpage->io_fix), sizeof(buf_io_fix)); 
+  }
+#endif
 	ut_ad(buf_page_get_io_fix(bpage) == io_fix);
 }
 

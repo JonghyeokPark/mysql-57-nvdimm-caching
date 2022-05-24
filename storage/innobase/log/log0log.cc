@@ -475,7 +475,8 @@ part_loop:
 	if (str_len > 0) {
 		goto part_loop;
 	}
-/*
+
+  /*
 #ifdef UNIV_NVDIMM_CACHE
   byte *body;
   uint64_t space, page_no, cur_len=0;
@@ -490,11 +491,12 @@ part_loop:
       , (byte*)(str+org_len)
       , &space, &page_no, false, &body);
 //  if (space == 27 || space == 29 || space == 31) {
-    fprintf(stderr, "[DEBUG] %lu:%lu type: %d len: %lu cur_len :%lu single_rec: %d str_len: %lu\n"
-      , space, page_no, type, len, cur_len, single_rec, org_len);
+//    fprintf(stderr, "[DEBUG] %lu:%lu type: %d len: %lu cur_len :%lu single_rec: %d str_len: %lu\n"
+//      , space, page_no, type, len, cur_len, single_rec, org_len);
 //  }
 #endif
 */
+
 	srv_stats.log_write_requests.inc();
 }
 
@@ -1840,22 +1842,43 @@ log_checkpoint(
 
   // HOT DEBUG 2 //
 #ifdef UNIV_NVDIMM_CACHE
-  
+  /* 
   if (recovery_time == 0) {
     end_time = getticks();
     recovery_time = (unsigned)((end_time-start_time)/CPU_MHZ);
     fprintf(stderr, "[INFO] !!! RECOVERY TIME !!! : %u msec\n", recovery_time);
   }
-  
+  */
+
+  // (jhpark): we need to store the necessary information for 
+  // restoring the NC pages
+  // these logs contain on-disk-page of NC page to reach the latest state
+  // (the very before crash) copy the flushed_lsn to checkopint_lsn
+
+  /*
+  unsigned long n_flushed =0;
   lsn_t nvdimm_lsn = nvdimm_buf_pool_get_oldest_modification();
+  buf_pool_t* buf_pool = &nvdimm_buf_pool_ptr[0];
+
   if (nvdimm_lsn !=0 
       && nvdimm_lsn < oldest_lsn) {
     ib::info() << "nvdimm_lsn: "
       << nvdimm_lsn << " oldest_lsn: " << oldest_lsn
-      << " the gap: " << oldest_lsn - nvdimm_lsn;
-    oldest_lsn = nvdimm_lsn;
+      << " last_checkpoint_lsn: " << log_sys->last_checkpoint_lsn
+      << " the gap: " << oldest_lsn - nvdimm_lsn
+      << "n_flushed: " << n_flushed;
+
+   // (jhpark): if checkpoint works well, 
+   // then it should be ok
+   // oldest_lsn = nvdimm_lsn;
   }
-  
+  */
+
+  /*
+  if (oldest_lsn - nvdimm_lsn > 500000) {
+    buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
+  }
+  */
 #endif
  
 

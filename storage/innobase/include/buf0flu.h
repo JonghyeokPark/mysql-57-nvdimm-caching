@@ -46,6 +46,7 @@ extern my_bool		innodb_page_cleaner_disabled_debug;
 extern os_event_t	buf_flush_event;
 
 #ifdef UNIV_NVDIMM_CACHE
+bool buf_flush_do_nvdimm_batch(buf_pool_t*, buf_flush_t, unsigned long, uint64_t, unsigned long*);
 extern os_event_t buf_flush_nvdimm_event;
 extern bool buf_nvdimm_page_cleaner_is_active;
 #endif /* UNIV_NVDIMM_CACHE */

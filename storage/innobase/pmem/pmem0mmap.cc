@@ -24,6 +24,7 @@ PMEM_MMAP_MTRLOG_BUF* mmap_mtrlogbuf = NULL;
 // HOT DEBUG
 uint64_t pmem_lsn;
 uint64_t pmem_page_offset;
+uint64_t cur_nc_shadow_page = 0;
 
 // recovery
 bool is_pmem_recv = false;
@@ -379,6 +380,11 @@ ssize_t pm_mmap_mtrlogbuf_write(
 // HOT DEBUG //
 void pmem_copy_page(unsigned char* frame, uint64_t space, uint64_t page_no) {
   pthread_mutex_lock(&mmap_mtrlogbuf->mtrMutex);
+  if (pmem_nc_shadow_check(space, page_no)) {
+    pthread_mutex_unlock(&mmap_mtrlogbuf->mtrMutex);
+    return;
+  }
+
   uint64_t pmem_page_offset = pmem_nc_page_offset_list.front();
   pmem_nc_page_offset_map[std::make_pair(space, page_no)] = pmem_page_offset;
   pmem_nc_page_offset_list.pop();
@@ -386,6 +392,9 @@ void pmem_copy_page(unsigned char* frame, uint64_t space, uint64_t page_no) {
 
   memcpy(gb_pm_mmap + 10*1024*1024*1024UL + pmem_page_offset, frame, UNIV_PAGE_SIZE);
   flush_cache(gb_pm_mmap + 10*1024*1024*1024UL + pmem_page_offset, UNIV_PAGE_SIZE);
+
+  // add shadow page !!!
+  cur_nc_shadow_page++;
 }
 
 void pmem_evict_page(uint64_t space, uint64_t page_no) {
@@ -396,9 +405,19 @@ void pmem_evict_page(uint64_t space, uint64_t page_no) {
   iter = pmem_nc_page_offset_map.find(std::make_pair(space, page_no));
   if (iter != pmem_nc_page_offset_map.end()) {
     offset = iter->second;
+    pmem_nc_page_offset_list.push(offset);
+    cur_nc_shadow_page--;
   } else {
     ib::error() << "error : " << space << ":" << page_no;
   }
-  pmem_nc_page_offset_list.push(offset);
+
+  ib::info() << "current nc shadow page num: " << cur_nc_shadow_page;
   pthread_mutex_unlock(&mmap_mtrlogbuf->mtrMutex);
+}
+
+bool pmem_nc_shadow_check(uint64_t space, uint64_t page_no) {
+  std::map<std::pair<uint64_t,uint64_t>,uint64_t>::iterator iter;
+  iter = pmem_nc_page_offset_map.find(std::make_pair(space, page_no));
+
+  return (iter != pmem_nc_page_offset_map.end());
 }

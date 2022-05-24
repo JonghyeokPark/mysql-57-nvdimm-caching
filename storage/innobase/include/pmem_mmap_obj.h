@@ -216,18 +216,21 @@ void nc_recv_analysis();
 extern bool is_pmem_recv;
 extern uint64_t pmem_recv_offset;
 extern uint64_t pmem_recv_size;
-extern uint64_t pmem_lsn;
+// current pmem_checkpoint_lsn  which includes
+// redo logs for before page become NC pages.
+extern uint64_t pmem_lsn; 
 extern uint64_t pmem_page_offset;
 void nc_save_pmem_lsn();
 void pmem_copy_page(unsigned char* frame, uint64_t space, uint64_t page_no);
 void pmem_evict_page(uint64_t space, uint64_t page_no);
 uint64_t pm_mmap_recv_check_nc_page(uint64_t space, uint64_t page_no);
+bool pmem_nc_shadow_check(uint64_t space, uint64_t page_no);
 
 // page map offset list
 // (key : page_id (space, page_no & value : offset in page offset
 extern std::map<std::pair<uint64_t,uint64_t> , uint64_t > pmem_nc_page_offset_map;
 extern std::queue<uint64_t> pmem_nc_page_offset_list;
-
+extern uint64_t cur_nc_shadow_page;
 // time measurement 
 typedef unsigned long long ticks;
 

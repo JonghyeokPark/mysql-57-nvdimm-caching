@@ -440,20 +440,6 @@ nvdimm_buf_pool_get_oldest_modification(void)
 
 		if (bpage != NULL) {
 			ut_ad(bpage->in_flush_list);
-			
-      // HOT DEBUG //
-      // check page lsn of current NC pages
-      /*
-      buf_block_t *block;
-      block = (buf_block_t*)bpage;
-      uint64_t cur_lsn_page = mach_read_from_8(block->frame + FIL_PAGE_LSN);
-      if (cur_lsn_page !=0 
-          && cur_lsn_page < pmem_lsn) {
-        lsn = pmem_lsn;
-      } else {
-        lsn = cur_lsn_page;
-      }
-      */
       lsn = bpage->oldest_modification;
 		}
 
@@ -488,8 +474,10 @@ buf_pool_get_oldest_modification(void)
 	/* When we traverse all the flush lists we don't want another
 	thread to add a dirty page to any flush list. */
 	log_flush_order_mutex_enter();
-
+  // (jhpark): here!!
+  //for (ulint i = 0; i < srv_buf_pool_instances+1; i++) {
   for (ulint i = 0; i < srv_buf_pool_instances; i++) {
+
 		buf_pool_t*	buf_pool;
 
 		buf_pool = buf_pool_from_array(i);
@@ -6299,6 +6287,13 @@ corrupt:
 	buf_page_monitor(bpage, io_type);
 
 #ifdef UNIV_NVDIMM_CACHE
+  // HOT DEBUG
+  /*
+  if (bpage->cached_in_nvdimm) {
+    pmem_evict_page(bpage->id.space(), bpage->id.page_no());
+  }
+  */
+
     ulint remains = 0;
 #endif /* UNIV_NVDIMM_CACHE */
 

@@ -2991,10 +2991,16 @@ btr_cur_ins_lock_and_undo(
 	}
 
 #ifdef UNIV_NVDIMM_CACHE
-    buf_block_t* nvm_block = btr_cur_get_block(cursor);
-    buf_page_t* nvm_bpage = &(nvm_block->page);
+  buf_block_t* nvm_block = btr_cur_get_block(cursor);
+  buf_page_t* nvm_bpage = &(nvm_block->page);
+  bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
 
-    bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
+  // HOT DEBUG
+  /*
+  if (is_nvm_page) {
+    pmem_copy_page(((buf_block_t *)nvm_bpage)->frame, nvm_bpage->id.space(), nvm_bpage->id.page_no());
+  }
+  */
 
 	err = trx_undo_report_row_operation(is_nvm_page, flags, TRX_UNDO_INSERT_OP,
 					    thr, index, entry,
@@ -3559,11 +3565,16 @@ btr_cur_upd_lock_and_undo(
 
 	/* Append the info about the update in the undo log */
 #ifdef UNIV_NVDIMM_CACHE
-    buf_block_t* nvm_block = btr_cur_get_block(cursor);
-    buf_page_t* nvm_bpage = &(nvm_block->page);
+  buf_block_t* nvm_block = btr_cur_get_block(cursor);
+  buf_page_t* nvm_bpage = &(nvm_block->page);
 
-    bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
-
+  bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
+  // HOT DEBUG
+  /*
+  if (is_nvm_page) {
+    pmem_copy_page(((buf_block_t *)nvm_bpage)->frame, nvm_bpage->id.space(), nvm_bpage->id.page_no());
+  }
+  */
 
 	return(trx_undo_report_row_operation(
 		       is_nvm_page, flags, TRX_UNDO_MODIFY_OP, thr,
@@ -4883,8 +4894,15 @@ btr_cur_del_mark_set_clust_rec(
 	}
 
 #ifdef UNIV_NVDIMM_CACHE
-    nvm_bpage = &(block->page);
-    is_nvm_page = nvm_bpage->cached_in_nvdimm;
+  nvm_bpage = &(block->page);
+  is_nvm_page = nvm_bpage->cached_in_nvdimm;
+
+  // HOT DEBUG
+  /*
+  if (is_nvm_page) {
+    pmem_copy_page(((buf_block_t *)nvm_bpage)->frame, nvm_bpage->id.space(), nvm_bpage->id.page_no());
+  }
+  */
 
 	err = trx_undo_report_row_operation(is_nvm_page, flags, TRX_UNDO_MODIFY_OP, thr,
 					    index, entry, NULL, 0, rec, offsets,

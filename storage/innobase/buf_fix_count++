@@ -1,0 +1,68 @@
+btr/btr0cur.cc <unknown> 482 				/* adjust buf_fix_count */
+btr/btr0pcur.cc <unknown> 132 		      && (block->page.buf_fix_count > 0));
+btr/btr0sea.cc <unknown> 1150 			block->buf_fix_count == 0 or it is an index page which
+btr/btr0sea.cc <unknown> 1184 	ut_ad(block->page.buf_fix_count == 0
+btr/btr0sea.cc <unknown> 1216 	(buf_fix_count == 0 when DROP TABLE or similar is executing
+buf/buf0buf.cc <unknown> 1490 	block->page.buf_fix_count = 0;
+buf/buf0buf.cc <unknown> 3506 	ut_a(bpage->buf_fix_count == 0);
+buf/buf0buf.cc <unknown> 3759 			ut_ad(bpage->buf_fix_count == 0);
+buf/buf0buf.cc <unknown> 3768 			bpage->buf_fix_count = 1;
+buf/buf0buf.cc <unknown> 3784 			ut_ad(bpage->buf_fix_count > 0);
+buf/buf0buf.cc <unknown> 3824 	watch->buf_fix_count = 0;
+buf/buf0buf.cc <unknown> 3849 	increments buf_fix_count. */
+buf/buf0buf.cc <unknown> 3881 	increments buf_fix_count. */
+buf/buf0buf.cc <unknown> 4129 	ut_a(bpage->buf_fix_count > 0);
+buf/buf0buf.cc <unknown> 4720 		if (bpage->buf_fix_count > 1
+buf/buf0buf.cc <unknown> 4758 		if (bpage->buf_fix_count > 0
+buf/buf0buf.cc <unknown> 4788 		block->page.buf_fix_count = 1;
+buf/buf0buf.cc <unknown> 4878 	ut_ad(fix_block->page.buf_fix_count > 0);
+buf/buf0buf.cc <unknown> 4969 	ut_ad(fix_block->page.buf_fix_count > 0);
+buf/buf0buf.cc <unknown> 5175 	ut_a(block->page.buf_fix_count > 0);
+buf/buf0buf.cc <unknown> 5281 	ut_a(block->page.buf_fix_count > 0);
+buf/buf0buf.cc <unknown> 5380 	ut_a(block->page.buf_fix_count > 0);
+buf/buf0buf.cc <unknown> 5409 	bpage->buf_fix_count = 0;
+buf/buf0buf.cc <unknown> 5478 		ib_uint32_t	buf_fix_count = hash_page->buf_fix_count;
+buf/buf0buf.cc <unknown> 5480 		ut_a(buf_fix_count > 0);
+buf/buf0buf.cc <unknown> 5482 		os_atomic_increment_uint32(&block->page.buf_fix_count,
+buf/buf0buf.cc <unknown> 5483 					   buf_fix_count);
+buf/buf0buf.cc <unknown> 5727 			ib_uint32_t	buf_fix_count;
+buf/buf0buf.cc <unknown> 5729 			buf_fix_count = watch_page->buf_fix_count;
+buf/buf0buf.cc <unknown> 5731 			ut_a(buf_fix_count > 0);
+buf/buf0buf.cc <unknown> 5734 				&bpage->buf_fix_count, buf_fix_count);
+buf/buf0buf.cc <unknown> 6042 	ut_ad(bpage->buf_fix_count == 0);
+buf/buf0buf.cc <unknown> 6895 			if (block->page.buf_fix_count != 0
+buf/buf0buf.cc <unknown> 6914 		if (b->buf_fix_count != 0
+buf/buf0buf.cc <unknown> 6927 			if (b->buf_fix_count != 0
+buf/buf0flu.cc <unknown> 595 		       && bpage->buf_fix_count == 0
+buf/buf0flu.cc <unknown> 1092         && bpage->buf_fix_count == 0) {
+buf/buf0flu.cc <unknown> 1153                 << " buf-fix: " << bpage->buf_fix_count
+buf/buf0flu.cc <unknown> 1183               << " buf-fix: " << bpage->buf_fix_count
+buf/buf0flu.cc <unknown> 1292 	bool		no_fix_count = bpage->buf_fix_count == 0;
+buf/buf0flu.cc <unknown> 1334             && bpage->buf_fix_count == 0 /* Not fixed */
+buf/buf0flu.cc <unknown> 1383                 << " fix-count: " << bpage->buf_fix_count;
+buf/buf0flu.cc <unknown> 1614 				|| bpage->buf_fix_count == 0)) {
+buf/buf0lru.cc <unknown> 314 		bool	skip = bpage->buf_fix_count > 0 || !block->index;
+buf/buf0lru.cc <unknown> 776 			if (bpage->buf_fix_count > 0) {
+buf/buf0lru.cc <unknown> 2227 	ut_a(bpage->buf_fix_count == 0);
+buf/buf0lru.cc <unknown> 2767 		if (bpage->buf_fix_count) {
+buf/buf0lru.cc <unknown> 2769 				(ulong) bpage->buf_fix_count);
+buf/buf0rea.cc <unknown> 70 	ut_ad(bpage->buf_fix_count == 0);
+fil/fil0fil.cc <unknown> 6286 	block->page.buf_fix_count = 1;
+handler/i_s.cc <unknown> 5487 		page_info->fix_count = bpage->buf_fix_count;
+include/btr0sea.h <unknown> 141 			block->buf_fix_count == 0 or it is an index page which
+include/buf0buf.h <unknown> 1586 	ib_uint32_t	buf_fix_count;
+include/buf0buf.h <unknown> 1811 	(2) buf_block_t::buf_fix_count == 0, or
+include/buf0buf.h <unknown> 1894 					pool mutex), io_fix, buf_fix_count,
+include/buf0buf.h <unknown> 2450 		(1) if buf_fix_count == 0, then
+include/buf0buf.h <unknown> 2459 		(2) if buf_fix_count > 0, then
+include/buf0buf.h <unknown> 2475 				(1) buf_fix_count == 0,
+include/buf0buf.ic <unknown> 575 	       && bpage->buf_fix_count == 0);
+include/buf0buf.ic <unknown> 711 		ut_a(block->page.buf_fix_count > 0);
+include/buf0buf.ic <unknown> 895 		       && (block->page.buf_fix_count == 0))
+include/buf0buf.ic <unknown> 935 	return(os_atomic_increment_uint32(&bpage->buf_fix_count, 1));
+include/buf0buf.ic <unknown> 983 	ulint	count = os_atomic_decrement_uint32(&bpage->buf_fix_count, 1);
+include/buf0buf.ic <unknown> 1274 	ut_a(bpage->buf_fix_count > 0);
+include/buf0flu.ic <unknown> 74 		ut_ad(block->page.buf_fix_count > 0);
+include/buf0flu.ic <unknown> 123 		ut_ad(block->page.buf_fix_count > 0);
+mtr/mtr0mtr.cc <unknown> 483 	ut_ad(block->page.buf_fix_count > 0);
+row/row0sel.cc <unknown> 5312 					.buf_fix_count;
