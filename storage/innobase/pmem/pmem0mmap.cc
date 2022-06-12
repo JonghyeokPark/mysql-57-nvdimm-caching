@@ -24,6 +24,11 @@ bool is_pmem_recv = false;
 uint64_t pmem_recv_offset = 0;
 uint64_t pmem_recv_size = 0;
 
+// nc-logging
+std::map<std::pair<uint64_t,uint64_t> , std::vector<uint64_t> > pmem_nc_buffer_map;
+std::map<std::pair<uint64_t,uint64_t> , std::vector<uint64_t> > pmem_nc_page_map;
+std::map<std::pair<uint64_t,uint64_t> , uint64_t > pmem_nc_page_offset_map;
+std::queue<uint64_t> pmem_nc_page_offset_list;
 
 unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
   

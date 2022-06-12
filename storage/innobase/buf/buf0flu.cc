@@ -1047,13 +1047,7 @@ buf_flush_write_block_low(
 
 	/* Force the log to the disk before writing the modified block */
 	if (!srv_read_only_mode) {
-#ifdef UNIV_NVDIMM_CACHE
-			if (bpage->buf_pool_index < srv_buf_pool_instances) {
-				log_write_up_to(bpage->newest_modification, true);
-			}
-#else
-			log_write_up_to(bpage->newest_modification, true);
-#endif /* UNIV_NVDIMM_CACHE */
+		log_write_up_to(bpage->newest_modification, true);
 	}
 
 	switch (buf_page_get_state(bpage)) {
