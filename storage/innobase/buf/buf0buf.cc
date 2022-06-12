@@ -421,7 +421,10 @@ buf_pool_get_oldest_modification(void)
 	thread to add a dirty page to any flush list. */
 	log_flush_order_mutex_enter();
 
+  // HOT DEBUG
 	for (ulint i = 0; i < srv_buf_pool_instances; i++) {
+  //for (ulint i = 0; i < srv_buf_pool_instances+1; i++) {
+
 		buf_pool_t*	buf_pool;
 
 		buf_pool = buf_pool_from_array(i);
@@ -449,7 +452,7 @@ buf_pool_get_oldest_modification(void)
 
 		if (!oldest_lsn || oldest_lsn > lsn) {
 			oldest_lsn = lsn;
-		}
+    }
 	}
 
 	log_flush_order_mutex_exit();
@@ -6306,7 +6309,10 @@ corrupt:
 			buf_LRU_free_page(bpage, true);
 #ifdef NVDIMM_CACHE
             bpage->moved_to_nvdimm = false;
-            //bpage->cached_in_nvdimm = false;
+            // HOT DEBUG
+            // (jhpark): we need to reset the cached_in_nvdimm flag 
+            // when the page is evicted.
+            bpage->cached_in_nvdimm = false;
 #endif /* NVDIMM_CACHE */
 		} else {
 			mutex_exit(buf_page_get_mutex(bpage));

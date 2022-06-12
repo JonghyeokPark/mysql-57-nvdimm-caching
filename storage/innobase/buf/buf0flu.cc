@@ -1105,7 +1105,9 @@ buf_flush_write_block_low(
         /* Add the target page to the NVDIMM buffer. */
         nvdimm_page = buf_page_init_for_read(&err, BUF_MOVE_TO_NVDIMM, page_id, page_size, false);
         
-        if (nvdimm_page == NULL)    goto normal;
+        if (nvdimm_page == NULL) {
+          goto normal;
+        }
         
         /*ib::info() << "page_id = " << bpage->id.space()
             << " offset = " << bpage->id.page_no() 
@@ -1114,12 +1116,34 @@ buf_flush_write_block_low(
         memcpy(((buf_block_t *)nvdimm_page)->frame, ((buf_block_t *)bpage)->frame, UNIV_PAGE_SIZE);
 
         /* Set the oldest LSN of the NVDIMM page to the previous newest LSN. */
-        buf_flush_note_modification((buf_block_t *)nvdimm_page, bpage->newest_modification, bpage->newest_modification, nvdimm_page->flush_observer);
+        
+        buf_flush_note_modification((buf_block_t *)nvdimm_page
+            , bpage->oldest_modification
+            , bpage->newest_modification
+            , nvdimm_page->flush_observer);
 
-        // TODO: NVDIMM-porting
-        // 1
+        // HOT DEBUG
+        /*
+        buf_pool_t *check_buf;
+        buf_page_t *check;
+        int cnt = 0;
+        check_buf = buf_pool_from_array (srv_buf_pool_instances);
+        for (check = UT_LIST_GET_LAST(check_buf->flush_list);
+            check != NULL;
+            check = UT_LIST_GET_PREV(list, check)) {
+          ib::info() << "cnt: " << cnt << " oldest_modification: " << check->oldest_modification
+            << " cur: " << bpage->oldest_modification
+            << " flushed_to_disk_lsn:  " << log_sys->flushed_to_disk_lsn
+            << " last_checkpoint_lsn : " << log_sys->last_checkpoint_lsn;
+          cnt++;
+        }
+        
+        nvdimm_page->oldest_modification = 0;
+        nvdimm_page->newest_modification = 0;
+        */
+
+
         flush_cache(((buf_block_t *)nvdimm_page)->frame, UNIV_PAGE_SIZE);
-        // 2
         
         /* Remove the target page from the original buffer pool. */
         buf_page_io_complete(bpage, true);
@@ -1170,8 +1194,6 @@ normal:
                     sync, bpage->id, bpage->size, 0, bpage->size.physical(),
                     frame, bpage); 
 
-            // jhpark: write oldest_modification_lsn of current NVDIMM-caching page
-            pm_mmap_write_logfile_header_lsn(bpage->oldest_modification);
 
         } else if (flush_type == BUF_FLUSH_SINGLE_PAGE) {
             buf_dblwr_write_single_page(bpage, sync);
@@ -1311,10 +1333,13 @@ buf_flush_page(
 
 #ifdef UNIV_NVDIMM_CACHE
         if (bpage->flush_type == BUF_FLUSH_LIST /* Flush list flushing */
-            && (bpage->id.space() == 28 || bpage->id.space() == 30 || bpage->id.space() == 32) /* TPC-C tablespaces */
+            // (jhpark): for Jhaprk serer version
+            && (bpage->id.space() == 27 || bpage->id.space() == 29 || bpage->id.space() == 31) /* TPC-C tablespaces */
             && bpage->buf_fix_count == 0 /* Not fixed */
             && !bpage->cached_in_nvdimm) { /* Not cached in NVDIMM */
-                bpage->moved_to_nvdimm = true;
+          // HOT DEBUG
+          bpage->moved_to_nvdimm = true;
+
         }
 #endif /* UNIV_NVDIMM_CACHE */
 		
@@ -2264,10 +2289,17 @@ buf_flush_lists(
 
 	/* Flush to lsn_limit in all buffer pool instances */
 	for (i = 0; i < srv_buf_pool_instances; i++) {
+  //for (i = 0; i < srv_buf_pool_instances+1; i++) {
+
 		buf_pool_t*	buf_pool;
 		ulint		page_count = 0;
 
 		buf_pool = buf_pool_from_array(i);
+
+    //if (i == srv_buf_pool_instances) {
+      //ib::info() << "n_flush_lists: " << UT_LIST_GET_LEN(buf_pool->flush_list);
+      //min_n = (UT_LIST_GET_LEN(buf_pool->flush_list) / 4);
+    //}
 
 		if (!buf_flush_do_batch(buf_pool,
 					BUF_FLUSH_LIST,
