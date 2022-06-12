@@ -1122,27 +1122,6 @@ buf_flush_write_block_low(
             , bpage->newest_modification
             , nvdimm_page->flush_observer);
 
-        // HOT DEBUG
-        /*
-        buf_pool_t *check_buf;
-        buf_page_t *check;
-        int cnt = 0;
-        check_buf = buf_pool_from_array (srv_buf_pool_instances);
-        for (check = UT_LIST_GET_LAST(check_buf->flush_list);
-            check != NULL;
-            check = UT_LIST_GET_PREV(list, check)) {
-          ib::info() << "cnt: " << cnt << " oldest_modification: " << check->oldest_modification
-            << " cur: " << bpage->oldest_modification
-            << " flushed_to_disk_lsn:  " << log_sys->flushed_to_disk_lsn
-            << " last_checkpoint_lsn : " << log_sys->last_checkpoint_lsn;
-          cnt++;
-        }
-        
-        nvdimm_page->oldest_modification = 0;
-        nvdimm_page->newest_modification = 0;
-        */
-
-
         flush_cache(((buf_block_t *)nvdimm_page)->frame, UNIV_PAGE_SIZE);
         
         /* Remove the target page from the original buffer pool. */
