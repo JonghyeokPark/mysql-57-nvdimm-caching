@@ -1175,8 +1175,6 @@ normal:
                     sync, bpage->id, bpage->size, 0, bpage->size.physical(),
                     frame, bpage); 
 
-            // jhpark: write oldest_modification_lsn of current NVDIMM-caching page
-            pm_mmap_write_logfile_header_lsn(bpage->oldest_modification);
 
         } else if (flush_type == BUF_FLUSH_SINGLE_PAGE) {
             buf_dblwr_write_single_page(bpage, sync);
