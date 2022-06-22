@@ -2559,7 +2559,7 @@ err_exit:
 
 
 /*#ifdef UNIV_NVDIMM_CACHE
-    if (index->space == 28) {
+    if (index->space == 27) {
       mtr_commit_no_nvm(&mtr);
       goto func_exit;
     }
@@ -2572,7 +2572,7 @@ err_exit:
 	if (dup_chk_only) {
 
 /*#ifdef UNIV_NVDIMM_CACHE
-    if (index->space == 28) {
+    if (index->space == 27) {
       mtr_commit_no_nvm(&mtr);
       goto func_exit;
     }
@@ -2609,7 +2609,7 @@ err_exit:
 		}
 
 #ifdef UNIV_NVDIMM_CACHE
-  /*  if (index->space == 28) {
+  /*  if (index->space == 27) {
       mtr_commit_no_nvm(&mtr);
     } else {
     */  mtr_commit(&mtr);
@@ -2657,7 +2657,7 @@ err_exit:
 		if (big_rec != NULL) {
 
 #ifdef UNIV_NVDIMM_CACHE
-     /* if (index->space == 28) {
+     /* if (index->space == 27) {
         mtr_commit_no_nvm(&mtr);
       } else {*/
         mtr_commit(&mtr);
@@ -2691,7 +2691,7 @@ err_exit:
 //			mtr_commit(&mtr);
 
 #ifdef UNIV_NVDIMM_CACHE
-     /* if (index->space == 28) {
+     /* if (index->space == 27) {
         mtr_commit_no_nvm(&mtr);
       } else {*/
         mtr_commit(&mtr);

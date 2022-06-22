@@ -187,7 +187,7 @@ void pm_mmap_recv_flush_buffer() {
 		fprintf(stderr, "[JONGQ] cur_offset: %lu, space_id: %lu, page_no: %lu\n"
 		,cur_offset, space_id, page_no);		
 
-		if (space_id == 28 || space_id == 30) {
+		if (space_id == 27 || space_id == 29) {
 			//&& page_no == 0)) {
 			// perform fil_io
 			IORequest write_request(IORequest::WRITE);

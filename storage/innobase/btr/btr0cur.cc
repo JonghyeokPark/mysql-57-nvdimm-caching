@@ -5022,7 +5022,7 @@ btr_cur_del_mark_set_sec_rec(
 
 #ifdef UNIV_NVDIMM_CACHE
   fprintf(stderr,"[JONGQ] btr_cur_del_mark_set_sec_rec! space: %lu\n", block->page.id.space());
-  if (block->page.id.space() == 28) {
+  if (block->page.id.space() == 27) {
     fprintf(stderr, "[JONGQ] WRONG!!!\n");
   }
 #endif /* UNIV_NVDIMM_CACHE	*/
