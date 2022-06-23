@@ -109,6 +109,7 @@ Created 2/16/1996 Heikki Tuuri
 #include "pmem_mmap_obj.h" 
 extern unsigned char* gb_pm_mmap;
 char  PMEM_FILE_PATH [PMEM_MMAP_MAX_FILE_NAME_LENGTH];
+pfs_os_file_t gb_pm_dwb_file;
 #endif /* UNIV_NVDIMM_CACHE */
 
 #ifdef HAVE_LZO1X
