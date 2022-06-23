@@ -3899,6 +3899,24 @@ recv_group_scan_log_recs(
 		DBUG_RETURN(false);
 	}
 
+  /* nc-logging */
+#ifdef UNIV_NVDIMM_CACHE
+  // (jhpark): so far we scan from log files; now we read from persistent log buffer
+  extern unsigned char* gb_pm_mmap;
+  memcpy(log_sys->buf, gb_pm_mmap, log_sys->buf_size);
+
+  fprintf(stderr, "[DEBUG] begin scan and parse persist redo log buffer size: %d\n", log_sys->buf_size);
+  start_lsn = end_lsn;
+  end_lsn += RECV_SCAN_SIZE;
+
+  bool ret = recv_scan_log_recs(
+      available_mem, &store_to_hash, log_sys->buf,
+      RECV_SCAN_SIZE, checkpoint_lsn,
+      start_lsn, contiguous_lsn,&group->scanned_lsn);
+
+  fprintf(stderr, "[DEBUG] finsish scan and parse persist redo log buffer size: %d ret: %d\n", log_sys->buf_size, ret);
+#endif
+
 	DBUG_PRINT("ib_log", ("%s " LSN_PF
 			      " completed for log group " ULINTPF,
 			      last_phase ? "rescan" : "scan",

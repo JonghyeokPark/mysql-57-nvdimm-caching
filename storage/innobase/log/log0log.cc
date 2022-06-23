@@ -57,6 +57,11 @@ Created 12/9/1995 Heikki Tuuri
 #include "sync0sync.h"
 #endif /* !UNIV_HOTBACKUP */
 
+#ifdef UNIV_NVDIMM_CACHE
+#include "pmem_mmap_obj.h"
+extern unsigned char* gb_pm_mmap;
+#endif
+
 /*
 General philosophy of InnoDB redo-logs:
 
@@ -409,6 +414,10 @@ log_write_low(
 	ulint	data_len;
 	byte*	log_block;
 
+#ifdef UNIV_NVDIMM_CACHE
+  ulint org_len = str_len;
+#endif
+
 	ut_ad(log_mutex_own());
 part_loop:
 	ut_ad(!recv_no_log_write);
@@ -429,7 +438,13 @@ part_loop:
 			- LOG_BLOCK_TRL_SIZE;
 	}
 
-	ut_memcpy(log->buf + log->buf_free, str, len);
+#ifdef UNIV_NVDIMM_CACHE
+  ut_memcpy(log->buf + log->buf_free, str, len);
+  flush_cache(log->buf+log->buf_free, len);
+#else
+  ut_memcpy(log->buf + log->buf_free, str, len);
+#endif
+//	ut_memcpy(log->buf + log->buf_free, str, len);
 
 	str_len -= len;
 	str = str + len;
@@ -807,10 +822,17 @@ log_init(void)
 
 	log_sys->buf_size = LOG_BUFFER_SIZE;
 
+  /* nc-logging */
+#ifdef UNIV_NVDIMM_CACHE
+  log_sys->buf_ptr = static_cast<byte*>(gb_pm_mmap);
+  log_sys->buf = static_cast<byte*>(
+      ut_align(log_sys->buf_ptr, OS_FILE_LOG_BLOCK_SIZE));
+#else
 	log_sys->buf_ptr = static_cast<byte*>(
 		ut_zalloc_nokey(log_sys->buf_size * 2 + OS_FILE_LOG_BLOCK_SIZE));
 	log_sys->buf = static_cast<byte*>(
 		ut_align(log_sys->buf_ptr, OS_FILE_LOG_BLOCK_SIZE));
+#endif
 
 	log_sys->first_in_use = true;
 
