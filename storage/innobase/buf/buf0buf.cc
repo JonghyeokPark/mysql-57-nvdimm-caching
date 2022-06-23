@@ -424,7 +424,7 @@ buf_pool_get_oldest_modification(void)
 	thread to add a dirty page to any flush list. */
 	log_flush_order_mutex_enter();
 
-	for (ulint i = 0; i < srv_buf_pool_instances; i++) {
+	for (ulint i = 0; i < srv_buf_pool_instances+1; i++) {
 		buf_pool_t*	buf_pool;
 
 		buf_pool = buf_pool_from_array(i);
@@ -5512,7 +5512,7 @@ buf_page_init_for_read(
     
 #ifdef UNIV_NVDIMM_CACHE
     if (mode == BUF_MOVE_TO_NVDIMM) {
-        if (page_id.space() == 29
+        if (page_id.space() == 27 || page_id.space() == 29
 #ifdef UNIV_NVDIMM_CACHE_OD
             || page_id.space() == 29
 #endif /* UNIV_NVDIMM_CACHE_OD */
@@ -7484,6 +7484,8 @@ buf_print_io(
 #ifdef UNIV_NVDIMM_CACHE
 /** Checks whether this page should be moved to the NVDIMM buffer. */
 bool buf_block_will_be_moved_to_nvdimm(const page_id_t& page_id) {
+    return (false);
+
     if (page_id.space() == 27 /* New-Orders table */) {
         return (true);
     } else {

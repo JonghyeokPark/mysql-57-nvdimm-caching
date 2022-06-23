@@ -23,7 +23,9 @@ PMEM_MMAP_MTRLOG_BUF* mmap_mtrlogbuf = NULL;
 bool is_pmem_recv = false;
 uint64_t pmem_recv_offset = 0;
 uint64_t pmem_recv_size = 0;
-
+/* nc-logging */
+std::map<std::pair<uint64_t,uint64_t> ,std::vector<uint64_t> > pmem_nc_buffer_map;
+std::map<std::pair<uint64_t,uint64_t> , std::vector<uint64_t> > pmem_nc_page_map;
 
 unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
   
@@ -59,53 +61,9 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
     if (gb_pm_mmap == MAP_FAILED) {
       PMEMMMAP_ERROR_PRINT("pm_mmap mmap() faild recovery failed\n");
     }
-
-		// get file construct
-		PMEM_MMAP_MTRLOGFILE_HDR* recv_mmap_mtrlog_fil_hdr = (PMEM_MMAP_MTRLOGFILE_HDR*) 
-																													malloc(PMEM_MMAP_LOGFILE_HEADER_SZ);
-		pm_mmap_read_logfile_header(recv_mmap_mtrlog_fil_hdr);	
-			
-		// debug
-		fprintf(stderr, "[check] size: %lu, lsn: %lu, ckpt_lsn: %lu, ckpt_offset: %lu\n",
-						recv_mmap_mtrlog_fil_hdr->size, recv_mmap_mtrlog_fil_hdr->flushed_lsn, 
-						recv_mmap_mtrlog_fil_hdr->ckpt_lsn, recv_mmap_mtrlog_fil_hdr->ckpt_offset);
-
-		// recvoery check
-    PMEM_MMAP_MTRLOG_HDR* recv_mmap_mtrlog_hdr = (PMEM_MMAP_MTRLOG_HDR*) malloc(PMEM_MMAP_MTRLOG_HDR_SIZE);
-    memcpy(recv_mmap_mtrlog_hdr, gb_pm_mmap+recv_mmap_mtrlog_fil_hdr->ckpt_offset, PMEM_MMAP_MTRLOG_HDR_SIZE);
-		
-		if (recv_mmap_mtrlog_fil_hdr->size == PMEM_MMAP_MTR_FIL_HDR_SIZE 
-				|| recv_mmap_mtrlog_hdr->need_recv == false) {
-			PMEMMMAP_INFO_PRINT("Normal Shutdown case, don't need to recveory; Recovery process is terminated\n");
-		} else {
-			// TODO(jhpark): real recovery process
-			is_pmem_recv = true;
-			pmem_recv_offset = pm_mmap_recv_check(recv_mmap_mtrlog_fil_hdr);
-			pmem_recv_size = recv_mmap_mtrlog_fil_hdr->size;
-			
-			// jhpark: check buffer!!!!!
-			// pm_mmap_recv_flush_buffer();
-
-			PMEMMMAP_INFO_PRINT("recovery offset: %lu\n", pmem_recv_offset);
-		} 
-
-		// step1. allocate mtr_recv_sys
-		// step2. 1) get header infor mation and 2) get info from mtr log region
-		// step3. reconstruct undo page
-
-    // Get header information from exsiting nvdimm log file
-    //size_t recv_prev_offset = recv_mmap_mtrlog_hdr->prev;
-    //memset(recv_mmap_mtrlog_hdr, 0x00, PMEM_MMAP_MTRLOG_HDR_SIZE);
-    //memcpy(recv_mmap_mtrlog_hdr, gb_pm_mmap+recv_prev_offset, PMEM_MMAP_MTRLOG_HDR_SIZE);
-
-    // debug
-    //fprintf(stderr, "size: %lu\n", recv_size);
-    //fprintf(stderr, "len: %lu\n", recv_mmap_mtrlog_hdr->len);
-    //fprintf(stderr, "lsn: %lu\n", recv_mmap_mtrlog_hdr->lsn);
-    //fprintf(stderr, "need_recovery: %d\n", recv_mmap_mtrlog_hdr->need_recv);
-    
-		free(recv_mmap_mtrlog_fil_hdr);
-    free(recv_mmap_mtrlog_hdr);
+	
+	  // TODO(jhpark): real recovery process
+		is_pmem_recv = true;
   }
 
   // Force to set NVIMMM

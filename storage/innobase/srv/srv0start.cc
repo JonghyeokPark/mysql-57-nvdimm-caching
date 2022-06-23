@@ -1510,17 +1510,9 @@ innobase_start_or_create_for_mysql(void)
     assert(gb_pm_mmap);
   }
 
-	if (!is_pmem_recv) {
-		// for debugging : chagne the mtr log region size
-		// original : 1024*1024*1024*8UL (8GB)
-		pm_mmap_mtrlogbuf_init(1024*1024*1024*1UL); // 1GB for test
-
-		// TODO(jhpark): change buffer pool recovery policy
-		// buffer retion initialization (2GB)
-		pm_mmap_buf_init(1024*1024*1024*2UL);
-	}
-	
-	//pm_mmap_buf_init(1024*1024*1024*3UL);
+  // TODO(jhpark): need to optimize
+	pm_mmap_mtrlogbuf_init(1024*1024*1024*1UL); // 1GB for test
+	pm_mmap_buf_init(1024*1024*1024*2UL);	
 
 #endif /* UNIV_NVDIMM_CACHE */
 
@@ -2322,6 +2314,12 @@ files_checked:
 		}
 
 		fprintf(stderr, "[JONGQ] ---- scan_and_parse log file finished\n");
+
+#ifdef UNIV_NVDIMM_CACHE
+    if (is_pmem_recv) {
+      nc_recv_analysis();
+    }
+#endif
 
 		/* We always try to do a recovery, even if the database had
 		been shut down normally: this is the normal startup path */

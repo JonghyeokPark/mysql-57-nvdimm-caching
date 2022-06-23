@@ -1137,6 +1137,22 @@ need_extra_info:
 		ut_a(rec_size < UNIV_PAGE_SIZE);
 		mlog_catenate_string(mtr, ins_ptr, rec_size);
 	}
+
+#ifdef UNIV_NVDIMM_CACHE
+  // For leaf page, we only keep update bit in leaf page's FSEG entry 
+  page_t* nvm_page = page_align(insert_rec);
+  if (page_is_leaf(nvm_page)) {
+    mtr_t tmp_mtr;
+    mtr_start(&tmp_mtr);
+    fseg_header_t* seg_header = nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+    mach_write_to_4(seg_header + FSEG_HDR_SPACE, 0);
+    flush_cache(nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
+    tmp_mtr.discard_modifications();
+    mtr_commit(&tmp_mtr);
+  }
+
+#endif
+
 }
 #else /* !UNIV_HOTBACKUP */
 # define page_cur_insert_rec_write_log(ins_rec,size,cur,index,mtr) ((void) 0)

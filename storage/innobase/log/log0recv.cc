@@ -2242,8 +2242,8 @@ recv_add_to_hash_table(
 		HASH_INSERT(recv_addr_t, addr_hash, recv_sys->addr_hash,
 			    recv_fold(space, page_no), recv_addr);
 		recv_sys->n_addrs++;
-		// debug
-#if 1
+// debug
+#if 0
 		fprintf(stderr, "Inserting log rec for space %lu, page %lu\n",
 			space, page_no);
 #endif
@@ -2371,10 +2371,6 @@ recv_recover_page_func(
 		    recv_addr->space, recv_addr->page_no));
 #endif /* !UNIV_HOTBACKUP */
 
-#ifdef UNIV_NVDIMM_CACHE
-  // debug
-  fprintf(stderr, "[JONGQ] state changed : !!! before: %d after: %d\n", recv_addr->state, RECV_BEING_PROCESSED);
-#endif /* UNIV_NVDIMM_CACHE */
 	recv_addr->state = RECV_BEING_PROCESSED;
 
 	mutex_exit(&(recv_sys->mutex));
@@ -2425,6 +2421,42 @@ recv_recover_page_func(
 	start_lsn = end_lsn = 0;
 
 	recv = UT_LIST_GET_FIRST(recv_addr->rec_list);
+
+  /* nc-logging */
+#ifdef UNIV_NVDIMM_CACHE
+    extern unsigned char* gb_pm_mmap;
+    bool nc_page_flag = false;
+    bool nc_corrupt_flag = false;
+    uint64_t cur_nc_page_lsn = -1;
+
+    uint64_t cur_nc_buf_offset = pm_mmap_recv_check_nc_buf(
+               block->page.id.space(), block->page.id.page_no());
+
+    if (cur_nc_buf_offset != -1) {
+      // (jhpark): now, we know this page reside in the NVDIMM buffer.
+      nc_page_flag = true;
+      unsigned char *nc_frame = reinterpret_cast<buf_block_t*>
+        ((gb_pm_mmap + (1*1024*1024*1024UL) + cur_nc_buf_offset))->frame;
+
+      uint64_t cur_disk_page_lsn = mach_read_from_8(block->frame + FIL_PAGE_LSN);
+      cur_nc_page_lsn = mach_read_from_8(nc_frame+FIL_PAGE_LSN);
+		
+      // recover from NC buffer
+      if (!nc_corrupt_flag || cur_disk_page_lsn == 0) {
+    	  memcpy(block->frame, nc_frame, UNIV_PAGE_SIZE);
+        page_lsn = cur_nc_page_lsn;
+        end_lsn = recv->start_lsn + recv->len;
+        mach_write_to_8(FIL_PAGE_LSN + (block->frame), end_lsn);
+        mach_write_to_8(UNIV_PAGE_SIZE
+            - FIL_PAGE_END_LSN_OLD_CHKSUM
+            + (block->frame), end_lsn);
+          goto skip_redo;
+	  	} else {
+		  	// we need to recover from old disk page.
+        goto skip_redo;
+		  }
+    }
+#endif
 
 	while (recv) {
 		end_lsn = recv->end_lsn;
@@ -2521,7 +2553,11 @@ recv_recover_page_func(
 		}
 
 		recv = UT_LIST_GET_NEXT(rec_list, recv);
-	}
+	} // end-of-while
+
+#ifdef UNIV_NVDIMM_CACHE
+skip_redo:
+#endif
 
 #ifdef UNIV_ZIP_DEBUG
 	if (fil_page_index_page_check(page)) {
@@ -2595,10 +2631,7 @@ recv_read_in_area(
 		const page_id_t	cur_page_id(page_id.space(), page_no);
 
 		if (recv_addr && !buf_page_peek(cur_page_id)) {
-			//debug
-			fprintf(stderr, "[JONGQ] recv-before-mutex i: %lu\n", page_no);
 			mutex_enter(&(recv_sys->mutex));
-			fprintf(stderr, "[JONGQ] recv-after-mutex i: %lu\n", page_no);  
 
 			if (recv_addr->state == RECV_NOT_PROCESSED) {
 				recv_addr->state = RECV_BEING_READ;
@@ -2611,9 +2644,7 @@ recv_read_in_area(
 			mutex_exit(&(recv_sys->mutex));
 		}
 	}
-	fprintf(stderr, "[JONGQ] call buf_read_recv_pages\n"); 
 	buf_read_recv_pages(FALSE, page_id.space(), page_nos, n);
- 	fprintf(stderr, "[JONGQ] Recv pages at %lu n %lu\n", page_nos[0], n);
 
 	/*
 	fprintf(stderr, "Recv pages at %lu n %lu\n", page_nos[0], n);

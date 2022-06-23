@@ -1100,7 +1100,8 @@ buf_flush_write_block_low(
 #ifdef UNIV_NVDIMM_CACHE
     if (bpage->moved_to_nvdimm
         && bpage->buf_pool_index < srv_buf_pool_instances
-        && bpage->buf_fix_count == 0) {
+        && bpage->buf_fix_count == 0
+        && !is_pmem_recv) {
     
         buf_page_t *nvdimm_page;
         page_id_t page_id(bpage->id.space(), bpage->id.page_no());
@@ -1129,6 +1130,8 @@ buf_flush_write_block_low(
         /* Remove the target page from the original buffer pool. */
         buf_page_io_complete(bpage, true);
         buf_page_io_complete(nvdimm_page);
+
+        log_checkpoint(TRUE,FALSE);
         
         /*buf_pool_t*	buf_pool = buf_pool_from_bpage(nvdimm_page);
         ib::info() << nvdimm_page->id.space() << " "
@@ -1313,6 +1316,23 @@ buf_flush_page(
 		++buf_pool->n_flush[flush_type];
 
 #ifdef UNIV_NVDIMM_CACHE
+        /* Separate Neworder leaf page from the other pages. */
+        if (bpage->id.space() == 27 /* Order-Line tablespace */
+            && bpage->buf_fix_count == 0 /* Not fixed */
+            && !bpage->cached_in_nvdimm) { /* Not cached in NVDIMM */
+            
+            const byte *frame =
+                bpage->zip.data != NULL ? bpage->zip.data : ((buf_block_t *)bpage)->frame;
+
+            const ulint page_type = fil_page_get_type(frame);
+
+            if ((page_type == FIL_PAGE_INDEX || page_type == FIL_PAGE_RTREE) /* Index page */
+                && page_is_leaf(frame) /* Leaf page */) {
+                //ib::info() << bpage->id.space() << " " << bpage->id.page_no() << " ol " << bpage->flush_type;
+                bpage->moved_to_nvdimm = true;
+            }
+        }
+
         /* Separate Order-Line leaf page from the other pages. */
         if (bpage->id.space() == 29 /* Order-Line tablespace */
             && bpage->buf_fix_count == 0 /* Not fixed */
@@ -1329,6 +1349,7 @@ buf_flush_page(
                 bpage->moved_to_nvdimm = true;
             }
         }
+
 #ifdef UNIV_NVDIMM_CACHE_OD
         /* Separate Orders leaf page from the other pages. */
         if (bpage->id.space() == 29 /* Order-Line tablespace */
@@ -2310,11 +2331,20 @@ buf_flush_lists(
 	}
 
 	/* Flush to lsn_limit in all buffer pool instances */
-	for (i = 0; i < srv_buf_pool_instances; i++) {
+	for (i = 0; i < srv_buf_pool_instances+1; i++) {
+    if (is_pmem_recv) {
+      continue;
+    }
 		buf_pool_t*	buf_pool;
 		ulint		page_count = 0;
 
 		buf_pool = buf_pool_from_array(i);
+
+#ifdef UNIV_NVDIMM_CACHE
+    if (i == srv_buf_pool_instances) {
+      min_n = (UT_LIST_GET_LEN(buf_pool->flush_list) / 4);
+    }
+#endif
 
 		if (!buf_flush_do_batch(buf_pool,
 					BUF_FLUSH_LIST,
@@ -4061,8 +4091,6 @@ buf_flush_nvdimm_LRU_list_batch(
 
 		buf_page_t* prev = UT_LIST_GET_PREV(LRU, bpage);
 		buf_pool->lru_hp.set(prev);
-
-        //if (bpage->id.space() == 27)  continue;
 
 		BPageMutex*	block_mutex = buf_page_get_mutex(bpage);
 

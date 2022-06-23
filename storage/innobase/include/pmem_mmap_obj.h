@@ -11,6 +11,9 @@
 #include <unistd.h>
 
 #include <pthread.h>
+#include <map>
+#include <vector>
+
 //#include "ut0new.h"
 //#include "log0log.h"
 
@@ -204,19 +207,9 @@ extern bool is_pmem_recv;
 extern uint64_t pmem_recv_offset;
 extern uint64_t pmem_recv_size;
 
-/** Recovery system data structure */
-//struct recv_sys_t{
-//  ib_mutex_t    mutex;
-	/*!< mutex protecting the fields apply_log_recs,
-	n_addrs, and the state field in each recv_addr struct */
-//  ib_mutex_t    writer_mutex; 
-	/*!< mutex coordinating 
-	flushing between recv_writer_thread and the recovery thread. */
-//  ibool   apply_log_recs;
-	/*!< this is TRUE when log rec application to pages is allowed; this flag tells the
-  i/o-handler if it should do log record application */
-//  byte*   buf;  /*!< buffer for parsing log records */
-//  ulint   len;  /*!< amount of data in buf */
-//};
+extern std::map<std::pair<uint64_t,uint64_t> , std::vector<uint64_t> > pmem_nc_buffer_map;
+extern std::map<std::pair<uint64_t,uint64_t> , std::vector<uint64_t> > pmem_nc_page_map;
+uint64_t pm_mmap_recv_check_nc_buf(uint64_t space, uint64_t page_no);
+void nc_recv_analysis();
 
 #endif  /* __PMEMMAPOBJ_H__ */

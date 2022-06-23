@@ -2991,10 +2991,23 @@ btr_cur_ins_lock_and_undo(
 	}
 
 #ifdef UNIV_NVDIMM_CACHE
-    buf_block_t* nvm_block = btr_cur_get_block(cursor);
-    buf_page_t* nvm_bpage = &(nvm_block->page);
+  buf_block_t* nvm_block = btr_cur_get_block(cursor);
+  buf_page_t* nvm_bpage = &(nvm_block->page);
+  bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
 
-    bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
+  
+  if (is_nvm_page) {
+    mtr_t tmp_mtr;
+    mtr_start(&tmp_mtr);
+
+    fseg_header_t* seg_header = nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+    mach_write_to_4(seg_header + FSEG_HDR_SPACE, 1);
+    flush_cache(nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
+
+    tmp_mtr.discard_modifications();
+    mtr_commit(&tmp_mtr);
+  }
+  
 
 	err = trx_undo_report_row_operation(is_nvm_page, flags, TRX_UNDO_INSERT_OP,
 					    thr, index, entry,
@@ -3559,10 +3572,24 @@ btr_cur_upd_lock_and_undo(
 
 	/* Append the info about the update in the undo log */
 #ifdef UNIV_NVDIMM_CACHE
-    buf_block_t* nvm_block = btr_cur_get_block(cursor);
-    buf_page_t* nvm_bpage = &(nvm_block->page);
+  buf_block_t* nvm_block = btr_cur_get_block(cursor);
+  buf_page_t* nvm_bpage = &(nvm_block->page);
 
-    bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
+  bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
+
+  
+  if (is_nvm_page) {
+    mtr_t tmp_mtr;
+    mtr_start(&tmp_mtr);
+
+    fseg_header_t* seg_header = nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+    mach_write_to_4(seg_header + FSEG_HDR_SPACE, 1);
+    flush_cache(nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
+
+    tmp_mtr.discard_modifications();
+    mtr_commit(&tmp_mtr);
+  }
+  
 
 
 	return(trx_undo_report_row_operation(
@@ -3633,6 +3660,21 @@ btr_cur_update_in_place_log(
 	log_ptr += 2;
 
 	row_upd_index_write_log(update, log_ptr, mtr);
+
+#ifdef UNIV_NVDIMM_CACHE
+  // For leaf page, we only keep update bit in leaf page's FSEG entry
+  if (page_is_leaf(page)) {
+    mtr_t tmp_mtr;
+    mtr_start(&tmp_mtr);
+    page_t* nvm_page = page_align(rec);
+    fseg_header_t* seg_header = nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+    mach_write_to_4(seg_header + FSEG_HDR_SPACE, 0);
+    flush_cache(nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
+    tmp_mtr.discard_modifications();
+    mtr_commit(&tmp_mtr);
+  }
+#endif
+
 }
 #endif /* UNIV_HOTBACKUP */
 
@@ -4732,6 +4774,21 @@ btr_cur_del_mark_set_clust_rec_log(
 	log_ptr += 2;
 
 	mlog_close(mtr, log_ptr);
+
+#ifdef UNIV_NVDIMM_CACHE
+  // For leaf page, we only keep update bit in leaf page's FSEG entry
+  page_t* nvm_page = page_align(rec);
+  if (page_is_leaf(nvm_page)) {
+    mtr_t tmp_mtr;
+    mtr_start(&tmp_mtr);
+    fseg_header_t* seg_header = nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+    mach_write_to_4(seg_header + FSEG_HDR_SPACE, 0);
+    flush_cache(nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
+    tmp_mtr.discard_modifications();
+    mtr_commit(&tmp_mtr);
+  }
+#endif
+
 }
 #endif /* !UNIV_HOTBACKUP */
 
@@ -4869,6 +4926,18 @@ btr_cur_del_mark_set_clust_rec(
 #ifdef UNIV_NVDIMM_CACHE
     nvm_bpage = &(block->page);
     is_nvm_page = nvm_bpage->cached_in_nvdimm;
+
+    if (is_nvm_page) {
+      mtr_t tmp_mtr;
+      mtr_start(&tmp_mtr);
+
+      fseg_header_t* seg_header = block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+      mach_write_to_4(seg_header + FSEG_HDR_SPACE, 1);
+      flush_cache(block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
+
+      tmp_mtr.discard_modifications();
+      mtr_commit(&tmp_mtr);
+    }
 
 	err = trx_undo_report_row_operation(is_nvm_page, flags, TRX_UNDO_MODIFY_OP, thr,
 					    index, entry, NULL, 0, rec, offsets,
@@ -5020,13 +5089,6 @@ btr_cur_del_mark_set_sec_rec(
 	block = btr_cur_get_block(cursor);
 	rec = btr_cur_get_rec(cursor);
 
-#ifdef UNIV_NVDIMM_CACHE
-  fprintf(stderr,"[JONGQ] btr_cur_del_mark_set_sec_rec! space: %lu\n", block->page.id.space());
-  if (block->page.id.space() == 27) {
-    fprintf(stderr, "[JONGQ] WRONG!!!\n");
-  }
-#endif /* UNIV_NVDIMM_CACHE	*/
-	
   err = lock_sec_rec_modify_check_and_lock(flags,
 						 btr_cur_get_block(cursor),
 						 rec, cursor->index, thr, mtr);
