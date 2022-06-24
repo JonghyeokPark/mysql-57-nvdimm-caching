@@ -260,6 +260,7 @@ void nc_recv_analysis() {
          && page_no == 4294967295) {
       continue;
     } else {
+//      continue;
       break;
     }
   } else {
@@ -276,21 +277,26 @@ void nc_recv_analysis() {
 #endif
 
     // check corruption
-    mtr_t tmp_mtr;
-    mtr_start(&tmp_mtr);
+    //mtr_t tmp_mtr;
+    //mtr_start(&tmp_mtr);
+
     unsigned long check;
     fseg_header_t* seg_header = frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
     check = mach_read_from_4(seg_header + FSEG_HDR_SPACE);
+    //fprintf(stderr,"[DEBUG] frame : %p \n", frame);
     if (check == 1) {
       corrupt_num++;
     } else {
       safe_num++;
     }
-    tmp_mtr.discard_modifications();
-    mtr_commit(&tmp_mtr);
+
+    // we store relative position of nc page
+    pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*sizeof(buf_block_t));
+    ib::info() << "safe_num: " << safe_num << " courrpt_num: " << corrupt_num << " total: " << (safe_num+corrupt_num);
+
+    //tmp_mtr.discard_modifications();
+    //mtr_commit(&tmp_mtr);
   }
-
-
 
 #ifdef PMEM_RECV_DEBUG
   fil_space_t* space_t = fil_space_get(space);
@@ -305,10 +311,6 @@ void nc_recv_analysis() {
     fprintf(stderr, "(%lu:%lu) page is good! lsn: %lu\n", space, page_no, mach_read_from_8(frame + FIL_PAGE_LSN));
   }
 #endif
-
-  // we store relative position of nc page
-  pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*sizeof(buf_block_t));
-  ib::info() << "safe_num: " << safe_num << " courrpt_num: " << corrupt_num << " total: " << (safe_num+corrupt_num);
 
  }
 }

@@ -2440,6 +2440,14 @@ recv_recover_page_func(
 
       uint64_t cur_disk_page_lsn = mach_read_from_8(block->frame + FIL_PAGE_LSN);
       cur_nc_page_lsn = mach_read_from_8(nc_frame+FIL_PAGE_LSN);
+
+      // check crash
+      unsigned long check;
+      fseg_header_t* seg_header = block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+      check = mach_read_from_4(seg_header + FSEG_HDR_SPACE);
+      if (check == 1) {
+        nc_corrupt_flag = true;
+      }
 		
       // recover from NC buffer
       if (!nc_corrupt_flag || cur_disk_page_lsn == 0) {

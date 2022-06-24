@@ -423,8 +423,9 @@ buf_pool_get_oldest_modification(void)
 	/* When we traverse all the flush lists we don't want another
 	thread to add a dirty page to any flush list. */
 	log_flush_order_mutex_enter();
-
-	for (ulint i = 0; i < srv_buf_pool_instances+1; i++) {
+	
+  for (ulint i = 0; i < srv_buf_pool_instances; i++) {
+	//for (ulint i = 0; i < srv_buf_pool_instances+1; i++) {
 		buf_pool_t*	buf_pool;
 
 		buf_pool = buf_pool_from_array(i);

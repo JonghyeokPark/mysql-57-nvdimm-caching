@@ -1371,12 +1371,17 @@ buf_flush_page(
 #ifdef UNIV_NVDIMM_CACHE_ST
         if (bpage->id.space() == 31 /* Stock tablespace */
                    && bpage->buf_fix_count == 0 /* Not fixed */
-                   && !bpage->cached_in_nvdimm) { /* Not cached in NVDIMM */
+                   && !bpage->cached_in_nvdimm
+                   ) { /* Not cached in NVDIMM */
             lsn_t before_lsn = mach_read_from_8(reinterpret_cast<const buf_block_t *>(bpage)->frame + FIL_PAGE_LSN);
             lsn_t lsn_gap = bpage->oldest_modification - before_lsn;
 
+            const byte *frame =
+              bpage->zip.data != NULL ? bpage->zip.data : ((buf_block_t *)bpage)->frame;
+
             /* FIXME: Ad-hoc method */
-            if (0 < lsn_gap && lsn_gap < 15000000000) {
+            if (0 < lsn_gap && lsn_gap < 15000000000
+                && page_is_leaf(frame)) {
             //if (0 < lsn_gap && lsn_gap < 500000000) {
                 //ib::info() << bpage->id.space() << " " << bpage->id.page_no() 
                    // << " st " << bpage->flush_type << " " << lsn_gap;
@@ -2331,7 +2336,8 @@ buf_flush_lists(
 	}
 
 	/* Flush to lsn_limit in all buffer pool instances */
-	for (i = 0; i < srv_buf_pool_instances+1; i++) {
+	//for (i = 0; i < srv_buf_pool_instances+1; i++) {
+  for (i = 0; i < srv_buf_pool_instances; i++) {
     if (is_pmem_recv) {
       continue;
     }
