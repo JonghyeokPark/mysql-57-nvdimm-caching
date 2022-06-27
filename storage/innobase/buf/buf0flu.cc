@@ -1131,7 +1131,7 @@ buf_flush_write_block_low(
         buf_page_io_complete(bpage, true);
         buf_page_io_complete(nvdimm_page);
 
-        log_checkpoint(TRUE,FALSE);
+        //log_checkpoint(TRUE,FALSE);
         
         /*buf_pool_t*	buf_pool = buf_pool_from_bpage(nvdimm_page);
         ib::info() << nvdimm_page->id.space() << " "
@@ -1317,7 +1317,7 @@ buf_flush_page(
 
 #ifdef UNIV_NVDIMM_CACHE
         /* Separate Neworder leaf page from the other pages. */
-        if (bpage->id.space() == 27 /* Order-Line tablespace */
+        if (bpage->id.space() == 28 /* Order-Line tablespace */
             && bpage->buf_fix_count == 0 /* Not fixed */
             && !bpage->cached_in_nvdimm) { /* Not cached in NVDIMM */
             
@@ -1334,7 +1334,7 @@ buf_flush_page(
         }
 
         /* Separate Order-Line leaf page from the other pages. */
-        if (bpage->id.space() == 29 /* Order-Line tablespace */
+        if (bpage->id.space() == 30 /* Order-Line tablespace */
             && bpage->buf_fix_count == 0 /* Not fixed */
             && !bpage->cached_in_nvdimm) { /* Not cached in NVDIMM */
             
@@ -1352,7 +1352,7 @@ buf_flush_page(
 
 #ifdef UNIV_NVDIMM_CACHE_OD
         /* Separate Orders leaf page from the other pages. */
-        if (bpage->id.space() == 29 /* Order-Line tablespace */
+        if (bpage->id.space() == 30 /* Order-Line tablespace */
             && bpage->buf_fix_count == 0 /* Not fixed */
             && !bpage->cached_in_nvdimm) { /* Not cached in NVDIMM */
             
@@ -1369,7 +1369,7 @@ buf_flush_page(
         }
 #endif /* UNIV_NVDIMM_CACHE_OD */
 #ifdef UNIV_NVDIMM_CACHE_ST
-        if (bpage->id.space() == 31 /* Stock tablespace */
+        if (bpage->id.space() == 32 /* Stock tablespace */
                    && bpage->buf_fix_count == 0 /* Not fixed */
                    && !bpage->cached_in_nvdimm
                    ) { /* Not cached in NVDIMM */
@@ -2337,7 +2337,7 @@ buf_flush_lists(
 
 	/* Flush to lsn_limit in all buffer pool instances */
 	//for (i = 0; i < srv_buf_pool_instances+1; i++) {
-  for (i = 0; i < srv_buf_pool_instances; i++) {
+    for (i = 0; i < srv_buf_pool_instances; i++) {
     if (is_pmem_recv) {
       continue;
     }
