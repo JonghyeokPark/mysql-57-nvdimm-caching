@@ -1052,13 +1052,17 @@ buf_flush_write_block_low(
 
 	/* Force the log to the disk before writing the modified block */
 	if (!srv_read_only_mode) {
+/*        
 #ifdef UNIV_NVDIMM_CACHE
 			if (bpage->buf_pool_index < srv_buf_pool_instances) {
 				log_write_up_to(bpage->newest_modification, true);
 			}
 #else
 			log_write_up_to(bpage->newest_modification, true);
-#endif /* UNIV_NVDIMM_CACHE */
+#endif 
+*//* UNIV_NVDIMM_CACHE */
+	    log_write_up_to(bpage->newest_modification, true);
+
 	}
 
 	switch (buf_page_get_state(bpage)) {
@@ -1120,16 +1124,18 @@ buf_flush_write_block_low(
         memcpy(((buf_block_t *)nvdimm_page)->frame, ((buf_block_t *)bpage)->frame, UNIV_PAGE_SIZE);
 
         /* Set the oldest LSN of the NVDIMM page to the previous newest LSN. */
-        buf_flush_note_modification((buf_block_t *)nvdimm_page, bpage->newest_modification, bpage->newest_modification, nvdimm_page->flush_observer);
+        buf_flush_note_modification((buf_block_t *)nvdimm_page
+        , bpage->oldest_modification
+        , bpage->newest_modification
+        , nvdimm_page->flush_observer);
 
         // TODO: NVDIMM-porting
-        // 1
         flush_cache(((buf_block_t *)nvdimm_page)->frame, UNIV_PAGE_SIZE);
-        // 2
         
         /* Remove the target page from the original buffer pool. */
-        buf_page_io_complete(bpage, true);
+
         buf_page_io_complete(nvdimm_page);
+        buf_page_io_complete(bpage, true);
 
         //log_checkpoint(TRUE,FALSE);
         
