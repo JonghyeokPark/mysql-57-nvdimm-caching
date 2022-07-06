@@ -2461,8 +2461,9 @@ recv_recover_page_func(
           goto skip_redo;
 	  	} else {
 		  	// we need to recover from old disk page.
-        goto skip_redo;
-		  }
+            ib::info() << "corrupt page ! we need to recvoer !";
+            goto skip_redo;
+		}
     }
 #endif
 

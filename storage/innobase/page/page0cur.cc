@@ -1137,21 +1137,17 @@ need_extra_info:
 		ut_a(rec_size < UNIV_PAGE_SIZE);
 		mlog_catenate_string(mtr, ins_ptr, rec_size);
 	}
-
+/*
 #ifdef UNIV_NVDIMM_CACHE
   // For leaf page, we only keep update bit in leaf page's FSEG entry 
   page_t* nvm_page = page_align(insert_rec);
   if (page_is_leaf(nvm_page)) {
-    mtr_t tmp_mtr;
-    mtr_start(&tmp_mtr);
     fseg_header_t* seg_header = nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
     mach_write_to_4(seg_header + FSEG_HDR_SPACE, 0);
     flush_cache(nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
-    tmp_mtr.discard_modifications();
-    mtr_commit(&tmp_mtr);
   }
-
 #endif
+*/
 
 }
 #else /* !UNIV_HOTBACKUP */
@@ -1445,6 +1441,84 @@ use_heap:
 		}
 	}
 
+  // YYY
+  bool nc_flag = false;
+  if (page_is_leaf(page)) {
+
+    fseg_header_t* seg_header = page + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+    if (mach_read_from_4(seg_header + FSEG_HDR_SPACE) == 1) {
+      // THIS IS NC PAGE !!!
+      nc_flag = true;
+      page_dir_slot_t* check_slot;
+      check_slot =  page_dir_get_nth_slot(page, 0);
+
+      // recored mtr (insert log)
+      PMEM_MTR_INSERT_LOGHDR mtrlog;
+      mtrlog.type = 1;
+      mtrlog.space = mach_read_from_4(page + FIL_PAGE_SPACE_ID);
+      mtrlog.page_no = mach_read_from_4(page + FIL_PAGE_OFFSET);
+      // current rec info.
+      mtrlog.cur_rec_off = (uint64_t)(current_rec-page);
+      // record info.
+      mtrlog.rec_offset = (uint64_t)(insert_buf-page);
+      mtrlog.rec_size = rec_size;
+      // page directory info.
+      mtrlog.pd_offset = (uint64_t)(check_slot-page);
+      mtrlog.pd_size = (UNIV_PAGE_SIZE - (uint64_t)(check_slot-page));
+      mtrlog.valid = 0;
+
+      uint64_t idx = 0;
+      if ( (page-gb_pm_buf) < 0 ) {
+          idx = 0;
+      } else {
+          idx = (page-gb_pm_buf)/4096;
+      }
+
+//      uint64_t cur_mtr_offset = pmem_mtrlog_offset_map[(page-gb_pm_buf)/4096];
+      uint64_t cur_mtr_offset = pmem_mtrlog_offset_map[idx];
+      uint64_t cur_mtr_hdr_offset = cur_mtr_offset;
+      // step 1. recrod mtrlog hdr
+      memcpy(gb_pm_mtrlog + cur_mtr_offset, &mtrlog, sizeof(mtrlog));
+      flush_cache(gb_pm_mtrlog + cur_mtr_offset, sizeof(mtrlog));
+      cur_mtr_offset += sizeof(mtrlog);
+      // step 2. record mtrlog (page header)
+      memcpy(gb_pm_mtrlog + cur_mtr_offset, page, 120);
+      // step 3. recored mtrlog (real recrod)
+      cur_mtr_offset += 120;
+      rec_t *cur_rec = current_rec;
+      ulint cur_val = mach_read_from_2(cur_rec-REC_NEXT);
+      mach_write_to_2(gb_pm_mtrlog + cur_mtr_offset, cur_val);
+      cur_mtr_offset += 2;
+      // step 4. record page directory info.
+      cur_mtr_offset += rec_size;
+      memcpy(gb_pm_mtrlog + cur_mtr_offset, page + mtrlog.pd_offset, mtrlog.pd_size);
+      // step 5. guarantee this record is valid
+      mtrlog.valid = 1;
+      memcpy(gb_pm_mtrlog + cur_mtr_hdr_offset, &mtrlog, sizeof(mtrlog));
+      flush_cache(gb_pm_mtrlog + cur_mtr_hdr_offset, sizeof(mtrlog));
+
+      //pmem_mtrlog_offset_map[(page-gb_pm_buf)/4096] = cur_mtr_offset;
+      //rec_t* org_last_rec = page_header_get_ptr(page, PAGE_LAST_INSERT);
+
+      /*
+      ib::info() << "INSERT PAGE "
+        << mach_read_from_4(page + FIL_PAGE_SPACE_ID) << ":"
+        << mach_read_from_4(page + FIL_PAGE_OFFSET)
+        << " offsets: " << *offsets
+        << " rec_size: " << rec_size
+        << " start page directory slot: " << (uint64_t)(check_slot-page)
+        << " insert rec: " << (uint64_t)(insert_buf-page)
+        << " PAGE_FREE OFFSET: " << mach_read_from_2(page+PAGE_FREE)
+        << " PAGE_LAST_INSERT: " << mach_read_from_2(page+PAGE_LAST_INSERT)
+        << " old last record offset: " << (uint64_t)(org_last_rec-page)
+        << " old last record size: " << (uint64_t)((page_header_get_ptr(page,PAGE_HEAP_TOP)-page) -(uint64_t)(org_last_rec-page))
+        << " current rec : " << (uint64_t)(current_rec - page);
+      */
+    }
+  }
+  //
+
+
 	/* 3. Create the record */
 	insert_rec = rec_copy(insert_buf, rec, offsets);
 	rec_offs_make_valid(insert_rec, index, offsets);
@@ -1546,11 +1620,42 @@ use_heap:
 		}
 	}
 
-	/* 9. Write log record of the insert */
-	if (UNIV_LIKELY(mtr != NULL)) {
+
+  // YYY
+#ifdef UNIV_NVDIMM_CACHE
+  if (nc_flag) {
+    uint64_t idx = (page-gb_pm_buf)/4096;
+//    uint64_t cur_mtr_offset = pmem_mtrlog_offset_map[idx];
+//     ib::info() << "[insert] delete mtr log cur_mtr_offset: "
+//        << cur_mtr_offset << " size: " << cur_mtr_offset-(idx*MTR_LOG_SIZE_PER_PAGE);
+
+//    memset(gb_pm_mtrlog + (idx*MTR_LOG_SIZE_PER_PAGE), 0x0, cur_mtr_offset-(idx*MTR_LOG_SIZE_PER_PAGE));
+    memset(gb_pm_mtrlog + (idx*MTR_LOG_SIZE_PER_PAGE), 0x0, MTR_LOG_SIZE_PER_PAGE);
+//    pmem_mtrlog_offset_map[idx] = (idx*MTR_LOG_SIZE_PER_PAGE);
+
+    // For leaf page, we only keep update bit in leaf page's FSEG entry
+    page_t* nvm_page = page_align(insert_rec);
+    if (page_is_leaf(nvm_page)) {
+      fseg_header_t* seg_header = nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+      ulint check = mach_read_from_4(nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF + FSEG_HDR_SPACE);
+      mach_write_to_4(seg_header + FSEG_HDR_SPACE, 0);
+      flush_cache(nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
+    }
+
+    } else {
+      /* 9. Write log record of the insert */
+      if (UNIV_LIKELY(mtr != NULL)) {
+         page_cur_insert_rec_write_log(insert_rec, rec_size,
+                  current_rec, index, mtr);
+      }
+    }
+#else
+  /* 9. Write log record of the insert */
+  if (UNIV_LIKELY(mtr != NULL)) {
         page_cur_insert_rec_write_log(insert_rec, rec_size,
-					      current_rec, index, mtr);
-	}
+                current_rec, index, mtr);
+  }
+#endif
 
 	return(insert_rec);
 }
@@ -2604,6 +2709,55 @@ page_cur_delete_rec(
 
 	page = page_cur_get_page(cursor);
 	page_zip = page_cur_get_page_zip(cursor);
+
+  // YYY
+
+#ifdef UNIV_NVDIMM_CACHE
+
+  buf_block_t *check_block = cursor->block;
+  buf_page_t *check_page = &(check_block->page);
+  page_t* nvm_page = check_block->frame;
+  // TODO(jhpark): more detail !!!
+  // leave undo log
+  bool nc_flag = false;
+  if (page_is_leaf(check_block->frame)) {
+
+    fseg_header_t* seg_header = nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+    if (mach_read_from_4(seg_header + FSEG_HDR_SPACE) == 1) {
+      nc_flag = true;
+      PMEM_MTR_DELETE_LOGHDR mtrlog;
+      mtrlog.type = 3;
+      mtrlog.space = mach_read_from_4(nvm_page + FIL_PAGE_SPACE_ID);
+      mtrlog.page_no = mach_read_from_4(nvm_page + FIL_PAGE_OFFSET);
+
+      // current rec info.
+      mtrlog.rec_off = (uint64_t)(cursor->rec-nvm_page);
+      mtrlog.valid = 0;
+
+      // record mtr log header
+      uint64_t idx = 0;
+      if ( (nvm_page-gb_pm_buf) < 0 ) {
+        ib::info()<<"error!";
+      } else {
+        idx = (nvm_page-gb_pm_buf)/4096;
+      }
+
+      uint64_t cur_mtr_offset = pmem_mtrlog_offset_map[idx];
+      uint64_t cur_mtr_hdr_offset = cur_mtr_offset;
+      memcpy(gb_pm_mtrlog + cur_mtr_offset, &mtrlog, sizeof(mtrlog));
+      flush_cache(gb_pm_mtrlog + cur_mtr_offset, sizeof(mtrlog));
+
+      // record mtrlog
+      cur_mtr_offset += sizeof(mtrlog);
+      memcpy(gb_pm_mtrlog + cur_mtr_offset, cursor->rec, REC_OFFS_NORMAL_SIZE);
+      mtrlog.valid=1;
+      memcpy(gb_pm_mtrlog+cur_mtr_hdr_offset, &mtrlog, sizeof(mtrlog));
+      flush_cache(gb_pm_mtrlog+cur_mtr_hdr_offset, sizeof(mtrlog));
+      pmem_mtrlog_offset_map[idx] = cur_mtr_offset;
+
+    }
+  }
+#endif
 
 	/* page_zip_validate() will fail here when
 	btr_cur_pessimistic_delete() invokes btr_set_min_rec_mark().

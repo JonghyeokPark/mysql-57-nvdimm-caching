@@ -16,6 +16,8 @@
 
 // gloabl persistent memmory region
 unsigned char* gb_pm_mmap;
+unsigned char* gb_pm_mtrlog;
+
 int gb_pm_mmap_fd;
 PMEM_MMAP_MTRLOG_BUF* mmap_mtrlogbuf = NULL;
 
@@ -26,6 +28,9 @@ uint64_t pmem_recv_size = 0;
 /* nc-logging */
 std::map<std::pair<uint64_t,uint64_t> ,std::vector<uint64_t> > pmem_nc_buffer_map;
 std::map<std::pair<uint64_t,uint64_t> , std::vector<uint64_t> > pmem_nc_page_map;
+// YYY
+std::map<uint64_t, uint64_t> pmem_mtrlog_offset_map;
+std::map<std::pair<uint64_t,uint64_t> , uint64_t > pmem_nc_shadow_map;
 
 unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
   
