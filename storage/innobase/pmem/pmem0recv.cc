@@ -252,11 +252,6 @@ void nc_recv_analysis() {
   page_no = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.page_no();
   unsigned char *frame = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->frame;
 
-  // HOT DEBUG //
-  //space = reinterpret_cast<buf_block_t*>((addr+ i ))->page.id.space();
-  //page_no = reinterpret_cast<buf_block_t*>((addr+ i ))->page.id.page_no();
-  //unsigned char *frame = (unsigned char*)(addr+ i);
-
   if (space != 28 && space != 30 && space != 32) {
     if (space == 4294967295
          && page_no == 4294967295) {
@@ -278,10 +273,6 @@ void nc_recv_analysis() {
     }
 #endif
 
-    // check corruption
-    //mtr_t tmp_mtr;
-    //mtr_start(&tmp_mtr);
-
     unsigned long check;
     fseg_header_t* seg_header = frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
     check = mach_read_from_4(seg_header + FSEG_HDR_SPACE);
@@ -294,10 +285,8 @@ void nc_recv_analysis() {
 
     // we store relative position of nc page
     pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*sizeof(buf_block_t));
-    ib::info() << "safe_num: " << safe_num << " courrpt_num: " << corrupt_num << " total: " << (safe_num+corrupt_num);
-
-    //tmp_mtr.discard_modifications();
-    //mtr_commit(&tmp_mtr);
+    ib::info() << "safe_num: " << safe_num << " courrpt_num: " 
+        << corrupt_num << " total: " << (safe_num+corrupt_num);
   }
 
 #ifdef PMEM_RECV_DEBUG
@@ -342,6 +331,8 @@ void nc_mtrlog_analysis() {
 
   uint64_t page_num_chunks = static_cast<uint64_t>( (8*147324928UL)/4096);
   unsigned long type;
+  uint64_t offset = 0;
+
   for (uint64_t i=0; i < page_num_chunks*2; ++i) {
     type = nc_mtrlog_recv_read_hdr(addr);
     if (type == 1) {
@@ -360,6 +351,7 @@ void nc_mtrlog_analysis() {
         << " pd_size: " << mtrlog_insert.pd_size
         << " valid: " << mtrlog_insert.valid;
 
+        pmem_nc_shadow_map[std::make_pair(mtrlog_insert.space,mtrlog_insert.page_no)] = offset;
 
     } else if (type == 2) {
 
@@ -373,6 +365,7 @@ void nc_mtrlog_analysis() {
         << " rec_size: " << mtrlog_update.rec_size
         << " valid: " << mtrlog_update.valid;
 
+        pmem_nc_shadow_map[std::make_pair(mtrlog_update.space,mtrlog_update.page_no)] = offset;
 
     } else if (type == 3) {
 
@@ -386,10 +379,12 @@ void nc_mtrlog_analysis() {
         << " rec_size: " << mtrlog_delete.rec_size
         << " valid: " << mtrlog_delete.valid;
 
+        pmem_nc_shadow_map[std::make_pair(mtrlog_delete.space,mtrlog_delete.page_no)] = offset;
 
     }
 
     addr += 1024;
+    offset += 1024;
   }
 }
 

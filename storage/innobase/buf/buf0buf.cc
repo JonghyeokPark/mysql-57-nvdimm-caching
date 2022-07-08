@@ -5388,6 +5388,7 @@ buf_page_init_low(
     } else {
         bpage->cached_in_nvdimm = false;
     }
+    bpage->splited = false;
 #endif /* UNIV_NVDIMM_CACHE */
 
 	ut_d(bpage->file_page_was_freed = FALSE);

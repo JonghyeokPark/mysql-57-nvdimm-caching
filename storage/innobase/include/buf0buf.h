@@ -1726,6 +1726,7 @@ public:
                              in the NVDIMM buffer */
     bool moved_to_nvdimm;  /*!< TRUE if the page needs to
                              be moved to the NVDIMM buffer */
+    bool splited;                             
 #endif /* UNIV_NVDIMM_CACHE */
 };
 

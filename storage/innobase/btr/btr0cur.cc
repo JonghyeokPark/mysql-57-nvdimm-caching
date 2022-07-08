@@ -3964,6 +3964,7 @@ btr_cur_update_in_place(
 //	btr_cur_update_in_place_log(flags, rec, index, update,
 //				    trx_id, roll_ptr, mtr);
 // YYY
+
 #ifdef UNIV_NVDIMM_CACHE
   nvm_block = btr_cur_get_block(cursor);
   nvm_bpage = &(nvm_block->page);
@@ -3976,10 +3977,10 @@ btr_cur_update_in_place(
         idx = (nvm_block->frame-gb_pm_buf)/4096;
     }
     uint64_t cur_mtr_offset = pmem_mtrlog_offset_map[idx];
-/*
-    ib::info() << "[update] delete mtr log cur_mtr_offset: "
-      << cur_mtr_offset << " size: " << cur_mtr_offset-(idx*MTR_LOG_SIZE_PER_PAGE); */
 
+//    ib::info() << "[update] delete mtr log cur_mtr_offset: "
+//      << cur_mtr_offset << " size: " << cur_mtr_offset-(idx*MTR_LOG_SIZE_PER_PAGE); 
+//
 //    memset(gb_pm_mtrlog + (idx*MTR_LOG_SIZE_PER_PAGE), 0x0, cur_mtr_offset-(idx*MTR_LOG_SIZE_PER_PAGE));
     memset(gb_pm_mtrlog + (idx*MTR_LOG_SIZE_PER_PAGE), 0x0, MTR_LOG_SIZE_PER_PAGE);
 //    pmem_mtrlog_offset_map[idx] = (idx*MTR_LOG_SIZE_PER_PAGE);
@@ -3989,7 +3990,6 @@ btr_cur_update_in_place(
     fseg_header_t* seg_header = nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
     mach_write_to_4(seg_header + FSEG_HDR_SPACE, 0);
     flush_cache(nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
-
   } else {
     btr_cur_update_in_place_log(flags, rec, index, update,
             trx_id, roll_ptr, mtr);
@@ -4982,7 +4982,7 @@ btr_cur_del_mark_set_clust_rec(
 #ifdef UNIV_NVDIMM_CACHE
   bool nc_flag = false;
   page_t* nvm_page = page_align(rec);
-  if (page_is_leaf(nvm_page)) {
+  if (is_nvm_page && page_is_leaf(nvm_page)) {
     fseg_header_t* seg_header = nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
     if (mach_read_from_4(seg_header + FSEG_HDR_SPACE) == 1) {
       nc_flag = true;
@@ -5009,8 +5009,14 @@ btr_cur_del_mark_set_clust_rec(
       memcpy(gb_pm_mtrlog + cur_mtr_offset, &mtrlog, sizeof(mtrlog));
       flush_cache(gb_pm_mtrlog + cur_mtr_offset, sizeof(mtrlog));
 
+       
       // record mtrlog
       cur_mtr_offset += sizeof(mtrlog);
+
+      // record page header
+      memcpy(gb_pm_mtrlog + cur_mtr_offset, nvm_page, 120);
+      cur_mtr_offset += 120;
+ 
       memcpy(gb_pm_mtrlog + cur_mtr_offset, rec, REC_OFFS_NORMAL_SIZE);
       mtrlog.valid=1;
       memcpy(gb_pm_mtrlog+cur_mtr_hdr_offset, &mtrlog, sizeof(mtrlog));
@@ -5066,23 +5072,23 @@ btr_cur_del_mark_set_clust_rec(
   if (nvm_bpage->cached_in_nvdimm) {
     uint64_t idx = 0;
     if ( (block->frame-gb_pm_buf) < 0) {
+        ib::info() << "error! (3)";
         idx = 0;
     } else {
         idx = (block->frame-gb_pm_buf)/4096;
     }
 //    uint64_t idx = (block->frame-gb_pm_buf)/4096;
     uint64_t cur_mtr_offset = pmem_mtrlog_offset_map[idx];
-/*
-    ib::info() << "[delete] delete mtr log cur_mtr_offset: "
-      << cur_mtr_offset << " size: " << cur_mtr_offset-(idx*MTR_LOG_SIZE_PER_PAGE); */
 
+//    ib::info() << "[delete] delete mtr log cur_mtr_offset: "
+//      << cur_mtr_offset << " size: " << cur_mtr_offset-(idx*MTR_LOG_SIZE_PER_PAGE); 
 
 //    memset(gb_pm_mtrlog + (idx*MTR_LOG_SIZE_PER_PAGE), 0x0, cur_mtr_offset-(idx*MTR_LOG_SIZE_PER_PAGE));
     memset(gb_pm_mtrlog + (idx*MTR_LOG_SIZE_PER_PAGE), 0x0, MTR_LOG_SIZE_PER_PAGE);
 //    pmem_mtrlog_offset_map[idx] = (idx*MTR_LOG_SIZE_PER_PAGE);
-
     // For leaf page, we only keep update bit in leaf page's FSEG entry
-  page_t* nvm_page = page_align(rec);
+  page_t* nvm_page = ((buf_block_t*)nvm_bpage)->frame;
+  //page_align(rec);
   if (page_is_leaf(nvm_page)) {
     fseg_header_t* seg_header = nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
     mach_write_to_4(seg_header + FSEG_HDR_SPACE, 0);

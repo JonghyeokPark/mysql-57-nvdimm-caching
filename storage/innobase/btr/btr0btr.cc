@@ -2627,6 +2627,24 @@ func_start:
 	}
 
 	/* 2. Allocate a new page to the index */
+
+    // YYY
+#ifdef UNIV_NVDIMM_CACHE
+    buf_page_t* before_bpage = &(block->page);
+    if (before_bpage->cached_in_nvdimm) {
+        buf_page_t* nvm_bpage = &(new_block->page);
+        bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
+        if (is_nvm_page) {
+            block->page.splited = true;
+        
+            // restore the NC update flag 
+            fseg_header_t* seg_header = block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+            mach_write_to_4(seg_header + FSEG_HDR_SPACE, 0);
+            flush_cache(block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
+        }
+    }
+#endif
+
 	new_block = btr_page_alloc(cursor->index, hint_page_no, direction,
 				   btr_page_get_level(page, mtr), mtr, mtr);
 

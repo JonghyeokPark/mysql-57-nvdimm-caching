@@ -537,6 +537,53 @@ row_upd_rec_in_place(
 
 	ut_ad(rec_offs_validate(rec, index, offsets));
 
+  // YYY
+#ifdef UNIV_NVDIMM_CACHE
+  bool nc_flag = false;
+  page_t* nvm_page = page_align(rec);
+  if (page_is_leaf(nvm_page)) {
+    fseg_header_t* seg_header = nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+    if (mach_read_from_4(seg_header + FSEG_HDR_SPACE) == 1) {
+      nc_flag = true;
+      // update mtr log
+      PMEM_MTR_UPDATE_LOGHDR mtrlog;
+      mtrlog.type = 2;
+      mtrlog.space = mach_read_from_4(nvm_page + FIL_PAGE_SPACE_ID);
+      mtrlog.page_no = mach_read_from_4(nvm_page + FIL_PAGE_OFFSET);
+
+      //current rec info.
+      mtrlog.rec_off = (uint64_t)(rec-nvm_page);
+      mtrlog.valid = 0;
+
+      if ((nvm_page-gb_pm_buf) < 0) {
+          ib::info() << "error (4)";
+      }
+      // record mtr log header
+      uint64_t cur_mtr_offset = pmem_mtrlog_offset_map[(nvm_page-gb_pm_buf)/4096];
+      uint64_t cur_mtr_hdr_offset = cur_mtr_offset;
+      memcpy(gb_pm_mtrlog + cur_mtr_offset, &mtrlog, sizeof(mtrlog));
+      flush_cache(gb_pm_mtrlog + cur_mtr_offset, sizeof(mtrlog));
+
+      // record mtrlog
+      cur_mtr_offset += sizeof(mtrlog);
+
+      // record page header
+      memcpy(gb_pm_mtrlog + cur_mtr_offset, nvm_page, 120);
+      cur_mtr_offset += 120;
+
+      memcpy(gb_pm_mtrlog + cur_mtr_offset, rec, REC_OFFS_NORMAL_SIZE);
+      cur_mtr_offset += REC_OFFS_NORMAL_SIZE;
+
+      // guarantee this record is valid
+      mtrlog.valid=1;
+      memcpy(gb_pm_mtrlog+cur_mtr_hdr_offset, &mtrlog, sizeof(mtrlog));
+      flush_cache(gb_pm_mtrlog+cur_mtr_hdr_offset, sizeof(mtrlog));
+
+      pmem_mtrlog_offset_map[(nvm_page-gb_pm_buf)/4096] = cur_mtr_offset;
+
+    }
+  }
+#endif
 	if (rec_offs_comp(offsets)) {
 		rec_set_info_bits_new(rec, update->info_bits);
 	} else {

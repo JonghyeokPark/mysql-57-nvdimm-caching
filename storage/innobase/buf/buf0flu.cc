@@ -1105,7 +1105,9 @@ buf_flush_write_block_low(
     if (bpage->moved_to_nvdimm
         && bpage->buf_pool_index < srv_buf_pool_instances
         && bpage->buf_fix_count == 0
-        && !is_pmem_recv) {
+        && !is_pmem_recv
+        && !bpage->splited
+        ) {
     
         buf_page_t *nvdimm_page;
         page_id_t page_id(bpage->id.space(), bpage->id.page_no());
@@ -1325,7 +1327,9 @@ buf_flush_page(
         /* Separate Neworder leaf page from the other pages. */
         if (bpage->id.space() == 28 /* Order-Line tablespace */
             && bpage->buf_fix_count == 0 /* Not fixed */
-            && !bpage->cached_in_nvdimm) { /* Not cached in NVDIMM */
+            && !bpage->cached_in_nvdimm
+            && !bpage->splited
+            ) { /* Not cached in NVDIMM */
             
             const byte *frame =
                 bpage->zip.data != NULL ? bpage->zip.data : ((buf_block_t *)bpage)->frame;
@@ -1342,7 +1346,9 @@ buf_flush_page(
         /* Separate Order-Line leaf page from the other pages. */
         if (bpage->id.space() == 30 /* Order-Line tablespace */
             && bpage->buf_fix_count == 0 /* Not fixed */
-            && !bpage->cached_in_nvdimm) { /* Not cached in NVDIMM */
+            && !bpage->cached_in_nvdimm
+            && !bpage->splited
+            ) { /* Not cached in NVDIMM */
             
             const byte *frame =
                 bpage->zip.data != NULL ? bpage->zip.data : ((buf_block_t *)bpage)->frame;
@@ -1378,6 +1384,7 @@ buf_flush_page(
         if (bpage->id.space() == 32 /* Stock tablespace */
                    && bpage->buf_fix_count == 0 /* Not fixed */
                    && !bpage->cached_in_nvdimm
+                   && !bpage->splited
                    ) { /* Not cached in NVDIMM */
             lsn_t before_lsn = mach_read_from_8(reinterpret_cast<const buf_block_t *>(bpage)->frame + FIL_PAGE_LSN);
             lsn_t lsn_gap = bpage->oldest_modification - before_lsn;

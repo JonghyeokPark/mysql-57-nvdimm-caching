@@ -212,7 +212,8 @@ extern std::map<std::pair<uint64_t,uint64_t> , std::vector<uint64_t> > pmem_nc_p
 uint64_t pm_mmap_recv_check_nc_buf(uint64_t space, uint64_t page_no);
 void nc_recv_analysis();
 
-// YYY
+extern std::map<std::pair<uint64_t,uint64_t> , uint64_t > pmem_nc_shadow_map;
+
 // YYY
 extern unsigned char *gb_pm_mtrlog;
 #define MTR_LOG_SIZE_PER_PAGE 1024
@@ -256,5 +257,6 @@ extern std::map<uint64_t, uint64_t> pmem_mtrlog_offset_map; // (frame_id, offset
 
 void nc_mtrlog_analysis();
 void nc_recv_split_shadow();
+int nc_mtrlog_recv_read_hdr(unsigned char* addr);
 
 #endif  /* __PMEMMAPOBJ_H__ */

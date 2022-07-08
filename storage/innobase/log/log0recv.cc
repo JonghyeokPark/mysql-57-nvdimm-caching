@@ -2432,6 +2432,8 @@ recv_recover_page_func(
     uint64_t cur_nc_buf_offset = pm_mmap_recv_check_nc_buf(
                block->page.id.space(), block->page.id.page_no());
 
+    std::map<std::pair<uint64_t,uint64_t>, uint64_t >::iterator ncmtr_iter;
+
     if (cur_nc_buf_offset != -1) {
       // (jhpark): now, we know this page reside in the NVDIMM buffer.
       nc_page_flag = true;
@@ -2450,7 +2452,7 @@ recv_recover_page_func(
       }
 		
       // recover from NC buffer
-      if (!nc_corrupt_flag || cur_disk_page_lsn == 0) {
+      if (!nc_corrupt_flag /* || cur_disk_page_lsn == 0*/ ) {
     	  memcpy(block->frame, nc_frame, UNIV_PAGE_SIZE);
         page_lsn = cur_nc_page_lsn;
         end_lsn = recv->start_lsn + recv->len;
@@ -2462,6 +2464,81 @@ recv_recover_page_func(
 	  	} else {
 		  	// we need to recover from old disk page.
             ib::info() << "corrupt page ! we need to recvoer !";
+            ncmtr_iter = pmem_nc_shadow_map.find(
+            std::make_pair(block->page.id.space(), block->page.id.page_no()));
+            if (ncmtr_iter != pmem_nc_shadow_map.end()) {
+                ib::info() << "!!!!get mtr log!!!!";
+            }
+
+            // 1. get offset
+            uint64_t offset = ncmtr_iter->second;
+            unsigned char *mtr_log_addr = gb_pm_mmap + 3*1024*1024*1024UL + offset;
+            int mtr_type = nc_mtrlog_recv_read_hdr(mtr_log_addr);
+            uint64_t cur_mtr_offset = 0;
+
+            if (mtr_type == 1) {
+                PMEM_MTR_INSERT_LOGHDR mtrlog_insert;
+                memcpy(&mtrlog_insert, mtr_log_addr, sizeof(PMEM_MTR_INSERT_LOGHDR));
+
+                cur_mtr_offset = sizeof(mtrlog_insert);
+                if (mtrlog_insert.valid == 1) {
+                // restore page header
+                memcpy(nc_frame, mtr_log_addr+cur_mtr_offset, 120);
+                cur_mtr_offset += 120;
+
+                // restore recrod 
+                memcpy(nc_frame + mtrlog_insert.rec_offset
+                        , mtr_log_addr+cur_mtr_offset
+                        , mtrlog_insert.rec_size);
+                cur_mtr_offset += mtrlog_insert.rec_size;
+
+                // page directory info.
+                memcpy(nc_frame + mtrlog_insert.pd_offset
+                        , mtr_log_addr+cur_mtr_offset
+                        , mtrlog_insert.pd_size); 
+                }
+
+            } else if (mtr_type == 2) {
+                PMEM_MTR_UPDATE_LOGHDR mtrlog_update;
+                memcpy(&mtrlog_update, mtr_log_addr, sizeof(PMEM_MTR_UPDATE_LOGHDR));
+
+                cur_mtr_offset = sizeof(mtrlog_update);
+                if (mtrlog_update.valid == 1) {
+                // restore page header
+                memcpy(nc_frame, mtr_log_addr+cur_mtr_offset, 120);
+                cur_mtr_offset += 120;
+
+                // restore recrod 
+                memcpy(nc_frame + mtrlog_update.rec_off
+                        , mtr_log_addr+cur_mtr_offset
+                        , REC_OFFS_NORMAL_SIZE);
+                cur_mtr_offset += REC_OFFS_NORMAL_SIZE;
+
+                }
+
+            } else if (mtr_type == 3) {
+
+                PMEM_MTR_DELETE_LOGHDR mtrlog_delete;
+                memcpy(&mtrlog_delete, mtr_log_addr, sizeof(PMEM_MTR_DELETE_LOGHDR));
+
+                cur_mtr_offset = sizeof(mtrlog_delete);
+                if (mtrlog_delete.valid == 1) {
+                // restore page header
+                memcpy(nc_frame, mtr_log_addr+cur_mtr_offset, 120);
+                cur_mtr_offset += 120;
+
+                // restore recrod 
+                memcpy(nc_frame + mtrlog_delete.rec_off
+                        , mtr_log_addr+cur_mtr_offset
+                        , REC_OFFS_NORMAL_SIZE);
+                cur_mtr_offset += REC_OFFS_NORMAL_SIZE;
+
+                }
+
+
+            }
+            
+        	memcpy(block->frame, nc_frame, UNIV_PAGE_SIZE);
             goto skip_redo;
 		}
     }
