@@ -1512,7 +1512,7 @@ innobase_start_or_create_for_mysql(void)
   }
 
   // TODO(jhpark): need to optimize
-	pm_mmap_mtrlogbuf_init(1024*1024*1024*1UL); // 1GB for test
+	//pm_mmap_mtrlogbuf_init(1024*1024*1024*1UL); // 1GB for test
 	pm_mmap_buf_init(1024*1024*1024*2UL);	
 
 #endif /* UNIV_NVDIMM_CACHE */
@@ -2360,7 +2360,6 @@ files_checked:
 		if (is_pmem_recv)  {
 			PMEMMMAP_INFO_PRINT("YES!!!! recovery!!!! start_offset: %lu end_offset: %lu\n"
 				,pmem_recv_offset, pmem_recv_size);
-//			pm_mmap_recv(pmem_recv_offset, pmem_recv_size);
 //			PMEMMMAP_INFO_PRINT("UNDO page is recoverd !!!!\n");
 //			//pm_mmap_recv_flush_buffer();
 		}

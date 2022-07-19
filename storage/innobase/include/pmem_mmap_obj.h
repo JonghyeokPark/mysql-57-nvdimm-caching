@@ -22,9 +22,6 @@
 //					 numoerous data structures and functions are silimilar to 
 //					 ones in pmem_obj.h
 
-// TODO(jhpark) : separate cmopile option (-DUNIV_PMEM_MMAP)
-// TODO(jhpark) : redesign for configurable NVDIMM caching options
-
 #define NVDIMM_MMAP_FILE_NAME         "nvdimm_mmap_file"
 #define PMEM_MMAP_MAX_FILE_NAME_LENGTH    10000
 
@@ -75,37 +72,13 @@ static inline void memcpy_persist
   mfence();
 }
 
-struct __pmem_mmap_mtrlog_buf;
-typedef struct __pmem_mmap_mtrlog_buf PMEM_MMAP_MTRLOG_BUF;
-
-struct __pmem_mmap_mtrlog_hdr;
-typedef struct __pmem_mmap_mtrlog_hdr PMEM_MMAP_MTRLOG_HDR;
-
-struct __pmem_mmap_mtrlog_fileheader;
-typedef struct __pmem_mmap_mtrlog_fileheader PMEM_MMAP_MTRLOGFILE_HDR;
 
 // buffer
 struct __pmem_mmap_buf_sys;
 typedef struct __pmem_mmap_buf_sys PMEM_MMAP_BUF_SYS;
 
-#define PMEM_MMAP_MTRLOG_HDR_SIZE sizeof(PMEM_MMAP_MTRLOG_HDR)
-#define PMEM_MMAP_LOGFILE_HEADER_SZ sizeof(PMEM_MMAP_MTRLOGFILE_HDR)
-
-
-/* PMEM_MMAP mtrlog file header */
-
-// TOOD(jhpark) remove unncessary part after fixing recovery algorithm
-// (jhpark): more offset will be added if recovery algorithm fixed.
-// recovery flag
-//const uint32_t PMEM_MMAP_RECOVERY_FLAG = 0;
-// mtrlog checkpoint lsn; recovery start from this lsn (i.e., offset)
-//const uint32_t PMEM_MMAP_LOGFILE_CKPT_LSN = 1;
-// PMEM_MMAP mtrlog file header size
-//const uint32_t PMEM_MMAP_LOGFILE_HEADER_SZ = PMEM_MMAP_RECOVERY_FLAG
-//                                             + PMEM_MMAP_LOGFILE_CKPT_LSN;
-
-//const uint32_t PMEM_MMAP_LOGFILE_HEADER_SZ = sizeof(__pmem_mmap_mtrlog_buf);
-//const uint32_t PMEM_MTRLOG_BLOCK_SZ = 256
+//#define PMEM_MMAP_MTRLOG_HDR_SIZE sizeof(PMEM_MMAP_MTRLOG_HDR)
+//#define PMEM_MMAP_LOGFILE_HEADER_SZ sizeof(PMEM_MMAP_MTRLOGFILE_HDR)
 
 #define PMEM_MMAP_MTR_FIL_HDR_SIZE_OFFSET 0
 #define PMEM_MMAP_MTR_FIL_HDR_LSN 8
@@ -115,7 +88,7 @@ typedef struct __pmem_mmap_buf_sys PMEM_MMAP_BUF_SYS;
 
 /////////////////////////////////////////////////////////
 
-extern PMEM_MMAP_MTRLOG_BUF* mmap_mtrlogbuf;
+//extern PMEM_MMAP_MTRLOG_BUF* mmap_mtrlogbuf;
 
 // buffer
 extern PMEM_MMAP_BUF_SYS* mmap_buf_sys;
@@ -152,55 +125,12 @@ struct __pmem_mmap_buf_sys {
 	unsigned long cur_offset;					// current offset
 };
 
-// mtr log file header
-struct __pmem_mmap_mtrlog_fileheader {
-  size_t size;
-	size_t flushed_lsn;
-	size_t ckpt_lsn;
-	size_t ckpt_offset; 
-};
-
-struct __pmem_mmap_mtrlog_hdr {
-	bool need_recv;								 // true if need recovery
-	unsigned long int len;    		 // length of mtr log payload
-	unsigned long int lsn;      	 // lsn from global log_sys
-  unsigned long int mtr_lsn;  	 // mtr log lsn
-	unsigned long int prev_offset; // prev mtr log header offset
-	
-	unsigned long int space;			 // undo page space id
-	unsigned long int page_no;		 // undo page page_no
-};
-
-// logging? 
-int pm_mmap_mtrlogbuf_init(const size_t size);
-void pm_mmap_mtrlogbuf_mem_free();
-void pm_mmap_read_logfile_header(PMEM_MMAP_MTRLOGFILE_HDR* mtrlog_fil_hdr);
-void pm_mmap_write_logfile_header_size(size_t size);
-void pm_mmap_write_logfile_header_lsn(uint64_t lsn);
-void pm_mmap_write_logfile_header_ckpt_info(uint64_t offset, uint64_t lsn);
-uint64_t pm_mmap_log_checkpoint(uint64_t cur_offset);
-void pm_mmap_log_commit(unsigned long cur_space, unsigned long cur_page, uint64_t cur_offset);
-
-ssize_t pm_mmap_mtrlogbuf_write(const uint8_t* buf, 
-                                unsigned long int n, unsigned long int lsn);
-
-bool pm_mmap_mtrlogbuf_identify(size_t offset, unsigned long space, unsigned long page_no);
-void pm_mmap_mtrlogbuf_unset_recv_flag(size_t offset);
-void pm_mmap_mtrlogbuf_commit(unsigned char* rec, unsigned long cur_rec_size, unsigned long space, unsigned long page_no);
-void pm_mmap_mtrlogbuf_commit_v1(unsigned long space, unsigned long page_no);
-
 // buffer
 void pm_mmap_buf_init(const uint64_t size);
 void pm_mmap_buf_free(void);
 void pm_mmap_buf_write(unsigned long len, void* buf);
-//unsigned char* pm_mmap_buf_chunk_alloc(unsigned long mem_size, ut_new_pfx_t* pfx);
 
-
-// recovery
-//bool pm_mmap_recv(PMEM_MMAP_MTRLOGFILE_HDR* log_fil_hdr);
 bool pm_mmap_recv(uint64_t start_offset, uint64_t end_offset);
-uint64_t pm_mmap_recv_check(PMEM_MMAP_MTRLOGFILE_HDR* log_fil_hdr);
-void pm_mmap_recv_flush_buffer();
 
 // TODO(jhpark): covert these variables as structure (i.e., recv_sys_t)
 extern bool is_pmem_recv;

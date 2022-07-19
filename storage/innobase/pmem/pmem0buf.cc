@@ -6,7 +6,6 @@
 // Total number of pool size is 8GB, 1MB is for undo mtr log region and 2GB is for NC buffer
 // cur_offset starts after mtr_log region actual offset means (mtrlog retion size + cur_offset)
 
-extern PMEM_MMAP_MTRLOG_BUF* mmap_mtrlogbuf;
 extern bool is_pmem_recv;
 extern unsigned char* gb_pm_mmap;
 unsigned char* gb_pm_buf;
@@ -22,15 +21,15 @@ pm_mmap_buf_init(const uint64_t size) {
 	mmap_buf_sys->n_pages = 0;
 	mmap_buf_sys->cur_offset = 0;
 
-  if (is_pmem_recv || mmap_mtrlogbuf==NULL) {
+  if (is_pmem_recv) {
     fprintf(stderr, "[recv] now we are on recover mode (is_pmem_recv: %d)\n", is_pmem_recv);
 	
-		// TODO(jhpark): support idempotent recovery!!
+	// TODO(jhpark): support idempotent recovery!!
     // 1024*1024*1024*1UL 
     gb_pm_buf = gb_pm_mmap + (1024*1024*1024*1UL);
     PMEMMMAP_INFO_PRINT("[recv] pm_mmap_buf initialization finished!\n");  
   } else {	
-  	gb_pm_buf = gb_pm_mmap + mmap_mtrlogbuf->size;
+  	gb_pm_buf = gb_pm_mmap + (1024*1024*1024*1UL);
   	PMEMMMAP_INFO_PRINT("pm_mmap_buf initialization finished! size: %lu address: %p\n", size, gb_pm_buf);
   }
 

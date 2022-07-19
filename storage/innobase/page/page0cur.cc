@@ -1642,13 +1642,14 @@ use_heap:
 
     
     // For leaf page, we only keep update bit in leaf page's FSEG entry
-    
+  /*  
     page_t* nvm_page = page_align(insert_rec);
     if (page_is_leaf(nvm_page)) {
       fseg_header_t* seg_header = nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
       mach_write_to_4(seg_header + FSEG_HDR_SPACE, 0);
       flush_cache(nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
     }
+    */
 
     } else {
       /* 9. Write log record of the insert */

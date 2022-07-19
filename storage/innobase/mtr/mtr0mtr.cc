@@ -42,7 +42,6 @@ Created 11/26/1995 Heikki Tuuri
 #ifdef UNIV_NVDIMM_CACHE
 #include "pmem_mmap_obj.h"
 extern unsigned char* gb_pm_mmap;
-extern PMEM_MMAP_MTRLOG_BUF* mmap_mtrlogbuf;
 #endif /* UNIV_NVDIMM_CACHE */
 
 // print_trace
@@ -440,10 +439,7 @@ public:
 #ifdef UNIV_NVDIMM_CACHE
   /** Write the mtr log (undo + redo of undo) record,and release the resorces */
   void execute_nvm();
-	void execute_no_nvm();
-  /** Append the redo log records to the NVDIMM mtr log buffer.
-	@param[in]	len	number of bytes to write */
-	void finish_write_nvm(ulint len);
+  void execute_no_nvm();
 #endif
 
 private:
@@ -499,26 +495,6 @@ struct mtr_write_log_t {
 	}
 };
 
-#ifdef UNIV_NVDIMM_CACHE
-struct mtr_nvm_write_log_t {
-	/** Append a block to the NVDIMM mtr log buffer. 
-		@return whether the appending should continue */
-  // original
-	bool operator()(const mtr_buf_t::block_t* block) const
-	{
-    // TODO(jhpark) : add more description.
-    // Get current LSN from the log_sys global object
-    // protected by mutex. multiple NVDIMM caching page might
-    // have same LSN. They can be distinguished by mtrlogbuf's LSN.
-    lsn_t m_lsn = log_sys->lsn;
-		
-    if (pm_mmap_mtrlogbuf_write(block->begin(), block->used(), m_lsn) <= 0) {
-			PMEMMMAP_ERROR_PRINT("pm_mmap_mlogbuf_write failed\n");
-		}
-		return(true);
-	}
-};
-#endif /* UNIV_NVDIMM_CACHE */
 
 /** Append records to the system-wide redo log buffer.
 @param[in]	log	redo log records */
@@ -1059,25 +1035,6 @@ mtr_t::Command::prepare_write()
 	return(len);
 }
 
-#ifdef UNIV_NVDIMM_CACHE
-/** Append the redo log records to the redo log buffer
-@param[in] len	number of bytes to write */
-void
-mtr_t::Command::finish_write_nvm(
-	ulint	len)
-{
-	ut_ad(m_impl->m_log_mode == MTR_LOG_ALL);
-	ut_ad(log_mutex_own());
-	ut_ad(m_impl->m_log.size() == len);
-	ut_ad(len > 0);
-
-	/* Open the database log for log_write_low */
-  m_start_lsn = log_sys->lsn;
-	mtr_nvm_write_log_t	write_log;
-	m_impl->m_log.for_each_block(write_log);
-  m_end_lsn = log_sys->lsn; 
-}
-#endif /* UNIV_NVDIMM_CACHE */
 
 /** Append the redo log records to the redo log buffer
 @param[in] len	number of bytes to write */

@@ -3986,10 +3986,10 @@ btr_cur_update_in_place(
 //    pmem_mtrlog_offset_map[idx] = (idx*MTR_LOG_SIZE_PER_PAGE);
 
   // For leaf page, we only keep update bit in leaf page's FSEG entry
-    page_t* nvm_page = page_align(rec);
-    fseg_header_t* seg_header = nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+  //  page_t* nvm_page = page_align(rec);
+    fseg_header_t* seg_header = nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
     mach_write_to_4(seg_header + FSEG_HDR_SPACE, 0);
-    flush_cache(nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
+    flush_cache(nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
   } else {
     btr_cur_update_in_place_log(flags, rec, index, update,
             trx_id, roll_ptr, mtr);
