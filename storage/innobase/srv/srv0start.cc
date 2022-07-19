@@ -2356,12 +2356,9 @@ files_checked:
 #ifdef UNIV_NVDIMM_CACHE		
 		fprintf(stderr, "[JONGQ] ---- pass force recovery!\n"); 
 		
-// TODO(jhpark): NC recovery check !!!!!
 		if (is_pmem_recv)  {
 			PMEMMMAP_INFO_PRINT("YES!!!! recovery!!!! start_offset: %lu end_offset: %lu\n"
 				,pmem_recv_offset, pmem_recv_size);
-//			PMEMMMAP_INFO_PRINT("UNDO page is recoverd !!!!\n");
-//			//pm_mmap_recv_flush_buffer();
 		}
 #endif /* UNIV_NVDIMM_CACHE */
 

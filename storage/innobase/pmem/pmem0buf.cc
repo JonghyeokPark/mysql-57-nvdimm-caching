@@ -32,15 +32,6 @@ pm_mmap_buf_init(const uint64_t size) {
   	gb_pm_buf = gb_pm_mmap + (1024*1024*1024*1UL);
   	PMEMMMAP_INFO_PRINT("pm_mmap_buf initialization finished! size: %lu address: %p\n", size, gb_pm_buf);
   }
-
-  // YYY
-  gb_pm_mtrlog = gb_pm_buf+(2*1024*1024*1024UL);
-  uint64_t offset = 0;
-  for (uint64_t i = 0; i< (2*1024*1024*1024UL/4096); i++) {
-    pmem_mtrlog_offset_map[i] = offset;
-    offset += MTR_LOG_SIZE_PER_PAGE;
-  }
-
 }
 
 void 

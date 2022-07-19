@@ -49,8 +49,6 @@ void nc_recv_analysis() {
  unsigned char *addr = gb_pm_mmap + (1*1024*1024*1024UL);
  uint64_t page_num_chunks = static_cast<uint64_t>( (8*147324928UL)/4096);
 
- nc_mtrlog_analysis();
-
  // statisitics
  uint64_t safe_num=0, corrupt_num=0;
 
@@ -133,67 +131,3 @@ int nc_mtrlog_recv_read_hdr(unsigned char* addr) {
 
   return type;
 }
-
-void nc_mtrlog_analysis() {
-  uint64_t space, page_no;
-  unsigned char *addr = gb_pm_mmap + (1*1024*1024*1024UL) + (2*1024*1024*1024UL);
-
-  uint64_t page_num_chunks = static_cast<uint64_t>( (8*147324928UL)/4096);
-  unsigned long type;
-  uint64_t offset = 0;
-
-  for (uint64_t i=0; i < page_num_chunks*2; ++i) {
-    type = nc_mtrlog_recv_read_hdr(addr);
-    if (type == 1) {
-
-      PMEM_MTR_INSERT_LOGHDR mtrlog_insert;
-      memcpy(&mtrlog_insert, addr, sizeof(PMEM_MTR_INSERT_LOGHDR));
-      //addr += sizeof(PMEM_MTR_INSERT_LOGHDR);
-
-      // read from
-      ib::info() << "MTR INSERT RECORD"
-        << mtrlog_insert.space << ":" << mtrlog_insert.page_no
-        << " rec_offset: " << mtrlog_insert.rec_offset
-        << " rec_size: " << mtrlog_insert.rec_size
-        << " cur_rec_off: " << mtrlog_insert.cur_rec_off
-        << " pd_off: " << mtrlog_insert.pd_offset
-        << " pd_size: " << mtrlog_insert.pd_size
-        << " valid: " << mtrlog_insert.valid;
-
-        pmem_nc_shadow_map[std::make_pair(mtrlog_insert.space,mtrlog_insert.page_no)] = offset;
-
-    } else if (type == 2) {
-
-      PMEM_MTR_UPDATE_LOGHDR mtrlog_update;
-      memcpy(&mtrlog_update, addr, sizeof(PMEM_MTR_UPDATE_LOGHDR));
-     //addr += sizeof(PMEM_MTR_UPDATE_LOGHDR);
-
-      // read from
-      ib::info() << mtrlog_update.space << ":" << mtrlog_update.page_no
-        << " rec_offset: " << mtrlog_update.rec_off
-        << " rec_size: " << mtrlog_update.rec_size
-        << " valid: " << mtrlog_update.valid;
-
-        pmem_nc_shadow_map[std::make_pair(mtrlog_update.space,mtrlog_update.page_no)] = offset;
-
-    } else if (type == 3) {
-
-      PMEM_MTR_DELETE_LOGHDR mtrlog_delete;
-      memcpy(&mtrlog_delete, addr, sizeof(PMEM_MTR_DELETE_LOGHDR));
-     //addr += sizeof(PMEM_MTR_UPDATE_LOGHDR);
-
-      // read from
-      ib::info() << mtrlog_delete.space << ":" << mtrlog_delete.page_no
-        << " rec_offset: " << mtrlog_delete.rec_off
-        << " rec_size: " << mtrlog_delete.rec_size
-        << " valid: " << mtrlog_delete.valid;
-
-        pmem_nc_shadow_map[std::make_pair(mtrlog_delete.space,mtrlog_delete.page_no)] = offset;
-
-    }
-
-    addr += 1024;
-    offset += 1024;
-  }
-}
-

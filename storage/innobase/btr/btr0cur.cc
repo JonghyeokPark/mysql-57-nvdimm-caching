@@ -3964,36 +3964,9 @@ btr_cur_update_in_place(
 //	btr_cur_update_in_place_log(flags, rec, index, update,
 //				    trx_id, roll_ptr, mtr);
 // YYY
-
 #ifdef UNIV_NVDIMM_CACHE
-  nvm_block = btr_cur_get_block(cursor);
-  nvm_bpage = &(nvm_block->page);
-  if (nvm_bpage->cached_in_nvdimm) {
-    uint64_t idx;
-    if (nvm_block->frame-gb_pm_buf < 0) {
-        ib::info() << "error!";
-        idx = 0;
-    } else {
-        idx = (nvm_block->frame-gb_pm_buf)/4096;
-    }
-    uint64_t cur_mtr_offset = pmem_mtrlog_offset_map[idx];
-
-//    ib::info() << "[update] delete mtr log cur_mtr_offset: "
-//      << cur_mtr_offset << " size: " << cur_mtr_offset-(idx*MTR_LOG_SIZE_PER_PAGE); 
-//
-//    memset(gb_pm_mtrlog + (idx*MTR_LOG_SIZE_PER_PAGE), 0x0, cur_mtr_offset-(idx*MTR_LOG_SIZE_PER_PAGE));
-    memset(gb_pm_mtrlog + (idx*MTR_LOG_SIZE_PER_PAGE), 0x0, MTR_LOG_SIZE_PER_PAGE);
-//    pmem_mtrlog_offset_map[idx] = (idx*MTR_LOG_SIZE_PER_PAGE);
-
-  // For leaf page, we only keep update bit in leaf page's FSEG entry
-  //  page_t* nvm_page = page_align(rec);
-    fseg_header_t* seg_header = nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
-    mach_write_to_4(seg_header + FSEG_HDR_SPACE, 0);
-    flush_cache(nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
-  } else {
-    btr_cur_update_in_place_log(flags, rec, index, update,
+  btr_cur_update_in_place_log(flags, rec, index, update,
             trx_id, roll_ptr, mtr);
-  }
 #else
   btr_cur_update_in_place_log(flags, rec, index, update,
             trx_id, roll_ptr, mtr);
@@ -4978,62 +4951,6 @@ btr_cur_del_mark_set_clust_rec(
 		return(err);
 	}
 
-  // YYY
-#ifdef UNIV_NVDIMM_CACHE
-  bool nc_flag = false;
-  page_t* nvm_page = page_align(rec);
-  if (is_nvm_page && page_is_leaf(nvm_page)) {
-    fseg_header_t* seg_header = nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
-    if (mach_read_from_4(seg_header + FSEG_HDR_SPACE) == 1) {
-      nc_flag = true;
-      // delete mtr log
-      PMEM_MTR_DELETE_LOGHDR mtrlog;
-      mtrlog.type = 3;
-      mtrlog.space = mach_read_from_4(nvm_page + FIL_PAGE_SPACE_ID);
-      mtrlog.page_no = mach_read_from_4(nvm_page + FIL_PAGE_OFFSET);
-
-      // current rec info.
-      mtrlog.rec_off = (uint64_t)(rec-nvm_page);
-      mtrlog.valid = 0;
-
-      uint64_t idx=0;
-      if ((nvm_page-gb_pm_buf) < 0) {
-          ib::info() << "error!";
-          idx=0;
-      } else {
-          idx = (nvm_page-gb_pm_buf)/4096;
-      }
-      // record mtr log header
-      uint64_t cur_mtr_offset = pmem_mtrlog_offset_map[idx];
-      uint64_t cur_mtr_hdr_offset = cur_mtr_offset;
-      memcpy(gb_pm_mtrlog + cur_mtr_offset, &mtrlog, sizeof(mtrlog));
-      flush_cache(gb_pm_mtrlog + cur_mtr_offset, sizeof(mtrlog));
-
-       
-      // record mtrlog
-      cur_mtr_offset += sizeof(mtrlog);
-
-      // record page header
-      memcpy(gb_pm_mtrlog + cur_mtr_offset, nvm_page, 120);
-      cur_mtr_offset += 120;
- 
-      memcpy(gb_pm_mtrlog + cur_mtr_offset, rec, REC_OFFS_NORMAL_SIZE);
-      mtrlog.valid=1;
-      memcpy(gb_pm_mtrlog+cur_mtr_hdr_offset, &mtrlog, sizeof(mtrlog));
-      flush_cache(gb_pm_mtrlog+cur_mtr_hdr_offset, sizeof(mtrlog));
-
-      pmem_mtrlog_offset_map[idx] = cur_mtr_offset;
-
-      //pmem_mtrlog_offset_map[(nvm_page-gb_pm_buf)/4096] = cur_mtr_offset;
-
-      //ib::info() << "DELETE PAGE "
-      //  << mtrlog.space << ":" << mtrlog.page_no
-      //  << " rec offset: " << mtrlog.rec_off
-      //  << " mtr_offset: " << cur_mtr_offset;
-    }
-  }
-#endif
-
 	/* The search latch is not needed here, because
 	the adaptive hash index does not depend on the delete-mark
 	and the delete-mark is being updated in place. */
@@ -5067,38 +4984,17 @@ btr_cur_del_mark_set_clust_rec(
 	row_upd_rec_sys_fields(rec, page_zip, index, offsets, trx, roll_ptr);
 // YYY
 #ifdef UNIV_NVDIMM_CACHE
-
   nvm_bpage = &(block->page);
   if (nvm_bpage->cached_in_nvdimm) {
-    uint64_t idx = 0;
-    if ( (block->frame-gb_pm_buf) < 0) {
-        ib::info() << "error! (3)";
-        idx = 0;
-    } else {
-        idx = (block->frame-gb_pm_buf)/4096;
-    }
-//    uint64_t idx = (block->frame-gb_pm_buf)/4096;
-    uint64_t cur_mtr_offset = pmem_mtrlog_offset_map[idx];
-
-//    ib::info() << "[delete] delete mtr log cur_mtr_offset: "
-//      << cur_mtr_offset << " size: " << cur_mtr_offset-(idx*MTR_LOG_SIZE_PER_PAGE); 
-
-//    memset(gb_pm_mtrlog + (idx*MTR_LOG_SIZE_PER_PAGE), 0x0, cur_mtr_offset-(idx*MTR_LOG_SIZE_PER_PAGE));
-    memset(gb_pm_mtrlog + (idx*MTR_LOG_SIZE_PER_PAGE), 0x0, MTR_LOG_SIZE_PER_PAGE);
-//    pmem_mtrlog_offset_map[idx] = (idx*MTR_LOG_SIZE_PER_PAGE);
-    // For leaf page, we only keep update bit in leaf page's FSEG entry
-  page_t* nvm_page = ((buf_block_t*)nvm_bpage)->frame;
-  //page_align(rec);
-  if (page_is_leaf(nvm_page)) {
-    fseg_header_t* seg_header = nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
-    mach_write_to_4(seg_header + FSEG_HDR_SPACE, 0);
-    flush_cache(nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
+     page_t* nvm_page = ((buf_block_t*)nvm_bpage)->frame;
+     if (page_is_leaf(nvm_page)) {
+       fseg_header_t* seg_header = nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+       mach_write_to_4(seg_header + FSEG_HDR_SPACE, 0);
+       flush_cache(nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
+     }
   }
-
-  } else {
-    btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
+  btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
              roll_ptr, mtr);
-  }
 #else
   btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
              roll_ptr, mtr);
