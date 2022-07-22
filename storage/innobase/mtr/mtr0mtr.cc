@@ -1017,13 +1017,6 @@ mtr_t::Command::prepare_write()
 
 	log_mutex_enter();
 
-	// debug : this must not happen !!!!
-	//if (space != NULL && space->id == 28) {
-	//	print_trace();
-	//	fprintf(stderr, "[JONGQ] WRONG prepare_write(): m_log_mode: %d space_id: %lu\n"
-	//									,m_impl->m_log_mode, space->id);
-	//}
-
 	if (fil_names_write_if_was_clean(space, m_impl->m_mtr)) {
 		/* This mini-transaction was the first one to modify
 		this tablespace since the latest checkpoint, so

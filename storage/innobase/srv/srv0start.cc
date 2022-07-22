@@ -2704,9 +2704,9 @@ files_checked:
 	os_event_set(buf_flush_event);
 
 #ifdef UNIV_NVDIMM_CACHE
-    os_event_set(buf_flush_nvdimm_event);
+    //os_event_set(buf_flush_nvdimm_event);
 #ifdef UNIV_NVDIMM_CACHE_ST
-    os_event_set(buf_flush_nvdimm_stock_event);
+    //os_event_set(buf_flush_nvdimm_stock_event);
 #endif /* UNIV_NVDIMM_CACHE_ST */
 #endif /* UNIV_NVDIMM_CACHE */
 

@@ -383,8 +383,6 @@ nvdimm_buf_pool_free(
 /*==========*/
 	ulint	n_instances);	/*!< in: numbere of instances to free */
 
-/** Checks whether this page should be moved to the NVDIMM buffer. */
-bool buf_block_will_be_moved_to_nvdimm(const page_id_t& page_id);
 #endif /* UNIV_NVDIMM_CACHE */
 
 /********************************************************************//**
