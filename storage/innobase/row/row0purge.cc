@@ -195,7 +195,7 @@ func_exit:
 	//				 instead, persist NVDIMM region
 
 #ifdef UNIV_NVDIMM_CACHE
-    if (index->space == 27) {
+    if (index->space == 28) {
         if (node->found_clust) {
             ut_ad(node->pcur.pos_state == BTR_PCUR_IS_POSITIONED);
             node->pcur.latch_mode = BTR_NO_LATCHES;

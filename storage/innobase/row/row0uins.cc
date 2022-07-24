@@ -143,7 +143,7 @@ row_undo_ins_remove_clust_rec(
 	}
 
 #ifdef UNIV_NVDIMM_CACHE
-    if (index->space == 27) {
+    if (index->space == 28) {
         ut_ad(node->pcur.pos_state == BTR_PCUR_IS_POSITIONED);
         node->pcur.latch_mode = BTR_NO_LATCHES;
         mtr_commit(&mtr);
@@ -177,7 +177,7 @@ retry:
 	    && n_tries < BTR_CUR_RETRY_DELETE_N_TIMES) {
 
 #ifdef UNIV_NVDIMM_CACHE
-        if (index->space == 27) {
+        if (index->space == 28) {
             ut_ad(node->pcur.pos_state == BTR_PCUR_IS_POSITIONED);
             node->pcur.latch_mode = BTR_NO_LATCHES;
             mtr_commit(&mtr);
@@ -199,7 +199,7 @@ retry:
 
 func_exit:
 #ifdef UNIV_NVDIMM_CACHE
-    if (index->space == 27) {
+    if (index->space == 28) {
         ut_ad(node->pcur.pos_state == BTR_PCUR_IS_POSITIONED);
         node->pcur.latch_mode = BTR_NO_LATCHES;
         mtr_commit(&mtr);
