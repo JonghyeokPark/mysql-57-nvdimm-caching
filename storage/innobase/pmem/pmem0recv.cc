@@ -30,12 +30,15 @@ uint64_t pm_mmap_recv_check_nc_buf(uint64_t space, uint64_t page_no) {
     uint64_t nc_offset;
     for (uint64_t i=0; i<nc_offset_vec.size(); i++) {
       nc_offset = nc_offset_vec[i];
-      unsigned char *nc_frame = reinterpret_cast<buf_block_t*>
-        ((gb_pm_mmap + (1*1024*1024*1024UL) + nc_offset))->frame;
+      unsigned char *nc_frame = 
+        ((gb_pm_mmap + (6*1024*1024*1024UL) + 13107200 + nc_offset));
 
         if (space != mach_read_from_4(nc_frame + FIL_PAGE_SPACE_ID)
           || page_no != mach_read_from_4(nc_frame + FIL_PAGE_OFFSET)) {
-        fprintf(stderr, "[DEBUG] wrong buffer page info! %u:%u\n", space, page_no);
+        fprintf(stderr, "[DEBUG] wrong buffer page info! %u:%u but we found %u:%u\n"
+            , space, page_no
+            , mach_read_from_4(nc_frame + FIL_PAGE_SPACE_ID)
+            , mach_read_from_4(nc_frame + FIL_PAGE_OFFSET));
       }
     }
     return nc_offset;
@@ -46,28 +49,31 @@ uint64_t pm_mmap_recv_check_nc_buf(uint64_t space, uint64_t page_no) {
 
 void nc_recv_analysis() {
  uint64_t space, page_no;
- unsigned char *addr = gb_pm_mmap + (1*1024*1024*1024UL);
+ unsigned char *addr = gb_pm_mmap + (6*1024*1024*1024UL);
  uint64_t page_num_chunks = static_cast<uint64_t>( (8*147324928UL)/4096);
 
  // statisitics
  uint64_t safe_num=0, corrupt_num=0;
 
  for (uint64_t i=0; i < page_num_chunks; ++i) {
- //for (uint64_t i=0; i < srv_nvdimm_buf_pool_size; i+= UNIV_PAGE_SIZE) {
 
-  space = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.space();
-  page_no = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.page_no();
-  unsigned char *frame = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->frame;
+//  space = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.space();
+//  page_no = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.page_no();
+//  unsigned char *frame = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->frame;
 
-  if (space != 28 && space != 30 && space != 32) {
+   unsigned char* frame = addr + 13107200 + (i * 4096);
+   space = mach_read_from_4(frame + FIL_PAGE_SPACE_ID);
+   page_no = mach_read_from_4(frame + FIL_PAGE_OFFSET);
+ 
+  if (space != 27 && space != 29 && space != 31) {
     if (space == 4294967295
          && page_no == 4294967295) {
       continue;
     } else {
-//      continue;
-      break;
+      continue;
     }
   } else {
+
 #ifdef UNIV_DEBUG
     ib::info() << "obtaine NC page: " << space << ":" << page_no;
     // check
@@ -91,7 +97,20 @@ void nc_recv_analysis() {
     }
 
     // we store relative position of nc page
-    pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*sizeof(buf_block_t));
+    //pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*sizeof(buf_block_t));
+    pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*4096);
+
+    uint64_t cur_page_lsn = mach_read_from_8(frame + FIL_PAGE_LSN);
+
+    ib::info() << "cur_page_lsn: " << cur_page_lsn;
+    if (cur_page_lsn!=0
+        &&
+        (!min_nc_page_lsn 
+        || min_nc_page_lsn > cur_page_lsn)) { 
+      min_nc_page_lsn = cur_page_lsn;
+      ib::info() << "reset min_nc_page_lsn: " << min_nc_page_lsn;
+    }
+
     ib::info() << "safe_num: " << safe_num << " courrpt_num: " 
         << corrupt_num << " total: " << (safe_num+corrupt_num);
   }
@@ -109,7 +128,7 @@ void nc_recv_analysis() {
     fprintf(stderr, "(%lu:%lu) page is good! lsn: %lu\n", space, page_no, mach_read_from_8(frame + FIL_PAGE_LSN));
   }
 #endif
-
+ 
  }
 }
 

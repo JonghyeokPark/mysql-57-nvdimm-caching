@@ -166,8 +166,11 @@ buf_dblwr_init(
 
   if (srv_use_nvdimm_dwb) {
 
+  // TODO(jhaprk): change the location
   buf_dblwr->write_buf_unaligned = static_cast<byte*>(
-      gb_pm_mmap + 5*1024*1024*1024UL);
+      //gb_pm_mmap
+      gb_pm_mmap + 5*1024*1024*1024UL
+      );
   buf_dblwr->write_buf = static_cast<byte*>(
       ut_align(buf_dblwr->write_buf_unaligned,UNIV_PAGE_SIZE));
 

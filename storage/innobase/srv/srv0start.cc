@@ -2316,12 +2316,13 @@ files_checked:
 
 		fprintf(stderr, "[JONGQ] ---- scan_and_parse log file finished\n");
 
+ /*
 #ifdef UNIV_NVDIMM_CACHE
     if (is_pmem_recv) {
       nc_recv_analysis();
     }
 #endif
-
+*/
 		/* We always try to do a recovery, even if the database had
 		been shut down normally: this is the normal startup path */
 
@@ -2352,15 +2353,6 @@ files_checked:
 
 			return(srv_init_abort(DB_ERROR));
 		}
-
-#ifdef UNIV_NVDIMM_CACHE		
-		fprintf(stderr, "[JONGQ] ---- pass force recovery!\n"); 
-		
-		if (is_pmem_recv)  {
-			PMEMMMAP_INFO_PRINT("YES!!!! recovery!!!! start_offset: %lu end_offset: %lu\n"
-				,pmem_recv_offset, pmem_recv_size);
-		}
-#endif /* UNIV_NVDIMM_CACHE */
 
 		purge_queue = trx_sys_init_at_db_start();
 

@@ -14,8 +14,22 @@
 #include <map>
 #include <vector>
 
-//#include "ut0new.h"
-//#include "log0log.h"
+#include <fstream>
+#include <cassert>
+#include <iostream>
+#include <iterator>
+#include <algorithm>
+
+
+#define NC_LOG_SIZE (2*1024*1024*1024UL)
+// TODO(jhpark): make it configurable!!!
+extern int nc_log_fd;
+extern unsigned char* nc_log_ptr;
+extern uint64_t nc_log_offset;
+const char filename[] = "/tmp/nclog.log";
+
+extern uint64_t min_nc_page_lsn;
+
 
 // (jhpark): this header file for UNIV_NVDIMM_CACHE
 //					 use persistent memroy with mmap on dax-enabled file system
@@ -105,17 +119,7 @@ void pm_mmap_free(const uint64_t pool_size);
 struct __pmem_mmap_mtrlog_buf {
   pthread_mutex_t mtrMutex; // mutex protecting writing to mtr log region
   bool need_recv;       // recovery flag
-  
-//  ib_uint64_t  mtr_sys_lsn;   // global lsn for mtr_lsn (monotically increased) (stale)
-//  ib_uint64_t last_ckpt_lsn;  // checkpoint_lsn (oldest page LSN in NVDIMM caching
-                        // flsuher list (stale)
-	
 	size_t ckpt_offset; 	// we can remove mtr log up to this offset 
-
-	size_t size;          // total size of mtr log region
-	size_t cur_offset;    // current offset of mtr log region
-	size_t prev_offset; 	// prev_offset
-
 };
 
 struct __pmem_mmap_buf_sys {

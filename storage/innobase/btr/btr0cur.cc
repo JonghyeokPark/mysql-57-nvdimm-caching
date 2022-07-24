@@ -3001,9 +3001,7 @@ btr_cur_ins_lock_and_undo(
         fseg_header_t* seg_header = nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
         mach_write_to_4(seg_header + FSEG_HDR_SPACE, 1);
         flush_cache(nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
-    } else {
-      ib::info() << "Hmmm.. wrong? (trx_undo_report_row_operation";
-    }
+    }   
   }
   
 
@@ -3578,16 +3576,12 @@ btr_cur_upd_lock_and_undo(
   
   if (is_nvm_page) {
     if (page_is_leaf(nvm_block->frame)) {
-        fseg_header_t* seg_header = nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
-        mach_write_to_4(seg_header + FSEG_HDR_SPACE, 1);
-        flush_cache(nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
-    } else {
-        ib::info() << "Hmmm (2)";
+      fseg_header_t* seg_header = nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+      mach_write_to_4(seg_header + FSEG_HDR_SPACE, 1);
+      flush_cache(nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
     }
   }
   
-
-
 	return(trx_undo_report_row_operation(
 		       is_nvm_page, flags, TRX_UNDO_MODIFY_OP, thr,
 		       index, NULL, update,
@@ -3656,19 +3650,6 @@ btr_cur_update_in_place_log(
 	log_ptr += 2;
 
 	row_upd_index_write_log(update, log_ptr, mtr);
-
-/*
-#ifdef UNIV_NVDIMM_CACHE
-  // For leaf page, we only keep update bit in leaf page's FSEG entry
-  if (page_is_leaf(page)) {
-    page_t* nvm_page = page_align(rec);
-    fseg_header_t* seg_header = nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
-    mach_write_to_4(seg_header + FSEG_HDR_SPACE, 0);
-    flush_cache(nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
-  }
-#endif
-*/
-
 }
 #endif /* UNIV_HOTBACKUP */
 
@@ -3965,6 +3946,14 @@ btr_cur_update_in_place(
 //				    trx_id, roll_ptr, mtr);
 // YYY
 #ifdef UNIV_NVDIMM_CACHE
+  nvm_block = btr_cur_get_block(cursor);
+  nvm_bpage = &(nvm_block->page);
+  if (nvm_bpage->cached_in_nvdimm) {
+    fseg_header_t* seg_header = block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+    mach_write_to_4(seg_header + FSEG_HDR_SPACE, 0);
+    flush_cache(block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
+  }
+
   btr_cur_update_in_place_log(flags, rec, index, update,
             trx_id, roll_ptr, mtr);
 #else
@@ -4778,18 +4767,6 @@ btr_cur_del_mark_set_clust_rec_log(
 	log_ptr += 2;
 
 	mlog_close(mtr, log_ptr);
-
-/*
-#ifdef UNIV_NVDIMM_CACHE
-  // For leaf page, we only keep update bit in leaf page's FSEG entry
-  page_t* nvm_page = page_align(rec);
-  if (page_is_leaf(nvm_page)) {
-    fseg_header_t* seg_header = nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
-    mach_write_to_4(seg_header + FSEG_HDR_SPACE, 0);
-    flush_cache(nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
-  }
-#endif
-*/
 
 }
 #endif /* !UNIV_HOTBACKUP */

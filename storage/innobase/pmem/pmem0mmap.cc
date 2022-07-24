@@ -17,19 +17,54 @@
 // gloabl persistent memmory region
 unsigned char* gb_pm_mmap;
 unsigned char* gb_pm_mtrlog;
-
 int gb_pm_mmap_fd;
+
+// NC log area
+int nc_log_fd;
+unsigned char* nc_log_ptr;
+uint64_t offset = 0;
 
 // recovery
 bool is_pmem_recv = false;
 uint64_t pmem_recv_offset = 0;
 uint64_t pmem_recv_size = 0;
+
+uint64_t min_nc_page_lsn = 0;
+
 /* nc-logging */
 std::map<std::pair<uint64_t,uint64_t> ,std::vector<uint64_t> > pmem_nc_buffer_map;
 std::map<std::pair<uint64_t,uint64_t> , std::vector<uint64_t> > pmem_nc_page_map;
 
 unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
-  
+
+  // open nc log file
+  if (access(filename, F_OK) != 0) {
+    nc_log_fd = open(filename, O_RDWR|O_CREAT, 0777);
+    if (nc_log_fd < 0) {
+      ib::error() << "nc_log_file open failed";
+      return NULL;
+    }
+
+    if (truncate(filename, NC_LOG_SIZE) == -1) {
+      ib::error() << "nc_log_file truncate failed";
+    }
+
+    nc_log_ptr = (unsigned char *) mmap(NULL, NC_LOG_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, nc_log_fd, 0);
+    memset(nc_log_ptr, 0x00, NC_LOG_SIZE);
+
+  } else {
+    nc_log_fd = open(filename, O_RDWR|O_CREAT, 0777);
+    if (nc_log_fd < 0) {
+      ib::error() << "nc_log_file open failed";
+      return NULL;
+    }
+
+    nc_log_ptr = (unsigned char *) mmap(NULL, NC_LOG_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, nc_log_fd, 0);
+ 
+  }
+
+  // set file size as pools 
+
   if (access(path, F_OK) != 0) {
     gb_pm_mmap_fd = open(path, O_RDWR | O_CREAT, 0777); 
     if (gb_pm_mmap_fd < 0) {
@@ -65,6 +100,8 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
 	
 	  // TODO(jhpark): real recovery process
 		is_pmem_recv = true;
+    memcpy(gb_pm_mmap + 6*1024*1024*1024UL, gb_pm_mmap + 1*1024*1024*1024UL, 2*1024*1024*1024UL);
+    nc_recv_analysis();
   }
 
   // Force to set NVIMMM

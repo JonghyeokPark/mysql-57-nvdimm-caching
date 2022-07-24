@@ -425,7 +425,6 @@ buf_pool_get_oldest_modification(void)
 	log_flush_order_mutex_enter();
 	
     for (ulint i = 0; i < srv_buf_pool_instances; i++) {
-	//for (ulint i = 0; i < srv_buf_pool_instances+1; i++) {
 		buf_pool_t*	buf_pool;
 
 		buf_pool = buf_pool_from_array(i);
@@ -463,6 +462,65 @@ buf_pool_get_oldest_modification(void)
 
 	return(oldest_lsn);
 }
+
+#ifdef UNIV_NVDIMM_CACHE
+lsn_t
+nvdimm_buf_pool_get_oldest_modification(void)
+/*==================================*/
+{
+	lsn_t		lsn = 0;
+	lsn_t		oldest_lsn = 0;
+
+	/* When we traverse all the flush lists we don't want another
+	thread to add a dirty page to any flush list. */
+	log_flush_order_mutex_enter();
+	
+  for (ulint i = srv_buf_pool_instances; i < srv_buf_pool_instances + srv_nvdimm_buf_pool_instances; i++) {
+		buf_pool_t*	buf_pool;
+
+		buf_pool = buf_pool_from_array(i);
+
+		buf_flush_list_mutex_enter(buf_pool);
+
+		buf_page_t*	bpage;
+
+		/* We don't let log-checkpoint halt because pages from system
+		temporary are not yet flushed to the disk. Anyway, object
+		residing in system temporary doesn't generate REDO logging. */
+		for (bpage = UT_LIST_GET_LAST(buf_pool->flush_list);
+		     bpage != NULL
+			&& fsp_is_system_temporary(bpage->id.space());
+		     bpage = UT_LIST_GET_PREV(list, bpage)) {
+			/* Do nothing. */
+		}
+
+		if (bpage != NULL) {
+			ut_ad(bpage->in_flush_list);
+			lsn = bpage->oldest_modification;
+      // debug
+      ib::info() << "this page is too old and active!: " 
+        << bpage->id.space() << ":" << bpage->id.page_no()
+        << " lsn: " << lsn
+        << " page_lsn: " << mach_read_from_8(((buf_block_t *)bpage)->frame + FIL_PAGE_LSN);
+      
+		}
+
+		buf_flush_list_mutex_exit(buf_pool);
+
+		if (!oldest_lsn || oldest_lsn > lsn) {
+			oldest_lsn = lsn;
+		}
+	}
+
+	log_flush_order_mutex_exit();
+
+	/* The returned answer may be out of date: the flush_list can
+	change after the mutex has been released. */
+
+	return(oldest_lsn);
+}
+#endif
+
 
 /********************************************************************//**
 Get total buffer pool statistics. */
@@ -1651,6 +1709,7 @@ buf_chunk_nvm_init(
 	it is bigger, we may allocate more blocks than requested. */
 
 	frame = (byte*) ut_align(chunk->mem, UNIV_PAGE_SIZE);
+
 	chunk->size = chunk->mem_pfx.m_size / UNIV_PAGE_SIZE
 		- (frame != chunk->mem);
 
@@ -4557,9 +4616,9 @@ loop:
             buf_pool_t* after_buf_pool = buf_pool_get(page_id);
 
             if (buf_pool->instance_no != after_buf_pool->instance_no) {
-                /*ib::info() << buf_pool->instance_no << " != " 
+                ib::info() << buf_pool->instance_no << " != " 
                     << after_buf_pool->instance_no << " for " 
-                    << page_id.space() << " " << page_id.page_no();*/    
+                    << page_id.space() << " " << page_id.page_no();
                 buf_pool = after_buf_pool;
             }
 #endif /* UNIV_NVDIMM_CACHE */
@@ -4595,18 +4654,18 @@ loop:
 #ifdef UNIV_NVDIMM_CACHE
         /* Buffer Hit */
         if (buf_pool->instance_no >= srv_buf_pool_instances) {
-            if (page_id.space() == 30) {
+            if (page_id.space() == 29) {
                 srv_stats.nvdimm_pages_read_ol.inc();
-            } else if (page_id.space() == 28) {
+            } else if (page_id.space() == 27) {
                 srv_stats.nvdimm_pages_read_no.inc();
             }
 #ifdef UNIV_NVDIMM_CACHE_OD
-            else if (page_id.space() == 30) {
+            else if (page_id.space() == 29) {
                 srv_stats.nvdimm_pages_read_od.inc();
             }
 #endif /* UNIV_NVDIMM_CACHE_OD */
 #ifdef UNIV_NVDIMM_CACHE_ST
-            else if (page_id.space() == 32) {
+            else if (page_id.space() == 31) {
                 srv_stats.nvdimm_pages_read_st.inc();
             }
 #endif /* UNIV_NVDIMM_CACHE_ST */
@@ -5511,18 +5570,18 @@ buf_page_init_for_read(
 	ibool		lru	= FALSE;
 	void*		data;
 	buf_pool_t*	buf_pool;
-    
+  
 #ifdef UNIV_NVDIMM_CACHE
     if (mode == BUF_MOVE_TO_NVDIMM) {
-        if (page_id.space() == 28 || page_id.space() == 30
+        if (page_id.space() == 27 || page_id.space() == 29
 #ifdef UNIV_NVDIMM_CACHE_OD
-            || page_id.space() == 30
+            || page_id.space() == 29
 #endif /* UNIV_NVDIMM_CACHE_OD */
             ) {
             buf_pool = &nvdimm_buf_pool_ptr[0];
         }         
 #ifdef UNIV_NVDIMM_CACHE_ST
-        else if (page_id.space() == 32) { /* Stock */
+        else if (page_id.space() == 31) { /* Stock */
             buf_pool = &nvdimm_buf_pool_ptr[1];
         }
 #endif /* UNIV_NVDIMM_CACHE_ST */
@@ -6284,18 +6343,18 @@ corrupt:
 
 #ifdef UNIV_NVDIMM_CACHE
         if (bpage->cached_in_nvdimm) {
-            if (bpage->id.space() == 30) {
+            if (bpage->id.space() == 29) {
                 srv_stats.nvdimm_pages_stored_ol.inc();
-            } else if (bpage->id.space() == 28) {
+            } else if (bpage->id.space() == 27) {
                 srv_stats.nvdimm_pages_stored_no.inc();
             }
 #ifdef UNIV_NVDIMM_CACHE_OD
-            else if (bpage->id.space() == 30) {
+            else if (bpage->id.space() == 29) {
                 srv_stats.nvdimm_pages_stored_od.inc();    
             } 
 #endif /* UNIV_NVDIMM_CACHE_OD */
 #ifdef UNIV_NVDIMM_CACHE_ST
-            else if (bpage->id.space() == 32) {
+            else if (bpage->id.space() == 31) {
                 srv_stats.nvdimm_pages_stored_st.inc();
             }
 #endif /* UNIV_NVDIMM_CACHE_ST */
@@ -6339,18 +6398,18 @@ corrupt:
 
 #ifdef UNIV_NVDIMM_CACHE
         if (bpage->cached_in_nvdimm) {
-            if (bpage->id.space() == 30) {
+            if (bpage->id.space() == 29) {
                 srv_stats.nvdimm_pages_written_ol.inc();
-            } else if (bpage->id.space() == 28) {
+            } else if (bpage->id.space() == 27) {
                 srv_stats.nvdimm_pages_written_no.inc();
             }
 #ifdef UNIV_NVDIMM_CACHE_OD
-            else if (bpage->id.space() == 30) {
+            else if (bpage->id.space() == 29) {
                 srv_stats.nvdimm_pages_written_od.inc();
             }
 #endif /* UNIV_NVDIMM_CACHE_OD */
 #ifdef UNIV_NVDIMM_CACHE_ST
-            else if (bpage->id.space() == 32) {
+            else if (bpage->id.space() == 31) {
                 srv_stats.nvdimm_pages_written_st.inc();
             }
 #endif /* UNIV_NVDIMM_CACHE_ST */ 
@@ -7488,7 +7547,7 @@ buf_print_io(
 bool buf_block_will_be_moved_to_nvdimm(const page_id_t& page_id) {
     return (false);
 
-    if (page_id.space() == 28 /* New-Orders table */) {
+    if (page_id.space() == 27 /* New-Orders table */) {
         return (true);
     } else {
         return (false);

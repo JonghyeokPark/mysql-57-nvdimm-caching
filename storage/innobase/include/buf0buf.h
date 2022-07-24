@@ -465,6 +465,10 @@ zero if all modified pages have been flushed to disk.
 @return oldest modification in pool, zero if none */
 lsn_t
 buf_pool_get_oldest_modification(void);
+#ifdef UNIV_NVDIMM_CACHE
+lsn_t
+nvdimm_buf_pool_get_oldest_modification(void);
+#endif
 /*==================================*/
 
 /********************************************************************//**

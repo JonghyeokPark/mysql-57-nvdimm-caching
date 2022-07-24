@@ -1908,6 +1908,48 @@ log_checkpoint(
 		return(false);
 	}
 
+#ifdef UNIV_NVDIMM_CACHE
+// TODO(jhpark): keep log files for switching log files
+ /*
+  lsn_t nvdimm_lsn = nvdimm_buf_pool_get_oldest_modification(); 
+  if (nvdimm_lsn != 0) {
+  // read current log file contents
+  log_group_t*  group = UT_LIST_GET_FIRST(log_sys->log_groups);
+  const lsn_t source_offset 
+    = log_group_calc_lsn_offset(nvdimm_lsn, group);
+  const ulint page_no
+    = (ulint) (source_offset / univ_page_size.physical());
+
+  // max checkpoint group
+  log_group_t*  max_cp_group;
+    ulint   max_cp_field;
+  dberr_t err = recv_find_max_checkpoint(&max_cp_group, &max_cp_field);
+  if (err != DB_SUCCESS) {
+    ib::info() << "Error!";
+  }
+  log_group_header_read(max_cp_group, max_cp_field);
+
+
+  byte *tmp_ptr = static_cast<byte*>(
+       ut_zalloc_nokey(4096 * 2 + OS_FILE_LOG_BLOCK_SIZE));
+
+  byte *tmp = static_cast<byte*>(
+  ut_align(tmp_ptr, OS_FILE_LOG_BLOCK_SIZE));
+
+  // store logs for NC pages
+  if (oldest_lsn > nvdimm_lsn) {  
+
+    lsn_t start_lsn = ut_uint64_align_down(log_sys->next_checkpoint_lsn, OS_FILE_LOG_BLOCK_SIZE);
+    lsn_t end_lsn = ut_uint64_align_up(nvdimm_lsn, OS_FILE_LOG_BLOCK_SIZE);
+ 
+    uint64_t start_lsn_offset =  log_group_calc_lsn_offset(start_lsn, group);
+    uint64_t end_lsn_offset =  log_group_calc_lsn_offset(end_lsn, group);
+    uint64_t total_block_num = (end_lsn - start_lsn) / OS_FILE_LOG_BLOCK_SIZE;
+  }
+  }
+*/
+#endif
+
 	log_sys->next_checkpoint_lsn = oldest_lsn;
 	log_write_checkpoint_info(sync);
 	ut_ad(!log_mutex_own());

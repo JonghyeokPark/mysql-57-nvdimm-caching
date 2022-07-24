@@ -1280,7 +1280,8 @@ recv_log_format_0_recover(lsn_t lsn)
 @param[out]	max_group	log group, or NULL
 @param[out]	max_field	LOG_CHECKPOINT_1 or LOG_CHECKPOINT_2
 @return error code or DB_SUCCESS */
-static MY_ATTRIBUTE((warn_unused_result))
+//static MY_ATTRIBUTE((warn_unused_result))
+extern 
 dberr_t
 recv_find_max_checkpoint(
 	log_group_t**	max_group,
@@ -2424,6 +2425,7 @@ recv_recover_page_func(
 
   /* nc-logging */
 #ifdef UNIV_NVDIMM_CACHE
+
     extern unsigned char* gb_pm_mmap;
     bool nc_page_flag = false;
     bool nc_corrupt_flag = false;
@@ -2437,22 +2439,22 @@ recv_recover_page_func(
     if (cur_nc_buf_offset != -1) {
       // (jhpark): now, we know this page reside in the NVDIMM buffer.
       nc_page_flag = true;
-      unsigned char *nc_frame = reinterpret_cast<buf_block_t*>
-        ((gb_pm_mmap + (1*1024*1024*1024UL) + cur_nc_buf_offset))->frame;
+      unsigned char *nc_frame = 
+        ((gb_pm_mmap + (6*1024*1024*1024UL) + cur_nc_buf_offset)) + 13107200;
 
       uint64_t cur_disk_page_lsn = mach_read_from_8(block->frame + FIL_PAGE_LSN);
       cur_nc_page_lsn = mach_read_from_8(nc_frame+FIL_PAGE_LSN);
 
       // check crash
       unsigned long check;
-      fseg_header_t* seg_header = block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+      fseg_header_t* seg_header = nc_frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
       check = mach_read_from_4(seg_header + FSEG_HDR_SPACE);
       if (check == 1) {
         nc_corrupt_flag = true;
       }
 		
       // recover from NC buffer
-      if (!nc_corrupt_flag /* || cur_disk_page_lsn == 0*/ ) {
+      if (!nc_corrupt_flag) {
     	  memcpy(block->frame, nc_frame, UNIV_PAGE_SIZE);
         page_lsn = cur_nc_page_lsn;
         end_lsn = recv->start_lsn + recv->len;
@@ -2463,7 +2465,7 @@ recv_recover_page_func(
           goto skip_redo;
 	  	} else {
           // (jhpark): need to recovery from old disk!
-		}
+      }
     }
 #endif
 
@@ -2632,7 +2634,7 @@ recv_read_in_area(
 	n = 0;
 
 	for (ulint page_no = low_limit;
-	     page_no < low_limit + RECV_READ_AHEAD_AREA;
+	    page_no < low_limit + RECV_READ_AHEAD_AREA;
 	     page_no++) {
 
 		recv_addr = recv_get_fil_addr_struct(page_id.space(), page_no);
@@ -2727,6 +2729,27 @@ loop:
 
 			const page_id_t		page_id(recv_addr->space,
 							recv_addr->page_no);
+// YYY
+#ifdef UNIV_NVDIMM_CACHE
+      extern unsigned char* gb_pm_mmap;
+      uint64_t cur_nc_buf_offset = pm_mmap_recv_check_nc_buf(
+          page_id.space(), page_id.page_no());
+      if (cur_nc_buf_offset != -1) {
+ 
+        // check current NC page is corrupted.
+        unsigned char *nc_frame =
+          ((gb_pm_mmap + (6*1024*1024*1024UL) + cur_nc_buf_offset)) + 13107200;
+        
+        fseg_header_t* seg_header = nc_frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+
+        //if (mach_read_from_4(seg_header + FSEG_HDR_SPACE) == 1) {
+        //  ib::info() << "current NC page is corrupt! " << page_id.space() << ":" << page_id.page_no();
+        //} else {
+        //  ib::info() << "current NC page is not corrupt! len: " << recv_sys->n_addrs;
+        //}
+      }
+#endif
+
 			bool			found;
 			const page_size_t&	page_size
 				= fil_space_get_page_size(recv_addr->space,
@@ -2779,7 +2802,6 @@ loop:
 		}
 	}
 	/* Wait until all the pages have been processed */
-
 	while (recv_sys->n_addrs != 0) {
 
 		mutex_exit(&(recv_sys->mutex));
@@ -3841,6 +3863,10 @@ recv_group_scan_log_recs(
 	DBUG_ENTER("recv_group_scan_log_recs");
 	DBUG_ASSERT(!last_phase || recv_sys->mlog_checkpoint_lsn > 0);
 
+  if(is_pmem_recv) {
+    *contiguous_lsn = min_nc_page_lsn;
+  }
+ 
 	mutex_enter(&recv_sys->mutex);
 	recv_sys->len = 0;
 	recv_sys->recovered_offset = 0;
@@ -3894,7 +3920,6 @@ recv_group_scan_log_recs(
 		DBUG_RETURN(false);
 	}
 
-  /* nc-logging */
 #ifdef UNIV_NVDIMM_CACHE
   // (jhpark): so far we scan from log files; now we read from persistent log buffer
   extern unsigned char* gb_pm_mmap;
@@ -4223,7 +4248,9 @@ recv_recovery_from_checkpoint_start(
 		return(DB_ERROR);
 	}
 
-	if (recv_sys->mlog_checkpoint_lsn == 0) {
+  // ZZZ
+	if (recv_sys->mlog_checkpoint_lsn == 0
+      && !is_pmem_recv) {
 		if (!srv_read_only_mode
 		    && group->scanned_lsn != checkpoint_lsn) {
 			ib::error() << "Ignoring the redo log due to missing"

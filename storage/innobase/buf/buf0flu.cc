@@ -1125,9 +1125,19 @@ buf_flush_write_block_low(
             << " flush-type = " << bpage->flush_type;*/
         memcpy(((buf_block_t *)nvdimm_page)->frame, ((buf_block_t *)bpage)->frame, UNIV_PAGE_SIZE);
 
+        uint64_t cur_page_lsn = mach_read_from_8(((buf_block_t *)bpage)->frame + FIL_PAGE_LSN);
+        if (cur_page_lsn == 0) {
+          ib::info() << "errror!!!";
+        }
+        if (!min_nc_page_lsn || min_nc_page_lsn > cur_page_lsn) {
+          min_nc_page_lsn = cur_page_lsn;
+          ib::info() << "Normal to NVDIMM page lsn: " << min_nc_page_lsn;
+        }
+
         /* Set the oldest LSN of the NVDIMM page to the previous newest LSN. */
         buf_flush_note_modification((buf_block_t *)nvdimm_page
-        , bpage->oldest_modification
+        //, bpage->oldest_modification
+        , cur_page_lsn
         , bpage->newest_modification
         , nvdimm_page->flush_observer);
 
@@ -1139,8 +1149,6 @@ buf_flush_write_block_low(
         buf_page_io_complete(nvdimm_page);
         buf_page_io_complete(bpage, true);
 
-        //log_checkpoint(TRUE,FALSE);
-        
         /*buf_pool_t*	buf_pool = buf_pool_from_bpage(nvdimm_page);
         ib::info() << nvdimm_page->id.space() << " "
                 << nvdimm_page->id.page_no() << " is moved to "
@@ -1157,7 +1165,8 @@ normal:
                 << " with oldest: " << bpage->oldest_modification
                 << " newest: " << bpage->newest_modification
                 << " lsn-gap: " << bpage->newest_modification - bpage->oldest_modification;
-*/
+        */
+
         if (!srv_use_doublewrite_buf
             || buf_dblwr == NULL
             || srv_read_only_mode
@@ -1325,10 +1334,10 @@ buf_flush_page(
 
 #ifdef UNIV_NVDIMM_CACHE
         /* Separate Neworder leaf page from the other pages. */
-        if (bpage->id.space() == 28 /* Order-Line tablespace */
+        if (bpage->id.space() == 27 /* Order-Line tablespace */
             && bpage->buf_fix_count == 0 /* Not fixed */
             && !bpage->cached_in_nvdimm
-            && !bpage->splited
+            && !is_pmem_recv
             ) { /* Not cached in NVDIMM */
             
             const byte *frame =
@@ -1344,10 +1353,10 @@ buf_flush_page(
         }
 
         /* Separate Order-Line leaf page from the other pages. */
-        if (bpage->id.space() == 30 /* Order-Line tablespace */
+        if (bpage->id.space() == 29 /* Order-Line tablespace */
             && bpage->buf_fix_count == 0 /* Not fixed */
             && !bpage->cached_in_nvdimm
-            && !bpage->splited
+            && !is_pmem_recv
             ) { /* Not cached in NVDIMM */
             
             const byte *frame =
@@ -1364,7 +1373,7 @@ buf_flush_page(
 
 #ifdef UNIV_NVDIMM_CACHE_OD
         /* Separate Orders leaf page from the other pages. */
-        if (bpage->id.space() == 30 /* Order-Line tablespace */
+        if (bpage->id.space() == 29 /* Order-Line tablespace */
             && bpage->buf_fix_count == 0 /* Not fixed */
             && !bpage->cached_in_nvdimm) { /* Not cached in NVDIMM */
             
@@ -1381,10 +1390,10 @@ buf_flush_page(
         }
 #endif /* UNIV_NVDIMM_CACHE_OD */
 #ifdef UNIV_NVDIMM_CACHE_ST
-        if (bpage->id.space() == 32 /* Stock tablespace */
+        if (bpage->id.space() == 31 /* Stock tablespace */
                    && bpage->buf_fix_count == 0 /* Not fixed */
                    && !bpage->cached_in_nvdimm
-                   && !bpage->splited
+                   && !is_pmem_recv
                    ) { /* Not cached in NVDIMM */
             lsn_t before_lsn = mach_read_from_8(reinterpret_cast<const buf_block_t *>(bpage)->frame + FIL_PAGE_LSN);
             lsn_t lsn_gap = bpage->oldest_modification - before_lsn;
@@ -1440,7 +1449,7 @@ buf_flush_page(
 		buffer pool or removed from flush_list or LRU_list. */
 
         /* mijin */
-        /*if (bpage->id.space() == 32) {
+        /*if (bpage->id.space() == 31) {
             lsn_t before_lsn = mach_read_from_8(reinterpret_cast<const buf_block_t *>(bpage)->frame + FIL_PAGE_LSN);
             lsn_t lsn_gap = bpage->oldest_modification - before_lsn;
             
@@ -2349,21 +2358,11 @@ buf_flush_lists(
 	}
 
 	/* Flush to lsn_limit in all buffer pool instances */
-	//for (i = 0; i < srv_buf_pool_instances+1; i++) {
     for (i = 0; i < srv_buf_pool_instances; i++) {
-    if (is_pmem_recv) {
-      continue;
-    }
 		buf_pool_t*	buf_pool;
 		ulint		page_count = 0;
 
 		buf_pool = buf_pool_from_array(i);
-
-#ifdef UNIV_NVDIMM_CACHE
-    if (i == srv_buf_pool_instances) {
-      min_n = (UT_LIST_GET_LEN(buf_pool->flush_list) / 4);
-    }
-#endif
 
 		if (!buf_flush_do_batch(buf_pool,
 					BUF_FLUSH_LIST,

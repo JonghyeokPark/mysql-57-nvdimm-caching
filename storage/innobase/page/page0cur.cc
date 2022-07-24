@@ -1533,6 +1533,26 @@ use_heap:
 
   // YYY
 #ifdef UNIV_NVDIMM_CACHE
+   // get page block
+  if (!is_pmem_recv) {
+   mtr_t tmp_mtr;
+   mtr_start(&tmp_mtr);
+   ulint page_no = page_get_page_no(page);
+   ulint space_id = page_get_space_id(page);
+   buf_block_t* nvm_block = buf_page_get(page_id_t(space_id, page_no),
+                       dict_table_page_size(index->table), RW_NO_LATCH, &tmp_mtr);
+   tmp_mtr.discard_modifications();
+   mtr_commit(&tmp_mtr);
+   buf_page_t* nvm_bpage = &nvm_block->page;
+   if (nvm_bpage->cached_in_nvdimm) {
+     if (page_is_leaf(nvm_block->frame)) {
+       fseg_header_t* seg_header = nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+       mach_write_to_4(seg_header + FSEG_HDR_SPACE, 0);
+       flush_cache(nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
+     }
+   }
+  }
+
    /* 9. Write log record of the insert */
    if (UNIV_LIKELY(mtr != NULL)) {
       page_cur_insert_rec_write_log(insert_rec, rec_size,
