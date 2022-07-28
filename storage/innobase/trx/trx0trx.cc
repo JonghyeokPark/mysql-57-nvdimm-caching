@@ -741,9 +741,6 @@ trx_resurrect_table_locks(
 
 	undo_rec = undo_page + undo->top_offset;
 
-	fprintf(stderr, "[JONGQ] before-loop: space:%lu page_no:%lu top_offset: %lu\n"
-								, undo->space, undo->top_page_no, undo->top_offset);
-
 	do {
 		ulint		type;
 		undo_no_t	undo_no;
@@ -770,8 +767,6 @@ trx_resurrect_table_locks(
 
 	mtr_commit(&mtr);
 
-	fprintf(stderr, "[JONGQ] escape loop!\n");
-
 	for (table_id_set::const_iterator i = tables.begin();
 	     i != tables.end(); i++) {
 		if (dict_table_t* table = dict_table_open_on_id(
@@ -789,9 +784,6 @@ trx_resurrect_table_locks(
 				trx->mod_tables.insert(table);
 			}
 			lock_table_ix_resurrect(table, trx);
-      
-      // debugging
-      fprintf(stderr, "ib_trx resurrect %d table %s IX lock from %s undo", trx_get_id_for_print(trx), table->name.m_name, undo == undo_ptr->insert_undo ? "insert" : "update");
       
 			DBUG_PRINT("ib_trx",
 				   ("resurrect" TRX_ID_FMT
@@ -1027,7 +1019,6 @@ trx_lists_init_at_db_start(void)
 		/* At this stage non-redo rseg slots are all NULL as they are
 		re-created on server start and existing slots are not read. */
 		if (rseg == NULL) {
-      fprintf(stderr, "[JONGQ] rseg is NULL \n");
 			continue;
 		}
 
@@ -1036,7 +1027,6 @@ trx_lists_init_at_db_start(void)
 		     undo != NULL;
 		     undo = UT_LIST_GET_NEXT(undo_list, undo)) {
 
-      fprintf(stderr, "[JONGQ] insert undoing-1!!!\n");
 			trx_t*	trx;
       
 
@@ -1046,8 +1036,6 @@ trx_lists_init_at_db_start(void)
 
 			trx_resurrect_table_locks(
 				trx, &trx->rsegs.m_redo, undo);
-      
-      fprintf(stderr, "[JONGQ] insert undoing-2!!!\n");  
 		}
 
 		/* Ressurrect transactions that were doing updates. */
@@ -1055,30 +1043,23 @@ trx_lists_init_at_db_start(void)
 		     undo != NULL;
 		     undo = UT_LIST_GET_NEXT(undo_list, undo)) {
 
-      fprintf(stderr, "[JONGQ] update undoing-1!!!\n");
 			/* Check the trx_sys->rw_trx_set first. */
 			trx_sys_mutex_enter();
-      fprintf(stderr, "[JONGQ] update undoing-2!!!\n");
 
 			trx_t*	trx = trx_get_rw_trx_by_id(undo->trx_id);
 
 			trx_sys_mutex_exit();
 
 			if (trx == NULL) {
-				fprintf(stderr, "[JONGQ] update undoing trx is null\n");
 				trx = trx_allocate_for_background();
 
 				ut_d(trx->start_file = __FILE__);
 				ut_d(trx->start_line = __LINE__);
 			}
-			fprintf(stderr, "[JONGQ] update undoing-3!!!\n"); 
 			trx_resurrect_update(trx, undo, rseg);
-			fprintf(stderr, "[JOGNQ] update undoing-4!!!\n"); 
 			trx_sys_rw_trx_add(trx);
-			fprintf(stderr, "[JONGQ] update undoing-5!!!\n"); 
 			trx_resurrect_table_locks(
 				trx, &trx->rsegs.m_redo, undo);
-	    fprintf(stderr, "[JONGQ] update undoing-6!!!\n"); 
 		}
 	}
 

@@ -57,6 +57,11 @@ Created 12/9/1995 Heikki Tuuri
 #include "sync0sync.h"
 #endif /* !UNIV_HOTBACKUP */
 
+#ifdef UNIV_NVDIMM_CACHE
+#include "pmem_mmap_obj.h"
+extern unsigned char* gb_pm_mmap;
+#endif
+
 /*
 General philosophy of InnoDB redo-logs:
 
@@ -409,6 +414,10 @@ log_write_low(
 	ulint	data_len;
 	byte*	log_block;
 
+#ifdef UNIV_NVDIMM_CACHE
+  ulint org_len = str_len;
+#endif
+
 	ut_ad(log_mutex_own());
 part_loop:
 	ut_ad(!recv_no_log_write);
@@ -429,7 +438,13 @@ part_loop:
 			- LOG_BLOCK_TRL_SIZE;
 	}
 
-	ut_memcpy(log->buf + log->buf_free, str, len);
+#ifdef UNIV_NVDIMM_CACHE
+  ut_memcpy(log->buf + log->buf_free, str, len);
+  flush_cache(log->buf+log->buf_free, len);
+#else
+  ut_memcpy(log->buf + log->buf_free, str, len);
+#endif
+//	ut_memcpy(log->buf + log->buf_free, str, len);
 
 	str_len -= len;
 	str = str + len;
@@ -807,10 +822,17 @@ log_init(void)
 
 	log_sys->buf_size = LOG_BUFFER_SIZE;
 
+  /* nc-logging */
+#ifdef UNIV_NVDIMM_CACHE
+  log_sys->buf_ptr = static_cast<byte*>(gb_pm_mmap);
+  log_sys->buf = static_cast<byte*>(
+      ut_align(log_sys->buf_ptr, OS_FILE_LOG_BLOCK_SIZE));
+#else
 	log_sys->buf_ptr = static_cast<byte*>(
 		ut_zalloc_nokey(log_sys->buf_size * 2 + OS_FILE_LOG_BLOCK_SIZE));
 	log_sys->buf = static_cast<byte*>(
 		ut_align(log_sys->buf_ptr, OS_FILE_LOG_BLOCK_SIZE));
+#endif
 
 	log_sys->first_in_use = true;
 
@@ -1886,6 +1908,48 @@ log_checkpoint(
 		return(false);
 	}
 
+#ifdef UNIV_NVDIMM_CACHE
+// TODO(jhpark): keep log files for switching log files
+ /*
+  lsn_t nvdimm_lsn = nvdimm_buf_pool_get_oldest_modification(); 
+  if (nvdimm_lsn != 0) {
+  // read current log file contents
+  log_group_t*  group = UT_LIST_GET_FIRST(log_sys->log_groups);
+  const lsn_t source_offset 
+    = log_group_calc_lsn_offset(nvdimm_lsn, group);
+  const ulint page_no
+    = (ulint) (source_offset / univ_page_size.physical());
+
+  // max checkpoint group
+  log_group_t*  max_cp_group;
+    ulint   max_cp_field;
+  dberr_t err = recv_find_max_checkpoint(&max_cp_group, &max_cp_field);
+  if (err != DB_SUCCESS) {
+    ib::info() << "Error!";
+  }
+  log_group_header_read(max_cp_group, max_cp_field);
+
+
+  byte *tmp_ptr = static_cast<byte*>(
+       ut_zalloc_nokey(4096 * 2 + OS_FILE_LOG_BLOCK_SIZE));
+
+  byte *tmp = static_cast<byte*>(
+  ut_align(tmp_ptr, OS_FILE_LOG_BLOCK_SIZE));
+
+  // store logs for NC pages
+  if (oldest_lsn > nvdimm_lsn) {  
+
+    lsn_t start_lsn = ut_uint64_align_down(log_sys->next_checkpoint_lsn, OS_FILE_LOG_BLOCK_SIZE);
+    lsn_t end_lsn = ut_uint64_align_up(nvdimm_lsn, OS_FILE_LOG_BLOCK_SIZE);
+ 
+    uint64_t start_lsn_offset =  log_group_calc_lsn_offset(start_lsn, group);
+    uint64_t end_lsn_offset =  log_group_calc_lsn_offset(end_lsn, group);
+    uint64_t total_block_num = (end_lsn - start_lsn) / OS_FILE_LOG_BLOCK_SIZE;
+  }
+  }
+*/
+#endif
+
 	log_sys->next_checkpoint_lsn = oldest_lsn;
 	log_write_checkpoint_info(sync);
 	ut_ad(!log_mutex_own());
@@ -2220,7 +2284,6 @@ loop:
 		}
 	}
 
-#ifdef UNIV_NVDIMM_CACHE_ST
     count = 0;
 	while (buf_nvdimm_stock_page_cleaner_is_active) {
 		++count;
@@ -2231,7 +2294,73 @@ loop:
 			count = 0;
 		}
 	}
-#endif /* UNIV_NVDIMM_CACHE_ST */
+
+     count = 0;
+	while (buf_nvdimm_page_cleaner2_is_active) {
+		++count;
+		os_thread_sleep(100000);
+		if (srv_print_verbose_log && count > 600) {
+			ib::info() << "Waiting for NVDIMM page_cleaner to"
+				" finish flushing of buffer pool";
+			count = 0;
+		}
+	}
+
+    count = 0;
+	while (buf_nvdimm_page_cleaner3_is_active) {
+		++count;
+		os_thread_sleep(100000);
+		if (srv_print_verbose_log && count > 600) {
+			ib::info() << "Waiting for NVDIMM page_cleaner to"
+				" finish flushing of buffer pool";
+			count = 0;
+		}
+	}
+
+     count = 0;
+	while (buf_nvdimm_page_cleaner4_is_active) {
+		++count;
+		os_thread_sleep(100000);
+		if (srv_print_verbose_log && count > 600) {
+			ib::info() << "Waiting for NVDIMM page_cleaner to"
+				" finish flushing of buffer pool";
+			count = 0;
+		}
+	}
+
+    count = 0;
+	while (buf_nvdimm_page_cleaner5_is_active) {
+		++count;
+		os_thread_sleep(100000);
+		if (srv_print_verbose_log && count > 600) {
+			ib::info() << "Waiting for NVDIMM page_cleaner to"
+				" finish flushing of buffer pool";
+			count = 0;
+		}
+	}
+
+     count = 0;
+	while (buf_nvdimm_page_cleaner6_is_active) {
+		++count;
+		os_thread_sleep(100000);
+		if (srv_print_verbose_log && count > 600) {
+			ib::info() << "Waiting for NVDIMM page_cleaner to"
+				" finish flushing of buffer pool";
+			count = 0;
+		}
+	}
+
+     count = 0;
+	while (buf_nvdimm_page_cleaner7_is_active) {
+		++count;
+		os_thread_sleep(100000);
+		if (srv_print_verbose_log && count > 600) {
+			ib::info() << "Waiting for NVDIMM page_cleaner to"
+				" finish flushing of buffer pool";
+			count = 0;
+		}
+	}
+
 #endif /* UNIV_NVDIMM_CACHE */
     
 	log_mutex_enter();

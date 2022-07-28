@@ -228,6 +228,13 @@ log_checkpoint(
 	bool	sync,
 	bool	write_always);
 
+// YYY
+extern
+dberr_t
+recv_find_max_checkpoint(
+  log_group_t** max_group,
+   ulint*    max_field);
+
 /** Make a checkpoint at or after a specified LSN.
 @param[in]	lsn		the log sequence number, or LSN_MAX
 for the latest LSN

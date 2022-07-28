@@ -48,10 +48,20 @@ extern os_event_t	buf_flush_event;
 #ifdef UNIV_NVDIMM_CACHE
 extern os_event_t buf_flush_nvdimm_event;
 extern bool buf_nvdimm_page_cleaner_is_active;
-#ifdef UNIV_NVDIMM_CACHE_ST
 extern os_event_t buf_flush_nvdimm_stock_event;
 extern bool buf_nvdimm_stock_page_cleaner_is_active;
-#endif /* UNIV_NVDIMM_CACHE_ST */
+extern os_event_t buf_flush_nvdimm_event2;
+extern bool buf_nvdimm_page_cleaner2_is_active;
+extern os_event_t buf_flush_nvdimm_event3;
+extern bool buf_nvdimm_page_cleaner3_is_active;
+extern os_event_t buf_flush_nvdimm_event4;
+extern bool buf_nvdimm_page_cleaner4_is_active;
+extern os_event_t buf_flush_nvdimm_event5;
+extern bool buf_nvdimm_page_cleaner5_is_active;
+extern os_event_t buf_flush_nvdimm_event6;
+extern bool buf_nvdimm_page_cleaner6_is_active;
+extern os_event_t buf_flush_nvdimm_event7;
+extern bool buf_nvdimm_page_cleaner7_is_active;
 #endif /* UNIV_NVDIMM_CACHE */
 
 class ut_stage_alter_t;
@@ -247,7 +257,6 @@ DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
 	void*	arg);		/*!< in: a dummy parameter required by
 				os_thread_create */
 
-#ifdef UNIV_NVDIMM_CACHE_ST
 /******************************************************************//**
 page_cleaner thread tasked with flushing dirty STOCK pages from the
 NVDIMM buffer pools. */
@@ -257,7 +266,66 @@ DECLARE_THREAD(buf_flush_nvdimm_stock_cleaner_thread)(
 /*===============================================*/
 	void*	arg);		/*!< in: a dummy parameter required by
 				os_thread_create */
-#endif /* UNIV_NVDIMM_CACHE_ST */
+
+/******************************************************************//**
+page_cleaner thread tasked with flushing dirty pages from the NVDIMM
+buffer pools. */
+extern "C"
+os_thread_ret_t
+DECLARE_THREAD(buf_flush_nvdimm_page_cleaner2_thread)(
+/*===============================================*/
+	void*	arg);		/*!< in: a dummy parameter required by
+				os_thread_create */
+
+/******************************************************************//**
+page_cleaner thread tasked with flushing dirty pages from the NVDIMM
+buffer pools. */
+extern "C"
+os_thread_ret_t
+DECLARE_THREAD(buf_flush_nvdimm_page_cleaner3_thread)(
+/*===============================================*/
+	void*	arg);		/*!< in: a dummy parameter required by
+				os_thread_create */
+
+/******************************************************************//**
+page_cleaner thread tasked with flushing dirty pages from the NVDIMM
+buffer pools. */
+extern "C"
+os_thread_ret_t
+DECLARE_THREAD(buf_flush_nvdimm_page_cleaner4_thread)(
+/*===============================================*/
+	void*	arg);		/*!< in: a dummy parameter required by
+				os_thread_create */
+
+/******************************************************************//**
+page_cleaner thread tasked with flushing dirty pages from the NVDIMM
+buffer pools. */
+extern "C"
+os_thread_ret_t
+DECLARE_THREAD(buf_flush_nvdimm_page_cleaner5_thread)(
+/*===============================================*/
+	void*	arg);		/*!< in: a dummy parameter required by
+				os_thread_create */
+
+/******************************************************************//**
+page_cleaner thread tasked with flushing dirty pages from the NVDIMM
+buffer pools. */
+extern "C"
+os_thread_ret_t
+DECLARE_THREAD(buf_flush_nvdimm_page_cleaner6_thread)(
+/*===============================================*/
+	void*	arg);		/*!< in: a dummy parameter required by
+				os_thread_create */
+
+/******************************************************************//**
+page_cleaner thread tasked with flushing dirty pages from the NVDIMM
+buffer pools. */
+extern "C"
+os_thread_ret_t
+DECLARE_THREAD(buf_flush_nvdimm_page_cleaner7_thread)(
+/*===============================================*/
+	void*	arg);		/*!< in: a dummy parameter required by
+				os_thread_create */
 
 /*********************************************************************//**
 Wait for any possible LRU flushes that are in progress to end. */

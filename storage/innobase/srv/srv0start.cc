@@ -109,6 +109,7 @@ Created 2/16/1996 Heikki Tuuri
 #include "pmem_mmap_obj.h" 
 extern unsigned char* gb_pm_mmap;
 char  PMEM_FILE_PATH [PMEM_MMAP_MAX_FILE_NAME_LENGTH];
+pfs_os_file_t gb_pm_dwb_file;
 #endif /* UNIV_NVDIMM_CACHE */
 
 #ifdef HAVE_LZO1X
@@ -316,9 +317,13 @@ DECLARE_THREAD(io_handler_thread)(
 	       || buf_page_cleaner_is_active
 #ifdef UNIV_NVDIMM_CACHE
 	       || buf_nvdimm_page_cleaner_is_active
-#ifdef UNIV_NVDIMM_CACHE_ST
 	       || buf_nvdimm_stock_page_cleaner_is_active
-#endif /* UNIV_NVDIMM_CACHE_ST */
+         || buf_nvdimm_page_cleaner2_is_active
+         || buf_nvdimm_page_cleaner3_is_active
+         || buf_nvdimm_page_cleaner4_is_active
+         || buf_nvdimm_page_cleaner5_is_active
+         || buf_nvdimm_page_cleaner6_is_active
+         || buf_nvdimm_page_cleaner7_is_active
 #endif /* UNIV_NVDIMM_CACHE */
 	       || !os_aio_all_slots_free()) {
 		fil_aio_wait(segment);
@@ -1301,18 +1306,26 @@ srv_shutdown_all_bg_threads()
 
 			os_event_set(buf_flush_event);
 #ifdef UNIV_NVDIMM_CACHE
-            os_event_set(buf_flush_nvdimm_event);
-#ifdef UNIV_NVDIMM_CACHE_ST
-            os_event_set(buf_flush_nvdimm_stock_event);
-#endif /* UNIV_NVDIMM_CACHE_ST */
+      os_event_set(buf_flush_nvdimm_event);
+      os_event_set(buf_flush_nvdimm_stock_event);
+      os_event_set(buf_flush_nvdimm_event2);
+      os_event_set(buf_flush_nvdimm_event3);
+      os_event_set(buf_flush_nvdimm_event4);
+      os_event_set(buf_flush_nvdimm_event5);
+      os_event_set(buf_flush_nvdimm_event6);
+      os_event_set(buf_flush_nvdimm_event7);
 #endif /* UNIV_NVDIMM_CACHE */
 
 			if (!buf_page_cleaner_is_active
 #ifdef UNIV_NVDIMM_CACHE
-                && !buf_nvdimm_page_cleaner_is_active
-#ifdef UNIV_NVDIMM_CACHE_ST
-                && !buf_nvdimm_stock_page_cleaner_is_active
-#endif /* UNIV_NVDIMM_CACHE_ST */
+          && !buf_nvdimm_page_cleaner_is_active
+          && !buf_nvdimm_stock_page_cleaner_is_active
+          && !buf_nvdimm_page_cleaner2_is_active
+          && !buf_nvdimm_page_cleaner3_is_active
+          && !buf_nvdimm_page_cleaner4_is_active
+          && !buf_nvdimm_page_cleaner5_is_active
+          && !buf_nvdimm_page_cleaner6_is_active
+          && !buf_nvdimm_page_cleaner7_is_active
 #endif /* UNIV_NVDIMM_CACHE */
 			    && os_aio_all_slots_free()) {
 				os_aio_wake_all_threads_at_shutdown();
@@ -1510,17 +1523,9 @@ innobase_start_or_create_for_mysql(void)
     assert(gb_pm_mmap);
   }
 
-	if (!is_pmem_recv) {
-		// for debugging : chagne the mtr log region size
-		// original : 1024*1024*1024*8UL (8GB)
-		pm_mmap_mtrlogbuf_init(1024*1024*1024*1UL); // 1GB for test
-
-		// TODO(jhpark): change buffer pool recovery policy
-		// buffer retion initialization (2GB)
-		pm_mmap_buf_init(1024*1024*1024*2UL);
-	}
-	
-	//pm_mmap_buf_init(1024*1024*1024*3UL);
+  // TODO(jhpark): need to optimize
+	//pm_mmap_mtrlogbuf_init(1024*1024*1024*1UL); // 1GB for test
+	pm_mmap_buf_init(1024*1024*1024*2UL);	
 
 #endif /* UNIV_NVDIMM_CACHE */
 
@@ -1700,9 +1705,8 @@ innobase_start_or_create_for_mysql(void)
 			    + srv_n_page_cleaners
 #ifdef UNIV_NVDIMM_CACHE
                 + 1 /* a NVDIMM page cleaner*/
-#ifdef UNIV_NVDIMM_CACHE_ST
                 + 1 /* a NVDIMM stock page cleaner */
-#endif /* UNIV_NVDIMM_CACHE_ST */
+                + 6 /* a NVDIMM page cleaner 2-7 */
 #endif /* UNIV_NVDIMM_CACHE */
 			    /* FTS Parallel Sort */
 			    + fts_sort_pll_degree * FTS_NUM_AUX_INDEX
@@ -1950,10 +1954,24 @@ innobase_start_or_create_for_mysql(void)
 			 NULL, NULL);
 
 #ifdef UNIV_NVDIMM_CACHE
-    os_thread_create(buf_flush_nvdimm_page_cleaner_thread, NULL, NULL);
-#ifdef UNIV_NVDIMM_CACHE_ST
-    os_thread_create(buf_flush_nvdimm_stock_cleaner_thread, NULL, NULL);
-#endif /* UNIV_NVDIMM_CACHE_ST */
+  ib::info() << "Create NVDIMM page cleaner";
+  os_thread_create(buf_flush_nvdimm_page_cleaner_thread, NULL, NULL);
+  ib::info() << "1";
+  os_thread_create(buf_flush_nvdimm_stock_cleaner_thread, NULL, NULL);
+  ib::info() << "2";
+  os_thread_create(buf_flush_nvdimm_page_cleaner2_thread, NULL, NULL);
+  ib::info() << "3";
+  os_thread_create(buf_flush_nvdimm_page_cleaner3_thread, NULL, NULL);
+  ib::info() << "4";
+  os_thread_create(buf_flush_nvdimm_page_cleaner4_thread, NULL, NULL);
+  ib::info() << "5";
+  os_thread_create(buf_flush_nvdimm_page_cleaner5_thread, NULL, NULL);
+  ib::info() << "6";
+  os_thread_create(buf_flush_nvdimm_page_cleaner6_thread, NULL, NULL);
+  ib::info() << "7";
+  os_thread_create(buf_flush_nvdimm_page_cleaner7_thread, NULL, NULL);
+  ib::info() << "8";
+  ib::info() << "Completed NVDIMM page cleaner";
 #endif /* UNIV_NVDIMM_CACHE */
 
 	for (i = 1; i < srv_n_page_cleaners; ++i) {
@@ -1972,12 +1990,40 @@ innobase_start_or_create_for_mysql(void)
 		os_thread_sleep(10000);
 	}
 
-#ifdef UNIV_NVDIMM_CACHE_ST
-    /* Make sure page cleaner is active. */
+  /* Make sure page cleaner is active. */
 	while (!buf_nvdimm_stock_page_cleaner_is_active) {
+		os_thread_sleep(10000);	
+  }
+
+  /* Make sure page cleaner is active. */
+	while (!buf_nvdimm_page_cleaner2_is_active) {
 		os_thread_sleep(10000);
 	}
-#endif /* UNIV_NVDIMM_CACHE_ST */
+
+  /* Make sure page cleaner is active. */
+	while (!buf_nvdimm_page_cleaner3_is_active) {
+		os_thread_sleep(10000);
+	}
+
+  /* Make sure page cleaner is active. */
+	while (!buf_nvdimm_page_cleaner4_is_active) {
+		os_thread_sleep(10000);
+	}
+
+  /* Make sure page cleaner is active. */
+	while (!buf_nvdimm_page_cleaner5_is_active) {
+		os_thread_sleep(10000);
+	}
+
+  /* Make sure page cleaner is active. */
+	while (!buf_nvdimm_page_cleaner6_is_active) {
+		os_thread_sleep(10000);
+	}
+
+  /* Make sure page cleaner is active. */
+	while (!buf_nvdimm_page_cleaner7_is_active) {
+		os_thread_sleep(10000);
+	}
 #endif /* UNIV_NVDIMM_CACHE */
 
 	srv_start_state_set(SRV_START_STATE_IO);
@@ -2354,19 +2400,6 @@ files_checked:
 			return(srv_init_abort(DB_ERROR));
 		}
 
-#ifdef UNIV_NVDIMM_CACHE		
-		fprintf(stderr, "[JONGQ] ---- pass force recovery!\n"); 
-		
-// TODO(jhpark): NC recovery check !!!!!
-		if (is_pmem_recv)  {
-			PMEMMMAP_INFO_PRINT("YES!!!! recovery!!!! start_offset: %lu end_offset: %lu\n"
-				,pmem_recv_offset, pmem_recv_size);
-//			pm_mmap_recv(pmem_recv_offset, pmem_recv_size);
-//			PMEMMMAP_INFO_PRINT("UNDO page is recoverd !!!!\n");
-//			//pm_mmap_recv_flush_buffer();
-		}
-#endif /* UNIV_NVDIMM_CACHE */
-
 		purge_queue = trx_sys_init_at_db_start();
 
 		fprintf(stderr, "[JONGQ] ---- trx_sys_init_at_db_start finished!\n");
@@ -2376,10 +2409,6 @@ files_checked:
 			respective file pages, for the last batch of
 			recv_group_scan_log_recs(). */
 
-#ifdef UNIV_NVDIMM_CACHE		
-			PMEMMMAP_INFO_PRINT("JONGQ recovery-4-1\n");
-#endif /* UNIV_NVDIMM_CACHE */
-
 			recv_apply_hashed_log_recs(TRUE);
 			DBUG_PRINT("ib_log", ("apply completed"));
 
@@ -2387,10 +2416,6 @@ files_checked:
 				trx_sys_print_mysql_binlog_offset();
 			}
 		}
-
-#ifdef UNIV_NVDIMM_CACHE		
-		 PMEMMMAP_INFO_PRINT("JONGQ recovery-5\n"); 
-#endif /* UNIV_NVDIMM_CACHE */
 
 		if (recv_sys->found_corrupt_log) {
 			ib::warn()
@@ -2702,13 +2727,6 @@ files_checked:
 
 	/* wake main loop of page cleaner up */
 	os_event_set(buf_flush_event);
-
-#ifdef UNIV_NVDIMM_CACHE
-    //os_event_set(buf_flush_nvdimm_event);
-#ifdef UNIV_NVDIMM_CACHE_ST
-    //os_event_set(buf_flush_nvdimm_stock_event);
-#endif /* UNIV_NVDIMM_CACHE_ST */
-#endif /* UNIV_NVDIMM_CACHE */
 
 	sum_of_data_file_sizes = srv_sys_space.get_sum_of_sizes();
 	ut_a(sum_of_new_sizes != ULINT_UNDEFINED);

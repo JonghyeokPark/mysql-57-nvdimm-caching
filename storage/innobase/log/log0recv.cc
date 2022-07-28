@@ -1280,7 +1280,8 @@ recv_log_format_0_recover(lsn_t lsn)
 @param[out]	max_group	log group, or NULL
 @param[out]	max_field	LOG_CHECKPOINT_1 or LOG_CHECKPOINT_2
 @return error code or DB_SUCCESS */
-static MY_ATTRIBUTE((warn_unused_result))
+//static MY_ATTRIBUTE((warn_unused_result))
+extern 
 dberr_t
 recv_find_max_checkpoint(
 	log_group_t**	max_group,
@@ -2242,8 +2243,8 @@ recv_add_to_hash_table(
 		HASH_INSERT(recv_addr_t, addr_hash, recv_sys->addr_hash,
 			    recv_fold(space, page_no), recv_addr);
 		recv_sys->n_addrs++;
-		// debug
-#if 1
+// debug
+#if 0
 		fprintf(stderr, "Inserting log rec for space %lu, page %lu\n",
 			space, page_no);
 #endif
@@ -2371,10 +2372,6 @@ recv_recover_page_func(
 		    recv_addr->space, recv_addr->page_no));
 #endif /* !UNIV_HOTBACKUP */
 
-#ifdef UNIV_NVDIMM_CACHE
-  // debug
-  fprintf(stderr, "[JONGQ] state changed : !!! before: %d after: %d\n", recv_addr->state, RECV_BEING_PROCESSED);
-#endif /* UNIV_NVDIMM_CACHE */
 	recv_addr->state = RECV_BEING_PROCESSED;
 
 	mutex_exit(&(recv_sys->mutex));
@@ -2425,6 +2422,52 @@ recv_recover_page_func(
 	start_lsn = end_lsn = 0;
 
 	recv = UT_LIST_GET_FIRST(recv_addr->rec_list);
+
+  /* nc-logging */
+#ifdef UNIV_NVDIMM_CACHE
+
+    extern unsigned char* gb_pm_mmap;
+    bool nc_page_flag = false;
+    bool nc_corrupt_flag = false;
+    uint64_t cur_nc_page_lsn = -1;
+
+    uint64_t cur_nc_buf_offset = pm_mmap_recv_check_nc_buf(
+               block->page.id.space(), block->page.id.page_no());
+
+    std::map<std::pair<uint64_t,uint64_t>, uint64_t >::iterator ncmtr_iter;
+
+    if (cur_nc_buf_offset != -1) {
+      // (jhpark): now, we know this page reside in the NVDIMM buffer.
+      nc_page_flag = true;
+      unsigned char *nc_frame = 
+        ((gb_pm_mmap + (6*1024*1024*1024UL) + cur_nc_buf_offset)) + 13107200;
+
+      uint64_t cur_disk_page_lsn = mach_read_from_8(block->frame + FIL_PAGE_LSN);
+      cur_nc_page_lsn = mach_read_from_8(nc_frame+FIL_PAGE_LSN);
+
+      // check crash
+      unsigned long check;
+      fseg_header_t* seg_header = nc_frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+      check = mach_read_from_4(seg_header + FSEG_HDR_SPACE);
+      if (check == 1) {
+        nc_corrupt_flag = true;
+      }
+		
+      // recover from NC buffer
+      if (!nc_corrupt_flag) {
+    	  memcpy(block->frame, nc_frame, UNIV_PAGE_SIZE);
+        page_lsn = cur_nc_page_lsn;
+        end_lsn = recv->start_lsn + recv->len;
+        mach_write_to_8(FIL_PAGE_LSN + (block->frame), end_lsn);
+        mach_write_to_8(UNIV_PAGE_SIZE
+            - FIL_PAGE_END_LSN_OLD_CHKSUM
+            + (block->frame), end_lsn);
+          goto skip_redo;
+	  	} else {
+          // (jhpark): need to recovery from old disk!
+      }
+    }
+#endif
 
 	while (recv) {
 		end_lsn = recv->end_lsn;
@@ -2521,7 +2564,11 @@ recv_recover_page_func(
 		}
 
 		recv = UT_LIST_GET_NEXT(rec_list, recv);
-	}
+	} // end-of-while
+
+#ifdef UNIV_NVDIMM_CACHE
+skip_redo:
+#endif
 
 #ifdef UNIV_ZIP_DEBUG
 	if (fil_page_index_page_check(page)) {
@@ -2587,7 +2634,7 @@ recv_read_in_area(
 	n = 0;
 
 	for (ulint page_no = low_limit;
-	     page_no < low_limit + RECV_READ_AHEAD_AREA;
+	    page_no < low_limit + RECV_READ_AHEAD_AREA;
 	     page_no++) {
 
 		recv_addr = recv_get_fil_addr_struct(page_id.space(), page_no);
@@ -2595,10 +2642,7 @@ recv_read_in_area(
 		const page_id_t	cur_page_id(page_id.space(), page_no);
 
 		if (recv_addr && !buf_page_peek(cur_page_id)) {
-			//debug
-			fprintf(stderr, "[JONGQ] recv-before-mutex i: %lu\n", page_no);
 			mutex_enter(&(recv_sys->mutex));
-			fprintf(stderr, "[JONGQ] recv-after-mutex i: %lu\n", page_no);  
 
 			if (recv_addr->state == RECV_NOT_PROCESSED) {
 				recv_addr->state = RECV_BEING_READ;
@@ -2611,9 +2655,7 @@ recv_read_in_area(
 			mutex_exit(&(recv_sys->mutex));
 		}
 	}
-	fprintf(stderr, "[JONGQ] call buf_read_recv_pages\n"); 
 	buf_read_recv_pages(FALSE, page_id.space(), page_nos, n);
- 	fprintf(stderr, "[JONGQ] Recv pages at %lu n %lu\n", page_nos[0], n);
 
 	/*
 	fprintf(stderr, "Recv pages at %lu n %lu\n", page_nos[0], n);
@@ -2687,6 +2729,27 @@ loop:
 
 			const page_id_t		page_id(recv_addr->space,
 							recv_addr->page_no);
+// YYY
+#ifdef UNIV_NVDIMM_CACHE
+      extern unsigned char* gb_pm_mmap;
+      uint64_t cur_nc_buf_offset = pm_mmap_recv_check_nc_buf(
+          page_id.space(), page_id.page_no());
+      if (cur_nc_buf_offset != -1) {
+ 
+        // check current NC page is corrupted.
+        unsigned char *nc_frame =
+          ((gb_pm_mmap + (6*1024*1024*1024UL) + cur_nc_buf_offset)) + 13107200;
+        
+        fseg_header_t* seg_header = nc_frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+
+        //if (mach_read_from_4(seg_header + FSEG_HDR_SPACE) == 1) {
+        //  ib::info() << "current NC page is corrupt! " << page_id.space() << ":" << page_id.page_no();
+        //} else {
+        //  ib::info() << "current NC page is not corrupt! len: " << recv_sys->n_addrs;
+        //}
+      }
+#endif
+
 			bool			found;
 			const page_size_t&	page_size
 				= fil_space_get_page_size(recv_addr->space,
@@ -2704,10 +2767,6 @@ loop:
 					has_printed = TRUE;
 				}
 				
-				// debug
-				fprintf(stderr, "[JONGQ] i=%d recv_sys->n_addrs: %lu\n"
-											,i, recv_sys->n_addrs);
-
 				mutex_exit(&(recv_sys->mutex));
 
 				if (buf_page_peek(page_id)) {
@@ -2725,7 +2784,6 @@ loop:
 					recv_recover_page(FALSE, block);
 					mtr_commit(&mtr);
 				} else {
-					fprintf(stderr, "[JONGQ] check-11!\n");
 					recv_read_in_area(page_id);
 				}
 
@@ -2743,11 +2801,7 @@ loop:
 				 / hash_get_n_cells(recv_sys->addr_hash)));
 		}
 	}
-	// debug
-	fprintf(stderr, "[JONGQ] escape for loop!\n");
-
 	/* Wait until all the pages have been processed */
-
 	while (recv_sys->n_addrs != 0) {
 
 		mutex_exit(&(recv_sys->mutex));
@@ -2757,16 +2811,12 @@ loop:
 		mutex_enter(&(recv_sys->mutex));
 	}
 
-	fprintf(stderr, "[JONGQ] check-1!\n");
-
 	if (has_printed) {
 
 		fprintf(stderr, "\n");
 	}
 
 	if (!allow_ibuf) {
-
-		fprintf(stderr, "[JONGQ] check-3!\n"); 
 
 		/* Flush all the file pages to disk and invalidate them in
 		the buffer pool */
@@ -2807,8 +2857,6 @@ loop:
 	if (has_printed) {
 		ib::info() << "Apply batch completed";
 	}
-
-	fprintf(stderr, "[JONGQ] finish apply\n"); 
 
 	mutex_exit(&(recv_sys->mutex));
 }
@@ -3815,6 +3863,10 @@ recv_group_scan_log_recs(
 	DBUG_ENTER("recv_group_scan_log_recs");
 	DBUG_ASSERT(!last_phase || recv_sys->mlog_checkpoint_lsn > 0);
 
+  if(is_pmem_recv) {
+    *contiguous_lsn = min_nc_page_lsn;
+  }
+ 
 	mutex_enter(&recv_sys->mutex);
 	recv_sys->len = 0;
 	recv_sys->recovered_offset = 0;
@@ -3867,6 +3919,23 @@ recv_group_scan_log_recs(
 	if (recv_sys->found_corrupt_log || recv_sys->found_corrupt_fs) {
 		DBUG_RETURN(false);
 	}
+
+#ifdef UNIV_NVDIMM_CACHE
+  // (jhpark): so far we scan from log files; now we read from persistent log buffer
+  extern unsigned char* gb_pm_mmap;
+  memcpy(log_sys->buf, gb_pm_mmap, log_sys->buf_size);
+
+  fprintf(stderr, "[DEBUG] begin scan and parse persist redo log buffer size: %d\n", log_sys->buf_size);
+  start_lsn = end_lsn;
+  end_lsn += RECV_SCAN_SIZE;
+
+  bool ret = recv_scan_log_recs(
+      available_mem, &store_to_hash, log_sys->buf,
+      RECV_SCAN_SIZE, checkpoint_lsn,
+      start_lsn, contiguous_lsn,&group->scanned_lsn);
+
+  fprintf(stderr, "[DEBUG] finsish scan and parse persist redo log buffer size: %d ret: %d\n", log_sys->buf_size, ret);
+#endif
 
 	DBUG_PRINT("ib_log", ("%s " LSN_PF
 			      " completed for log group " ULINTPF,
@@ -4179,7 +4248,9 @@ recv_recovery_from_checkpoint_start(
 		return(DB_ERROR);
 	}
 
-	if (recv_sys->mlog_checkpoint_lsn == 0) {
+  // ZZZ
+	if (recv_sys->mlog_checkpoint_lsn == 0
+      && !is_pmem_recv) {
 		if (!srv_read_only_mode
 		    && group->scanned_lsn != checkpoint_lsn) {
 			ib::error() << "Ignoring the redo log due to missing"

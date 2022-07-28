@@ -906,7 +906,7 @@ buf_read_recv_pages(
 					<< " pending reads";
 			}
 		}
-    
+ 
 		if ((i + 1 == n_stored) && sync) {
 			buf_read_page_low(
 				&err, true,

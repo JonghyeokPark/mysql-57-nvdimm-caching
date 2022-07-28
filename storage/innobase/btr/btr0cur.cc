@@ -2991,10 +2991,19 @@ btr_cur_ins_lock_and_undo(
 	}
 
 #ifdef UNIV_NVDIMM_CACHE
-    buf_block_t* nvm_block = btr_cur_get_block(cursor);
-    buf_page_t* nvm_bpage = &(nvm_block->page);
+  buf_block_t* nvm_block = btr_cur_get_block(cursor);
+  buf_page_t* nvm_bpage = &(nvm_block->page);
+  bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
 
-    bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
+  
+  if (is_nvm_page) {
+    if (page_is_leaf(nvm_block->frame)) {  
+        fseg_header_t* seg_header = nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+        mach_write_to_4(seg_header + FSEG_HDR_SPACE, 1);
+        flush_cache(nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
+    }   
+  }
+  
 
 	err = trx_undo_report_row_operation(is_nvm_page, flags, TRX_UNDO_INSERT_OP,
 					    thr, index, entry,
@@ -3559,12 +3568,20 @@ btr_cur_upd_lock_and_undo(
 
 	/* Append the info about the update in the undo log */
 #ifdef UNIV_NVDIMM_CACHE
-    buf_block_t* nvm_block = btr_cur_get_block(cursor);
-    buf_page_t* nvm_bpage = &(nvm_block->page);
+  buf_block_t* nvm_block = btr_cur_get_block(cursor);
+  buf_page_t* nvm_bpage = &(nvm_block->page);
 
-    bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
+  bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
 
-
+  
+  if (is_nvm_page) {
+    if (page_is_leaf(nvm_block->frame)) {
+      fseg_header_t* seg_header = nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+      mach_write_to_4(seg_header + FSEG_HDR_SPACE, 1);
+      flush_cache(nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
+    }
+  }
+  
 	return(trx_undo_report_row_operation(
 		       is_nvm_page, flags, TRX_UNDO_MODIFY_OP, thr,
 		       index, NULL, update,
@@ -3923,28 +3940,26 @@ btr_cur_update_in_place(
 		rw_lock_x_unlock(btr_get_search_latch(index));
 	}
 
-#ifdef UNIV_NVDIMM_CACHE
-    nvm_block = btr_cur_get_block(cursor);
-    nvm_bpage = &(nvm_block->page);
 
-    if (nvm_bpage->cached_in_nvdimm) {
-        // skip generating REDO logs for NVM-resident pages
-				// write NC page on NVDIMM
-				//pm_mmap_buf_write(nvm_bpage->size.physical(), (void*) ((buf_block_t*) nvm_bpage)->frame);
-				
-				// persist records
-				ulint cur_rec_size = rec_offs_size(offsets);
-                pm_mmap_mtrlogbuf_commit(nvm_block->frame, UNIV_PAGE_SIZE, nvm_bpage->id.space(), nvm_bpage->id.page_no());
- 
-				//pm_mmap_mtrlogbuf_commit(rec, cur_rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
-    } else {
-        btr_cur_update_in_place_log(flags, rec, index, update,
-                        trx_id, roll_ptr, mtr);
-    }
+
+//	btr_cur_update_in_place_log(flags, rec, index, update,
+//				    trx_id, roll_ptr, mtr);
+// YYY
+#ifdef UNIV_NVDIMM_CACHE
+  nvm_block = btr_cur_get_block(cursor);
+  nvm_bpage = &(nvm_block->page);
+  if (nvm_bpage->cached_in_nvdimm) {
+    fseg_header_t* seg_header = block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+    mach_write_to_4(seg_header + FSEG_HDR_SPACE, 0);
+    flush_cache(block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
+  }
+
+  btr_cur_update_in_place_log(flags, rec, index, update,
+            trx_id, roll_ptr, mtr);
 #else
-	btr_cur_update_in_place_log(flags, rec, index, update,
-				    trx_id, roll_ptr, mtr);
-#endif /* UNIV_NVDIMM_CACHE */
+  btr_cur_update_in_place_log(flags, rec, index, update,
+            trx_id, roll_ptr, mtr);
+#endif
 
 	if (was_delete_marked
 	    && !rec_get_deleted_flag(
@@ -4752,6 +4767,7 @@ btr_cur_del_mark_set_clust_rec_log(
 	log_ptr += 2;
 
 	mlog_close(mtr, log_ptr);
+
 }
 #endif /* !UNIV_HOTBACKUP */
 
@@ -4890,6 +4906,14 @@ btr_cur_del_mark_set_clust_rec(
     nvm_bpage = &(block->page);
     is_nvm_page = nvm_bpage->cached_in_nvdimm;
 
+    if (is_nvm_page) {
+
+      fseg_header_t* seg_header = block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+      mach_write_to_4(seg_header + FSEG_HDR_SPACE, 1);
+      flush_cache(block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
+
+    }
+
 	err = trx_undo_report_row_operation(is_nvm_page, flags, TRX_UNDO_MODIFY_OP, thr,
 					    index, entry, NULL, 0, rec, offsets,
 					    &roll_ptr);
@@ -4935,25 +4959,27 @@ btr_cur_del_mark_set_clust_rec(
 	}
 
 	row_upd_rec_sys_fields(rec, page_zip, index, offsets, trx, roll_ptr);
-
+// YYY
 #ifdef UNIV_NVDIMM_CACHE
-    if (is_nvm_page) {
-    	// skip generating REDO logs for nvm-page
-			// Instead, write commit log in mtr log
-			// TODO(jhpark): flush only modified region not whole records 
-			// persist records
-			ulint cur_rec_size = rec_offs_size(offsets); 
-            pm_mmap_mtrlogbuf_commit(block->frame, UNIV_PAGE_SIZE, nvm_bpage->id.space(), nvm_bpage->id.page_no());
-
-			//pm_mmap_mtrlogbuf_commit(rec, cur_rec_size, nvm_bpage->id.space(), nvm_bpage->id.page_no());
-    } else {
-        btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
-					    roll_ptr, mtr);
-    }
+  nvm_bpage = &(block->page);
+  if (nvm_bpage->cached_in_nvdimm) {
+     page_t* nvm_page = ((buf_block_t*)nvm_bpage)->frame;
+     if (page_is_leaf(nvm_page)) {
+       fseg_header_t* seg_header = nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+       mach_write_to_4(seg_header + FSEG_HDR_SPACE, 0);
+       flush_cache(nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
+     }
+  }
+  btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
+             roll_ptr, mtr);
 #else
-	btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
-					   roll_ptr, mtr);
-#endif /* UNIV_NVDIMM_CACHE */
+  btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
+             roll_ptr, mtr);
+#endif
+
+
+//	btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
+//					   roll_ptr, mtr);
 
 	return(err);
 }
@@ -5056,7 +5082,7 @@ btr_cur_del_mark_set_sec_rec(
 	block = btr_cur_get_block(cursor);
 	rec = btr_cur_get_rec(cursor);
 
-    err = lock_sec_rec_modify_check_and_lock(flags,
+  err = lock_sec_rec_modify_check_and_lock(flags,
 						 btr_cur_get_block(cursor),
 						 rec, cursor->index, thr, mtr);
 	if (err != DB_SUCCESS) {

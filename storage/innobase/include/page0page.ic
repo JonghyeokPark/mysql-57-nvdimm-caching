@@ -165,7 +165,15 @@ page_header_get_field(
 	ut_ad(page);
 	ut_ad(field <= PAGE_INDEX_ID);
 
+#ifdef UNIV_NVDIMM_CACHE
+  if (field == PAGE_DIRECTION) {
+    return(mach_read_from_1(page + PAGE_HEADER + field));
+  } else {
+    return(mach_read_from_2(page + PAGE_HEADER + field));
+  }
+#else
 	return(mach_read_from_2(page + PAGE_HEADER + field));
+#endif
 }
 
 #ifndef UNIV_INNOCHECKSUM
@@ -187,11 +195,28 @@ page_header_set_field(
 	ut_ad(field == PAGE_N_HEAP || val < UNIV_PAGE_SIZE);
 	ut_ad(field != PAGE_N_HEAP || (val & 0x7fff) < UNIV_PAGE_SIZE);
 
+#ifdef UNIV_NVDIMM_CACHE
+  if (field == PAGE_DIRECTION) {
+    mach_write_to_1(page + PAGE_HEADER + field, val);
+	  if (page_zip) {
+		  page_zip_write_header(page_zip,
+				      page + PAGE_HEADER + field, 1, NULL);
+	  }
+
+  } else {
+    mach_write_to_2(page + PAGE_HEADER + field, val);
+	  if (page_zip) {
+		  page_zip_write_header(page_zip,
+				      page + PAGE_HEADER + field, 2, NULL);
+	  }
+  }
+#else
 	mach_write_to_2(page + PAGE_HEADER + field, val);
 	if (page_zip) {
 		page_zip_write_header(page_zip,
 				      page + PAGE_HEADER + field, 2, NULL);
 	}
+#endif
 }
 
 /*************************************************************//**

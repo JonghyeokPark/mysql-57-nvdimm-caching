@@ -659,6 +659,8 @@ public:
       gb_pm_buf + offset
     );
 
+    fprintf(stderr,"NC buffer allocate_large : %p offset: %lu\n", gb_pm_buf+offset, offset); 
+
 #ifdef UNIV_PFS_MEMORY
 		if (ptr != NULL) {
 			allocate_trace(n_bytes, NULL, pfx);

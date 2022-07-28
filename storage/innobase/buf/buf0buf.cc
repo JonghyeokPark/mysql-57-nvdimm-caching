@@ -78,10 +78,6 @@ my_bool  srv_numa_interleave = FALSE;
 #ifdef UNIV_NVDIMM_CACHE
 #include "buf0nvdimm.h"
 ulint nvdimm_pc_threshold;
-//bool wakeup_nvdimm_cleaner = FALSE;
-/*#ifdef UNIV_NVDIMM_CACHE_ST
-bool wakeup_nvdimm_stock_cleaner = FALSE;
-#endif*/ /* UNIV_NVDIMM_CACHE_ST */
 /** The NVDIMM buffer pools of the database */
 buf_pool_t *nvdimm_buf_pool_ptr;
 
@@ -2134,8 +2130,7 @@ nvdimm_buf_pool_init(
 	ulint	n_instances)	/*!< in: number of instances */
 {
 	ulint		i;
-	//const ulint	size	= total_size / n_instances;
-    ulint size;
+	const ulint	size	= total_size / n_instances;
 
 	ut_ad(n_instances > 0);
 	ut_ad(n_instances <= MAX_BUFFER_POOLS);
@@ -2148,9 +2143,6 @@ nvdimm_buf_pool_init(
 	for (i = 0; i < n_instances; i++) {
 		buf_pool_t*	ptr	= &nvdimm_buf_pool_ptr[i];
 
-        if (i == 0) size = total_size / 8 * 1;
-        else    size = total_size / 8 * 7;
-
 		if (nvdimm_buf_pool_init_instance(ptr, size, i + srv_buf_pool_instances) != DB_SUCCESS) {
 
 			/* Free all the instances created so far. */
@@ -2159,11 +2151,11 @@ nvdimm_buf_pool_init(
 			return(DB_ERROR);
 		}
         
-        if (i == 0)   nvdimm_buf_LRU_old_ratio_update(100, FALSE);
-        else    nvdimm_buf_LRU_old_ratio_update(100 * 3/ 8, FALSE);
 	}
 	
-	return(DB_SUCCESS);
+    nvdimm_buf_LRU_old_ratio_update(100 * 3/ 8, FALSE);
+	
+    return(DB_SUCCESS);
 }
 #endif /* UNIV_NVDIMM_CACHE */
 
@@ -4599,21 +4591,31 @@ loop:
 
 #ifdef UNIV_NVDIMM_CACHE
         /* Buffer Hit */
+    /*
         if (buf_pool->instance_no >= srv_buf_pool_instances) {
             if (page_id.space() == 30) {
                 srv_stats.nvdimm_pages_read_ol.inc();
             }
-#ifdef UNIV_NVDIMM_CACHE_OD
             else if (page_id.space() == 29) {
                 srv_stats.nvdimm_pages_read_od.inc();
             }
-#endif /* UNIV_NVDIMM_CACHE_OD */
-#ifdef UNIV_NVDIMM_CACHE_ST
             else if (page_id.space() == 32) {
                 srv_stats.nvdimm_pages_read_st.inc();
             }
-#endif /* UNIV_NVDIMM_CACHE_ST */
         }
+    */
+    // jhpark-server
+    if (buf_pool->instance_no >= srv_buf_pool_instances) {
+      if (page_id.space() == 29) {
+        srv_stats.nvdimm_pages_read_ol.inc();
+      }
+      else if (page_id.space() == 28) {
+        srv_stats.nvdimm_pages_read_od.inc();
+      }
+      else if (page_id.space() == 31) {
+        srv_stats.nvdimm_pages_read_st.inc();
+      }
+    }
 #endif /* UNIV_NVDIMM_CACHE */
 	}
 
@@ -5516,27 +5518,14 @@ buf_page_init_for_read(
     
 #ifdef UNIV_NVDIMM_CACHE
     if (mode == BUF_MOVE_TO_NVDIMM) {
-#if 0
-        if (page_id.space() == 30
-#ifdef UNIV_NVDIMM_CACHE_OD
-            || page_id.space() == 29
-#endif /* UNIV_NVDIMM_CACHE_OD */
-            ) {
-            buf_pool = &nvdimm_buf_pool_ptr[0];
-        }         
-#ifdef UNIV_NVDIMM_CACHE_ST
-        else if (page_id.space() == 32) { /* Stock */
-            buf_pool = &nvdimm_buf_pool_ptr[1];
-        }
-#endif /* UNIV_NVDIMM_CACHE_ST */
-#endif
-        if (page_id.space() == 30) {
+      // jhpark-server
+        if (page_id.space() == 29) {
+//        if (page_id.space() == 30) {
             buf_pool = &nvdimm_buf_pool_ptr[0];    
         } else {
-            buf_pool = &nvdimm_buf_pool_ptr[1];    
+            ulint i = (page_id.fold() % (srv_nvdimm_buf_pool_instances - 1)) + 1;
+            buf_pool = &nvdimm_buf_pool_ptr[i];
         }
-        //ulint i = page_id.fold() % srv_nvdimm_buf_pool_instances;
-        //buf_pool = &nvdimm_buf_pool_ptr[i];
     } else {
         buf_pool = buf_pool_get(page_id);
     }
@@ -6291,38 +6280,31 @@ corrupt:
 		}
 
 #ifdef UNIV_NVDIMM_CACHE
+    /*
         if (bpage->cached_in_nvdimm) {
             if (bpage->id.space() == 30) {
                 srv_stats.nvdimm_pages_stored_ol.inc();
             }
-#ifdef UNIV_NVDIMM_CACHE_OD
             else if (bpage->id.space() == 29) {
                 srv_stats.nvdimm_pages_stored_od.inc();    
             } 
-#endif /* UNIV_NVDIMM_CACHE_OD */
-#ifdef UNIV_NVDIMM_CACHE_ST
             else if (bpage->id.space() == 32) {
                 srv_stats.nvdimm_pages_stored_st.inc();
             }
-#endif /* UNIV_NVDIMM_CACHE_ST */
-        
-        /*    ulint remains = UT_LIST_GET_LEN(buf_pool->free);
-            
-            if (!wakeup_nvdimm_cleaner
-                && buf_pool->instance_no == 8
-                && remains < nvdimm_pc_threshold) {
-                os_event_set(buf_flush_nvdimm_event);
-                wakeup_nvdimm_cleaner = TRUE;
+        }
+    */
+
+    // jhpark-server
+      if (bpage->cached_in_nvdimm) {
+            if (bpage->id.space() == 29) {
+                srv_stats.nvdimm_pages_stored_ol.inc();
             }
-*/
-/*#ifdef UNIV_NVDIMM_CACHE_ST
-            if (!wakeup_nvdimm_stock_cleaner
-                && buf_pool->instance_no == 9
-                && remains < nvdimm_pc_threshold * 2) {
-                os_event_set(buf_flush_nvdimm_stock_event);
-                wakeup_nvdimm_stock_cleaner = TRUE;
+            else if (bpage->id.space() == 28) {
+                srv_stats.nvdimm_pages_stored_od.inc();    
+            } 
+            else if (bpage->id.space() == 31) {
+                srv_stats.nvdimm_pages_stored_st.inc();
             }
-#endif*/ /* UNIV_NVDIMM_CACHE_ST */
         }
 #endif /* UNIV_NVDIMM_CACHE */
 		
@@ -6344,21 +6326,32 @@ corrupt:
 		buf_pool->stat.n_pages_written++;
 
 #ifdef UNIV_NVDIMM_CACHE
+    /*
         if (bpage->cached_in_nvdimm) {
             if (bpage->id.space() == 30) {
                 srv_stats.nvdimm_pages_written_ol.inc();
             }
-#ifdef UNIV_NVDIMM_CACHE_OD
             else if (bpage->id.space() == 29) {
                 srv_stats.nvdimm_pages_written_od.inc();
             }
-#endif /* UNIV_NVDIMM_CACHE_OD */
-#ifdef UNIV_NVDIMM_CACHE_ST
             else if (bpage->id.space() == 32) {
                 srv_stats.nvdimm_pages_written_st.inc();
             }
-#endif /* UNIV_NVDIMM_CACHE_ST */ 
         }
+   */
+
+      if (bpage->cached_in_nvdimm) {
+            if (bpage->id.space() == 29) {
+                srv_stats.nvdimm_pages_written_ol.inc();
+            }
+            else if (bpage->id.space() == 28) {
+                srv_stats.nvdimm_pages_written_od.inc();
+            }
+            else if (bpage->id.space() == 31) {
+                srv_stats.nvdimm_pages_written_st.inc();
+            }
+        }
+ 
 #endif /* UNIV_NVDIMM_CACHE */
 
 		/* We decide whether or not to evict the page from the

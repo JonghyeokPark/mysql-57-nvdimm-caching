@@ -1405,12 +1405,21 @@ loop:
             os_event_set(buf_flush_event);
         } else if (buf_pool->instance_no == srv_buf_pool_instances) {
             os_event_set(buf_flush_nvdimm_event);
-        } 
-#ifdef UNIV_NVDIMM_CACHE_ST
-        else {
+        } else if (buf_pool->instance_no == (srv_buf_pool_instances + 1)) {
             os_event_set(buf_flush_nvdimm_stock_event);
+        } else if (buf_pool->instance_no == (srv_buf_pool_instances + 2)) {
+            os_event_set(buf_flush_nvdimm_event2);
+        } else if (buf_pool->instance_no == (srv_buf_pool_instances + 3)) {
+            os_event_set(buf_flush_nvdimm_event3);
+        } else if (buf_pool->instance_no == (srv_buf_pool_instances + 4)) {
+            os_event_set(buf_flush_nvdimm_event4);
+        } else if (buf_pool->instance_no == (srv_buf_pool_instances + 5)) {
+            os_event_set(buf_flush_nvdimm_event5);
+        } else if (buf_pool->instance_no == (srv_buf_pool_instances + 6)) {
+            os_event_set(buf_flush_nvdimm_event6);
+        } else if (buf_pool->instance_no == (srv_buf_pool_instances + 7)) {
+            os_event_set(buf_flush_nvdimm_event7);
         }
-#endif /* UNIV_NVDIMM_CACHE_ST */
 #else
         os_event_set(buf_flush_event);
 #endif /* UNIV_NVDIMM_CACHE */
@@ -2545,18 +2554,15 @@ nvdimm_buf_LRU_old_ratio_update(
 			during the initialization of InnoDB */
 {
 	uint	new_ratio = 0;
-    buf_pool_t* buf_pool;
 
-    /* FIXME: fixed buf_pool index*/
-    buf_pool = &nvdimm_buf_pool_ptr[0];
-	new_ratio = buf_LRU_old_ratio_update_instance(
-			buf_pool, old_pct, adjust);
+    for (ulint i = 0; i < srv_nvdimm_buf_pool_instances; i++) {
+        buf_pool_t* buf_pool;
+        
+        buf_pool = &nvdimm_buf_pool_ptr[i];
 
-#ifdef UNIV_NVDIMM_CACHE_ST 
-    buf_pool = &nvdimm_buf_pool_ptr[1];
-	new_ratio = buf_LRU_old_ratio_update_instance(
-			buf_pool, old_pct, adjust);
-#endif /* UNIV_NVDIMM_CACHE_ST */
+        new_ratio = buf_LRU_old_ratio_update_instance(
+                buf_pool, old_pct, adjust);
+    }
 
 	return(new_ratio);
 }

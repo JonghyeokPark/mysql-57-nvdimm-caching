@@ -6423,7 +6423,7 @@ AIO::create(
 
 		return(NULL);
 	}
-
+  
 	AIO*	array = UT_NEW_NOKEY(AIO(id, n, n_segments));
 
 	if (array != NULL && array->init() != DB_SUCCESS) {

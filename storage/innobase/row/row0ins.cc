@@ -2556,12 +2556,16 @@ row_ins_clust_index_entry_low(
 
 		if (err != DB_SUCCESS) {
 err_exit:
+
+
 			mtr_commit(&mtr);
 			goto func_exit;
 		}
 	}
 
 	if (dup_chk_only) {
+
+
 		mtr_commit(&mtr);
 		goto func_exit;
 	}
@@ -2592,7 +2596,7 @@ err_exit:
 					     index, offsets);
 		}
 
-		mtr_commit(&mtr);
+    mtr_commit(&mtr);
 		mem_heap_free(entry_heap);
 	} else {
 		rec_t*	insert_rec;
@@ -2629,7 +2633,8 @@ err_exit:
 		}
 
 		if (big_rec != NULL) {
-		  mtr_commit(&mtr);
+
+     mtr_commit(&mtr);
 			/* Online table rebuild could read (and
 			ignore) the incomplete record at this point.
 			If online rebuild is in progress, the
@@ -2651,7 +2656,8 @@ err_exit:
 					insert_rec, entry, index, offsets);
 			}
 
-		  mtr_commit(&mtr);
+		mtr_commit(&mtr);
+
 		}
 	}
 

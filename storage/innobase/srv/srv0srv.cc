@@ -253,6 +253,8 @@ ulong srv_nvdimm_buf_pool_instances = 1;
 ulong srv_nvdimm_pc_threshold_pct = 2;
 /** NVDIMM-aware file resident directory */
 char* srv_nvdimm_home_dir = NULL;
+/** NVDIMM DWB enabled */
+my_bool srv_use_nvdimm_dwb = FALSE;
 #endif /* UNIV_NVDIMM_CACHE */
 
 /** Requested size in bytes */
@@ -1020,10 +1022,14 @@ srv_init(void)
 
 		buf_flush_event = os_event_create("buf_flush_event");
 #ifdef UNIV_NVDIMM_CACHE
-        buf_flush_nvdimm_event = os_event_create("buf_flush_nvdimm_event");
-#ifdef UNIV_NVDIMM_CACHE_ST
-        buf_flush_nvdimm_stock_event = os_event_create("buf_flush_nvdimm_stock_event");
-#endif /* UNIV_NVDIMM_CACHE_ST */
+    buf_flush_nvdimm_event = os_event_create("buf_flush_nvdimm_event");
+    buf_flush_nvdimm_stock_event = os_event_create("buf_flush_nvdimm_stock_event");
+    buf_flush_nvdimm_event2 = os_event_create("buf_flush_nvdimm_event2");
+    buf_flush_nvdimm_event3 = os_event_create("buf_flush_nvdimm_event3");
+    buf_flush_nvdimm_event4 = os_event_create("buf_flush_nvdimm_event4");
+    buf_flush_nvdimm_event5 = os_event_create("buf_flush_nvdimm_event5");
+    buf_flush_nvdimm_event6 = os_event_create("buf_flush_nvdimm_event6");
+    buf_flush_nvdimm_event7 = os_event_create("buf_flush_nvdimm_event7");
 #endif /* UNIV_NVDIMM_CACHE */
 
 		UT_LIST_INIT(srv_sys->tasks, &que_thr_t::queue);
@@ -1079,10 +1085,14 @@ srv_free(void)
 		os_event_destroy(srv_buf_dump_event);
 		os_event_destroy(buf_flush_event);
 #ifdef UNIV_NVDIMM_CACHE
-        os_event_destroy(buf_flush_nvdimm_event);
-#ifdef UNIV_NVDIMM_CACHE_ST
-        os_event_destroy(buf_flush_nvdimm_stock_event);
-#endif /* UNIV_NVDIMM_CACHE_ST */
+    os_event_destroy(buf_flush_nvdimm_event);
+    os_event_destroy(buf_flush_nvdimm_stock_event);
+    os_event_destroy(buf_flush_nvdimm_event2);
+    os_event_destroy(buf_flush_nvdimm_event3);
+    os_event_destroy(buf_flush_nvdimm_event4);
+    os_event_destroy(buf_flush_nvdimm_event5);
+    os_event_destroy(buf_flush_nvdimm_event6);
+    os_event_destroy(buf_flush_nvdimm_event7);
 #endif /* UNIV_NVDIMM_CACHE */
 	}
 
