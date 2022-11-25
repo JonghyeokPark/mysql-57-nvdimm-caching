@@ -421,6 +421,9 @@ buf_pool_get_oldest_modification(void)
 	log_flush_order_mutex_enter();
 
 	for (ulint i = 0; i < srv_buf_pool_instances; i++) {
+  // ZZZ
+  //for (ulint i = 0; i < srv_buf_pool_instances + srv_nvdimm_buf_pool_instances; i++) {
+
 		buf_pool_t*	buf_pool;
 
 		buf_pool = buf_pool_from_array(i);
@@ -446,7 +449,19 @@ buf_pool_get_oldest_modification(void)
 
 		buf_flush_list_mutex_exit(buf_pool);
 
-		if (!oldest_lsn || oldest_lsn > lsn) {
+    // ZZZ
+		if (lsn != 0 
+        &&
+        (!oldest_lsn || oldest_lsn > lsn)) {
+
+      /*
+      if (bpage != NULL) {
+      ib::info() << "oldest_lsn : " << oldest_lsn
+        << " this is older lsn " << lsn
+        << " from buffer pool id: " << i 
+        << " page: " << bpage->id.space() << ":" << bpage->id.page_no();
+      }
+      */
 			oldest_lsn = lsn;
 		}
 	}
@@ -458,6 +473,62 @@ buf_pool_get_oldest_modification(void)
 
 	return(oldest_lsn);
 }
+
+// ZZZ
+lsn_t
+nvdimm_buf_pool_get_oldest_modification(void)
+/*==================================*/
+{
+	lsn_t		lsn = 0;
+	lsn_t		oldest_lsn = 0;
+
+	/* When we traverse all the flush lists we don't want another
+	thread to add a dirty page to any flush list. */
+	log_flush_order_mutex_enter();
+  for (ulint i = srv_buf_pool_instances; i < srv_buf_pool_instances + srv_nvdimm_buf_pool_instances; i++) {
+
+		buf_pool_t*	buf_pool;
+
+		buf_pool = buf_pool_from_array(i);
+
+		buf_flush_list_mutex_enter(buf_pool);
+
+		buf_page_t*	bpage;
+
+		/* We don't let log-checkpoint halt because pages from system
+		temporary are not yet flushed to the disk. Anyway, object
+		residing in system temporary doesn't generate REDO logging. */
+		for (bpage = UT_LIST_GET_LAST(buf_pool->flush_list);
+		     bpage != NULL
+			&& fsp_is_system_temporary(bpage->id.space());
+		     bpage = UT_LIST_GET_PREV(list, bpage)) {
+			/* Do nothing. */
+		}
+
+		if (bpage != NULL) {
+			ut_ad(bpage->in_flush_list);
+			lsn = bpage->oldest_modification;
+		}
+
+		buf_flush_list_mutex_exit(buf_pool);
+
+		if (
+        lsn != 0 
+        &&
+        (!oldest_lsn || oldest_lsn > lsn)         
+        ) {
+			oldest_lsn = lsn;
+		}
+	}
+
+	log_flush_order_mutex_exit();
+
+	/* The returned answer may be out of date: the flush_list can
+	change after the mutex has been released. */
+
+	return(oldest_lsn);
+}
+
 
 /********************************************************************//**
 Get total buffer pool statistics. */
@@ -1616,7 +1687,10 @@ buf_chunk_nvm_init(
 	// NVDIMM-porting
 	chunk->mem = buf_pool->allocator.allocate_large_nvm(mem_size,
 							&chunk->mem_pfx);
-	if (UNIV_UNLIKELY(chunk->mem == NULL)) {
+    
+    NVDIMM_DEBUG_PRINT("Finished allocation nvdimm buffer pool %u, %u\n", buf_pool->instance_no, mem_size);
+	
+    if (UNIV_UNLIKELY(chunk->mem == NULL)) {
 		return(NULL);
 	}
 
@@ -1635,7 +1709,7 @@ buf_chunk_nvm_init(
 	}
 #endif /* HAVE_LIBNUMA */
 
-
+    
 	/* Allocate the block descriptors from
 	the start of the memory block. */
 	chunk->blocks = (buf_block_t*) chunk->mem;
@@ -1984,6 +2058,8 @@ nvdimm_buf_pool_init_instance(
 
 	ut_ad(buf_pool_size % srv_buf_pool_chunk_unit == 0);
 
+    NVDIMM_DEBUG_PRINT("Initalize buffer instance %u (Size = %u)\n", instance_no, buf_pool_size);    
+
 	/* 1. Initialize general fields
 	------------------------------- */
 	mutex_create(LATCH_ID_BUF_POOL, &buf_pool->mutex);
@@ -2202,10 +2278,6 @@ buf_pool_free_instance(
 	chunks = buf_pool->chunks;
 	chunk = chunks + buf_pool->n_chunks;
 
-#ifdef UNIV_NVDIMM_CACHE
-  fprintf(stderr, "[JONGQ] buf_pool->instance_no check: %lu\n", buf_pool->instance_no);
-#endif /* UNIV_NVDIMM_CACHE */
-  
 	while (--chunk >= chunks) {
 		buf_block_t*	block = chunk->blocks;
   
@@ -3599,6 +3671,20 @@ LRUItr::start()
 	return(m_hp);
 }
 
+#ifdef UNIV_NVDIMM_CACHE
+buf_page_t*
+LRUItr::start_nvdimm()
+{
+	ut_ad(mutex_own(m_mutex));
+
+	if (!m_hp || m_hp->old) {
+		m_hp = UT_LIST_GET_FIRST(m_buf_pool->LRU);
+	}
+
+	return(m_hp);
+}
+#endif
+
 /** Determine if a block is a sentinel for a buffer pool watch.
 @param[in]	buf_pool	buffer pool instance
 @param[in]	bpage		block
@@ -4417,6 +4503,7 @@ buf_page_get_gen(
 	      || (rw_latch == RW_X_LATCH)
 	      || (rw_latch == RW_SX_LATCH)
 	      || (rw_latch == RW_NO_LATCH));
+
 #ifdef UNIV_DEBUG
 	switch (mode) {
 	case BUF_GET_NO_LATCH:
@@ -4591,31 +4678,26 @@ loop:
 
 #ifdef UNIV_NVDIMM_CACHE
         /* Buffer Hit */
-    /*
         if (buf_pool->instance_no >= srv_buf_pool_instances) {
-            if (page_id.space() == 30) {
-                srv_stats.nvdimm_pages_read_ol.inc();
-            }
-            else if (page_id.space() == 29) {
-                srv_stats.nvdimm_pages_read_od.inc();
-            }
-            else if (page_id.space() == 32) {
-                srv_stats.nvdimm_pages_read_st.inc();
+            switch (page_id.space()) {
+                case 24:
+                    srv_stats.nvdimm_pages_read_wh.inc();
+                case 25:
+                    srv_stats.nvdimm_pages_read_dt.inc();
+                case 26:
+                    srv_stats.nvdimm_pages_read_ct.inc();
+                case 27:
+                    srv_stats.nvdimm_pages_read_ht.inc();
+                case 28:
+                    srv_stats.nvdimm_pages_read_no.inc();
+                case 29:
+                    srv_stats.nvdimm_pages_read_od.inc();
+                case 30:
+                    srv_stats.nvdimm_pages_read_ol.inc();
+                case 32:
+                    srv_stats.nvdimm_pages_read_st.inc();
             }
         }
-    */
-    // jhpark-server
-    if (buf_pool->instance_no >= srv_buf_pool_instances) {
-      if (page_id.space() == 29) {
-        srv_stats.nvdimm_pages_read_ol.inc();
-      }
-      else if (page_id.space() == 28) {
-        srv_stats.nvdimm_pages_read_od.inc();
-      }
-      else if (page_id.space() == 31) {
-        srv_stats.nvdimm_pages_read_st.inc();
-      }
-    }
 #endif /* UNIV_NVDIMM_CACHE */
 	}
 
@@ -5393,6 +5475,8 @@ buf_page_init_low(
     } else {
         bpage->cached_in_nvdimm = false;
     }
+		bpage->update_count = 0;
+		bpage->moved_to_new = false;
 #endif /* UNIV_NVDIMM_CACHE */
 
 	ut_d(bpage->file_page_was_freed = FALSE);
@@ -5518,9 +5602,7 @@ buf_page_init_for_read(
     
 #ifdef UNIV_NVDIMM_CACHE
     if (mode == BUF_MOVE_TO_NVDIMM) {
-      // jhpark-server
-        if (page_id.space() == 29) {
-//        if (page_id.space() == 30) {
+        if (page_id.space() == 30) {
             buf_pool = &nvdimm_buf_pool_ptr[0];    
         } else {
             ulint i = (page_id.fold() % (srv_nvdimm_buf_pool_instances - 1)) + 1;
@@ -5558,9 +5640,8 @@ buf_page_init_for_read(
 	if (page_size.is_compressed() && !unzip && !recv_recovery_is_on()) {
 		block = NULL;
 	} else {
-		block = buf_LRU_get_free_block(buf_pool);
-        
-        ut_ad(block);
+		block = buf_LRU_get_free_block(buf_pool);    
+    ut_ad(block);
 		ut_ad(buf_pool_from_block(block) == buf_pool);
 	}
 
@@ -6280,30 +6361,24 @@ corrupt:
 		}
 
 #ifdef UNIV_NVDIMM_CACHE
-    /*
         if (bpage->cached_in_nvdimm) {
-            if (bpage->id.space() == 30) {
-                srv_stats.nvdimm_pages_stored_ol.inc();
-            }
-            else if (bpage->id.space() == 29) {
-                srv_stats.nvdimm_pages_stored_od.inc();    
-            } 
-            else if (bpage->id.space() == 32) {
-                srv_stats.nvdimm_pages_stored_st.inc();
-            }
-        }
-    */
-
-    // jhpark-server
-      if (bpage->cached_in_nvdimm) {
-            if (bpage->id.space() == 29) {
-                srv_stats.nvdimm_pages_stored_ol.inc();
-            }
-            else if (bpage->id.space() == 28) {
-                srv_stats.nvdimm_pages_stored_od.inc();    
-            } 
-            else if (bpage->id.space() == 31) {
-                srv_stats.nvdimm_pages_stored_st.inc();
+            switch (bpage->id.space()) {
+                case 24:
+                    srv_stats.nvdimm_pages_stored_wh.inc();
+                case 25:
+                    srv_stats.nvdimm_pages_stored_dt.inc();
+                case 26:
+                    srv_stats.nvdimm_pages_stored_ct.inc();
+                case 27:
+                    srv_stats.nvdimm_pages_stored_ht.inc();
+                case 28:
+                    srv_stats.nvdimm_pages_stored_no.inc();
+                case 29:
+                    srv_stats.nvdimm_pages_stored_od.inc();
+                case 30:
+                    srv_stats.nvdimm_pages_stored_ol.inc();
+                case 32:
+                    srv_stats.nvdimm_pages_stored_st.inc();
             }
         }
 #endif /* UNIV_NVDIMM_CACHE */
@@ -6321,37 +6396,31 @@ corrupt:
 		if (uncompressed) {
 			rw_lock_sx_unlock_gen(&((buf_block_t*) bpage)->lock,
 					      BUF_IO_WRITE);
-        }
+    }
 
 		buf_pool->stat.n_pages_written++;
 
 #ifdef UNIV_NVDIMM_CACHE
-    /*
         if (bpage->cached_in_nvdimm) {
-            if (bpage->id.space() == 30) {
-                srv_stats.nvdimm_pages_written_ol.inc();
-            }
-            else if (bpage->id.space() == 29) {
-                srv_stats.nvdimm_pages_written_od.inc();
-            }
-            else if (bpage->id.space() == 32) {
-                srv_stats.nvdimm_pages_written_st.inc();
-            }
-        }
-   */
-
-      if (bpage->cached_in_nvdimm) {
-            if (bpage->id.space() == 29) {
-                srv_stats.nvdimm_pages_written_ol.inc();
-            }
-            else if (bpage->id.space() == 28) {
-                srv_stats.nvdimm_pages_written_od.inc();
-            }
-            else if (bpage->id.space() == 31) {
-                srv_stats.nvdimm_pages_written_st.inc();
+            switch (bpage->id.space()) {
+                case 24:
+                    srv_stats.nvdimm_pages_written_wh.inc();
+                case 25:
+                    srv_stats.nvdimm_pages_written_dt.inc();
+                case 26:
+                    srv_stats.nvdimm_pages_written_ct.inc();
+                case 27:
+                    srv_stats.nvdimm_pages_written_ht.inc();
+                case 28:
+                    srv_stats.nvdimm_pages_written_no.inc();
+                case 29:
+                    srv_stats.nvdimm_pages_written_od.inc();
+                case 30:
+                    srv_stats.nvdimm_pages_written_ol.inc();
+                case 32:
+                    srv_stats.nvdimm_pages_written_st.inc();
             }
         }
- 
 #endif /* UNIV_NVDIMM_CACHE */
 
 		/* We decide whether or not to evict the page from the
@@ -6372,8 +6441,8 @@ corrupt:
 			mutex_exit(buf_page_get_mutex(bpage));
 			buf_LRU_free_page(bpage, true);
 #ifdef NVDIMM_CACHE
-            bpage->moved_to_nvdimm = false;
-            //bpage->cached_in_nvdimm = false;
+      bpage->moved_to_nvdimm = false;
+      //bpage->cached_in_nvdimm = false;
 #endif /* NVDIMM_CACHE */
 		} else {
 			mutex_exit(buf_page_get_mutex(bpage));
@@ -7342,45 +7411,89 @@ buf_print_total_nvdimm_info(
 	FILE*		file)		    /*!< in/out: buffer where to print */
 {
     fprintf(file,
+        "---The number of pages migrated to NVDIMM buffer\n"
+				"Checkpoint-based " ULINTPF
+				"\n"
+				"LSN Gap-based    " ULINTPF "\n",
+				(ulint)srv_stats.nvdimm_pages_ckpt,
+				(ulint)srv_stats.nvdimm_pages_lsngap);
+
+    fprintf(file,
         "---The number of pages stored in NVDIMM buffer\n"
-        "New-Orders      " ULINTPF
+        "Warehouse       " ULINTPF
         "\n"
-        "Order-Line      " ULINTPF
+        "District        " ULINTPF
+        "\n"
+        "Customer        " ULINTPF
+        "\n"
+        "History         " ULINTPF
+        "\n"
+        "New-Orders      " ULINTPF
         "\n"
         "Orders          " ULINTPF
         "\n"
+        "Order-Line      " ULINTPF
+        "\n"
         "Stock           " ULINTPF "\n",
+        (ulint)srv_stats.nvdimm_pages_stored_wh,
+        (ulint)srv_stats.nvdimm_pages_stored_dt,
+        (ulint)srv_stats.nvdimm_pages_stored_ct,
+        (ulint)srv_stats.nvdimm_pages_stored_ht,
         (ulint)srv_stats.nvdimm_pages_stored_no,
-        (ulint)srv_stats.nvdimm_pages_stored_ol,
         (ulint)srv_stats.nvdimm_pages_stored_od,
+        (ulint)srv_stats.nvdimm_pages_stored_ol,
         (ulint)srv_stats.nvdimm_pages_stored_st);
 
     fprintf(file,
         "---The number of pages read in NVDIMM buffer\n"
-        "New-Orders      " ULINTPF
+        "Warehouse       " ULINTPF
         "\n"
-        "Order-Line      " ULINTPF
+        "District        " ULINTPF
+        "\n"
+        "Customer        " ULINTPF
+        "\n"
+        "History         " ULINTPF
+        "\n"
+        "New-Orders      " ULINTPF
         "\n"
         "Orders          " ULINTPF
         "\n"
+        "Order-Line      " ULINTPF
+        "\n"
         "Stock           " ULINTPF "\n",
+        (ulint)srv_stats.nvdimm_pages_read_wh,
+        (ulint)srv_stats.nvdimm_pages_read_dt,
+        (ulint)srv_stats.nvdimm_pages_read_ct,
+        (ulint)srv_stats.nvdimm_pages_read_ht,
         (ulint)srv_stats.nvdimm_pages_read_no,
-        (ulint)srv_stats.nvdimm_pages_read_ol,
         (ulint)srv_stats.nvdimm_pages_read_od,
+        (ulint)srv_stats.nvdimm_pages_read_ol,
         (ulint)srv_stats.nvdimm_pages_read_st);
 
     fprintf(file,
         "---The number of pages written in NVDIMM buffer\n"
-        "New-Orders      " ULINTPF
+        "Warehouse       " ULINTPF
         "\n"
-        "Order-Line      " ULINTPF
+        "District        " ULINTPF
+        "\n"
+        "Customer        " ULINTPF
+        "\n"
+        "History         " ULINTPF
+        "\n"
+        "New-Orders      " ULINTPF
         "\n"
         "Orders          " ULINTPF
         "\n"
+        "Order-Line      " ULINTPF
+        "\n"
         "Stock           " ULINTPF "\n",
+        (ulint)srv_stats.nvdimm_pages_written_wh,
+        (ulint)srv_stats.nvdimm_pages_written_dt,
+        (ulint)srv_stats.nvdimm_pages_written_ct,
+        (ulint)srv_stats.nvdimm_pages_written_ht,
         (ulint)srv_stats.nvdimm_pages_written_no,
-        (ulint)srv_stats.nvdimm_pages_written_ol,
         (ulint)srv_stats.nvdimm_pages_written_od,
+        (ulint)srv_stats.nvdimm_pages_written_ol,
         (ulint)srv_stats.nvdimm_pages_written_st);
 }
 #endif /* UNIV_NVDIMM_CACHE */

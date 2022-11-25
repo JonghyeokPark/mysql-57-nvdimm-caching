@@ -142,20 +142,7 @@ row_undo_ins_remove_clust_rec(
 		goto func_exit;
 	}
 
-#ifdef UNIV_NVDIMM_CACHE
-    if (index->space == 28) {
-        ut_ad(node->pcur.pos_state == BTR_PCUR_IS_POSITIONED);
-        node->pcur.latch_mode = BTR_NO_LATCHES;
-        mtr_commit(&mtr);
-        //mtr_commit_no_nvm(&mtr);
-        node->pcur.pos_state = BTR_PCUR_WAS_POSITIONED;     
-    } else {
-        btr_pcur_commit_specify_mtr(&node->pcur, &mtr);
-    }
-#else
-    btr_pcur_commit_specify_mtr(&node->pcur, &mtr);
-#endif
-
+  btr_pcur_commit_specify_mtr(&node->pcur, &mtr);
 retry:
 	/* If did not succeed, try pessimistic descent to tree */
 	mtr_start(&mtr);
@@ -176,19 +163,7 @@ retry:
 	if (err == DB_OUT_OF_FILE_SPACE
 	    && n_tries < BTR_CUR_RETRY_DELETE_N_TIMES) {
 
-#ifdef UNIV_NVDIMM_CACHE
-        if (index->space == 28) {
-            ut_ad(node->pcur.pos_state == BTR_PCUR_IS_POSITIONED);
-            node->pcur.latch_mode = BTR_NO_LATCHES;
-            mtr_commit(&mtr);
-            //mtr_commit_no_nvm(&mtr);
-            node->pcur.pos_state = BTR_PCUR_WAS_POSITIONED;
-        } else {
-            btr_pcur_commit_specify_mtr(&(node->pcur), &mtr);
-        }
-#else
-        btr_pcur_commit_specify_mtr(&(node->pcur), &mtr);
-#endif
+    btr_pcur_commit_specify_mtr(&(node->pcur), &mtr);
 
 		n_tries++;
 
@@ -198,20 +173,7 @@ retry:
 	}
 
 func_exit:
-#ifdef UNIV_NVDIMM_CACHE
-    if (index->space == 28) {
-        ut_ad(node->pcur.pos_state == BTR_PCUR_IS_POSITIONED);
-        node->pcur.latch_mode = BTR_NO_LATCHES;
-        mtr_commit(&mtr);
-        //mtr_commit_no_nvm(&mtr);
-        node->pcur.pos_state = BTR_PCUR_WAS_POSITIONED;
-    } else {
-        btr_pcur_commit_specify_mtr(&node->pcur, &mtr);
-    }
-#else
-    btr_pcur_commit_specify_mtr(&node->pcur, &mtr);
-#endif
-
+  btr_pcur_commit_specify_mtr(&node->pcur, &mtr);
 	return(err);
 }
 

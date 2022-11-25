@@ -322,6 +322,9 @@ btr_cur_latch_leaves(
 #ifdef UNIV_BTR_DEBUG
 		/* Sanity check only after both the blocks are latched. */
 		if (latch_leaves.blocks[0] != NULL) {
+      // (jhpark): FIX b+tree
+      btr_page_set_next(latch_leaves.blocks[0]->frame, NULL, page_get_page_no(page), mtr);
+      // 
 			ut_a(page_is_comp(latch_leaves.blocks[0]->frame)
 				== page_is_comp(page));
 			ut_a(btr_page_get_next(
@@ -357,7 +360,11 @@ btr_cur_latch_leaves(
                 fprintf(stderr, "%lu != %lu, %lu\n",
                     btr_page_get_prev(get_block->frame, mtr),
                     page_get_space_id(page),
-                    page_get_page_no(page));    
+                    page_get_page_no(page)); 
+
+                // (jhpark): FIX b+tree
+                btr_page_set_prev(get_block->frame, NULL, page_get_page_no(page), mtr);
+
             }
             /* end */
             ut_a(btr_page_get_prev(get_block->frame, mtr)
@@ -387,6 +394,11 @@ btr_cur_latch_leaves(
 			latch_leaves.blocks[0] = get_block;
 			cursor->left_block = get_block;
 #ifdef UNIV_BTR_DEBUG
+      // (jhpark): FIX B+tree
+      if (btr_page_get_next(get_block->frame, mtr) != page_get_page_no(page)) {
+        btr_page_set_next(get_block->frame, NULL, page_get_page_no(page), mtr);
+      }
+
 			ut_a(page_is_comp(get_block->frame)
 			     == page_is_comp(page));
 			ut_a(btr_page_get_next(get_block->frame, mtr)
@@ -2995,16 +3007,6 @@ btr_cur_ins_lock_and_undo(
   buf_page_t* nvm_bpage = &(nvm_block->page);
   bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
 
-  
-  if (is_nvm_page) {
-    if (page_is_leaf(nvm_block->frame)) {  
-        fseg_header_t* seg_header = nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
-        mach_write_to_4(seg_header + FSEG_HDR_SPACE, 1);
-        flush_cache(nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
-    }   
-  }
-  
-
 	err = trx_undo_report_row_operation(is_nvm_page, flags, TRX_UNDO_INSERT_OP,
 					    thr, index, entry,
 					    NULL, 0, NULL, NULL,
@@ -3017,8 +3019,7 @@ btr_cur_ins_lock_and_undo(
 #endif /* UNIV_NVDIMM_CACHE */
     
     
-    if (err != DB_SUCCESS) {
-
+  if (err != DB_SUCCESS) {
 		return(err);
 	}
 
@@ -3031,6 +3032,11 @@ btr_cur_ins_lock_and_undo(
 		row_upd_index_entry_sys_field(entry, index,
 					      DATA_ROLL_PTR, roll_ptr);
 	}
+
+// ZZZ
+#ifdef UNIV_NVDIMM_CACHE
+  nc_set_in_update_flag(cursor->page_cur.block->frame);
+#endif
 
 	return(DB_SUCCESS);
 }
@@ -3401,8 +3407,16 @@ btr_cur_pessimistic_insert(
 
 	cursor->flag = BTR_CUR_BINARY;
 
-	/* Check locks and write to undo log, if specified */
+#ifdef UNIV_NVDIMM_CACHE
+/*
+  // (jhpark): we disable the moved_to_nvdimm 
+  if (btr_cur_get_block(cursor)->page.moved_to_nvdimm) {
+    btr_cur_get_block(cursor)->page.moved_to_nvdimm = false;
+  }
+*/
+#endif
 
+	/* Check locks and write to undo log, if specified */
 	err = btr_cur_ins_lock_and_undo(flags, cursor, entry,
 					thr, mtr, &inherit);
 
@@ -3573,15 +3587,10 @@ btr_cur_upd_lock_and_undo(
 
   bool is_nvm_page = nvm_bpage->cached_in_nvdimm;
 
-  
-  if (is_nvm_page) {
-    if (page_is_leaf(nvm_block->frame)) {
-      fseg_header_t* seg_header = nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
-      mach_write_to_4(seg_header + FSEG_HDR_SPACE, 1);
-      flush_cache(nvm_block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
-    }
-  }
-  
+#ifdef UNIV_NVDIMM_CACHE
+  nc_set_in_update_flag(cursor->page_cur.block->frame);
+#endif
+
 	return(trx_undo_report_row_operation(
 		       is_nvm_page, flags, TRX_UNDO_MODIFY_OP, thr,
 		       index, NULL, update,
@@ -3650,6 +3659,8 @@ btr_cur_update_in_place_log(
 	log_ptr += 2;
 
 	row_upd_index_write_log(update, log_ptr, mtr);
+
+  nc_unset_in_update_flag(page_align(rec));
 }
 #endif /* UNIV_HOTBACKUP */
 
@@ -3948,12 +3959,6 @@ btr_cur_update_in_place(
 #ifdef UNIV_NVDIMM_CACHE
   nvm_block = btr_cur_get_block(cursor);
   nvm_bpage = &(nvm_block->page);
-  if (nvm_bpage->cached_in_nvdimm) {
-    fseg_header_t* seg_header = block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
-    mach_write_to_4(seg_header + FSEG_HDR_SPACE, 0);
-    flush_cache(block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
-  }
-
   btr_cur_update_in_place_log(flags, rec, index, update,
             trx_id, roll_ptr, mtr);
 #else
@@ -4360,6 +4365,16 @@ btr_cur_pessimistic_update(
 	page = buf_block_get_frame(block);
 	page_zip = buf_block_get_page_zip(block);
 	index = cursor->index;
+
+#ifdef UNIV_NVDIMM_CACHE
+  // (jhpark): we disable the moved_to_nvdimm 
+  /*
+  if (btr_cur_get_block(cursor)->page.moved_to_nvdimm) {
+    btr_cur_get_block(cursor)->page.moved_to_nvdimm = false;
+  }
+  */
+#endif
+
 
 	ut_ad(mtr_memo_contains_flagged(mtr, dict_index_get_lock(index),
 					MTR_MEMO_X_LOCK |
@@ -4768,6 +4783,10 @@ btr_cur_del_mark_set_clust_rec_log(
 
 	mlog_close(mtr, log_ptr);
 
+#ifdef UNIV_NVDIMM_CACHE
+  nc_unset_in_update_flag(page_align(rec));
+#endif
+
 }
 #endif /* !UNIV_HOTBACKUP */
 
@@ -4903,17 +4922,8 @@ btr_cur_del_mark_set_clust_rec(
 	}
 
 #ifdef UNIV_NVDIMM_CACHE
-    nvm_bpage = &(block->page);
-    is_nvm_page = nvm_bpage->cached_in_nvdimm;
-
-    if (is_nvm_page) {
-
-      fseg_header_t* seg_header = block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
-      mach_write_to_4(seg_header + FSEG_HDR_SPACE, 1);
-      flush_cache(block->frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
-
-    }
-
+  nvm_bpage = &(block->page);
+  is_nvm_page = nvm_bpage->cached_in_nvdimm;
 	err = trx_undo_report_row_operation(is_nvm_page, flags, TRX_UNDO_MODIFY_OP, thr,
 					    index, entry, NULL, 0, rec, offsets,
 					    &roll_ptr);
@@ -4962,21 +4972,12 @@ btr_cur_del_mark_set_clust_rec(
 // YYY
 #ifdef UNIV_NVDIMM_CACHE
   nvm_bpage = &(block->page);
-  if (nvm_bpage->cached_in_nvdimm) {
-     page_t* nvm_page = ((buf_block_t*)nvm_bpage)->frame;
-     if (page_is_leaf(nvm_page)) {
-       fseg_header_t* seg_header = nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
-       mach_write_to_4(seg_header + FSEG_HDR_SPACE, 0);
-       flush_cache(nvm_page + PAGE_HEADER + PAGE_BTR_SEG_LEAF, 4);
-     }
-  }
   btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
              roll_ptr, mtr);
 #else
   btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
              roll_ptr, mtr);
 #endif
-
 
 //	btr_cur_del_mark_set_clust_rec_log(rec, index, trx->id,
 //					   roll_ptr, mtr);
@@ -5015,6 +5016,10 @@ btr_cur_del_mark_set_sec_rec_log(
 	log_ptr += 2;
 
 	mlog_close(mtr, log_ptr);
+
+#ifdef UNIV_NVDIMM_CACHE
+  nc_unset_in_update_flag(page_align(rec));
+#endif
 }
 #endif /* !UNIV_HOTBACKUP */
 
@@ -5343,6 +5348,15 @@ btr_cur_pessimistic_delete(
 	block = btr_cur_get_block(cursor);
 	page = buf_block_get_frame(block);
 	index = btr_cur_get_index(cursor);
+
+#ifdef UNIV_NVDIMM_CACHE
+/*
+  // (jhpark): we disable the moved_to_nvdimm 
+  if (btr_cur_get_block(cursor)->page.moved_to_nvdimm) {
+    btr_cur_get_block(cursor)->page.moved_to_nvdimm = false;
+  }
+*/
+#endif
 
 	ulint rec_size_est = dict_index_node_ptr_max_size(index);
 	const page_size_t       page_size(dict_table_page_size(index->table));

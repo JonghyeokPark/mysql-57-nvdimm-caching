@@ -439,7 +439,6 @@ public:
 #ifdef UNIV_NVDIMM_CACHE
   /** Write the mtr log (undo + redo of undo) record,and release the resorces */
   void execute_nvm();
-  void execute_no_nvm();
 #endif
 
 private:
@@ -594,7 +593,11 @@ mtr_t::commit()
 		ut_ad(!srv_read_only_mode
 		      || m_impl.m_log_mode == MTR_LOG_NO_REDO);
 #ifdef UNIV_NVDIMM_CACHE
-		cmd.execute_nvm();
+    if (srv_use_nvdimm_redo) {
+  		cmd.execute_nvm();
+    } else {
+      cmd.execute();
+    }
 #else
 		cmd.execute();
 #endif
@@ -697,49 +700,6 @@ mtr_t::is_named_space(ulint space) const
 	return(false);
 }
 #endif /* UNIV_DEBUG */
-
-#ifdef UNIV_NVDIMM_CACHE
-/** Commit a mini-transaction for NVDIMM resident page. */
-void mtr_t::commit_nvm() {
-	ut_ad(is_active());
-  ut_ad(!is_inside_ibuf());
-  ut_ad(m_impl.m_magic_n == MTR_MAGIC_N);
-  m_impl.m_state = MTR_STATE_COMMITTING;
-  // jhpark: release the mtr structure 
-  Command cmd(this);
-  if (m_impl.m_modifications
-	    && (m_impl.m_n_log_recs > 0
-		|| m_impl.m_log_mode == MTR_LOG_NO_REDO)) {
-    cmd.execute_nvm();
-  } else {
-    cmd.release_all();
-    cmd.release_resources();
-  }
-}
-
-// just release for row_purge_remove_clust_if_poss_low() function 
-void mtr_t::commit_no_nvm() {
-    commit();
-/*	ut_ad(is_active());
-  ut_ad(!is_inside_ibuf());
-  ut_ad(m_impl.m_magic_n == MTR_MAGIC_N);
-  m_impl.m_state = MTR_STATE_COMMITTING;
-  // jhpark: release the mtr structure 
-  Command cmd(this);
-	if (m_impl.m_modifications
-	    && (m_impl.m_n_log_recs > 0
-		|| m_impl.m_log_mode == MTR_LOG_NO_REDO)) {
-    cmd.execute_no_nvm();
-  } else {
-    cmd.release_all();
-    cmd.release_resources();
-  }
-*/
-  //cmd.release_all();
-  //cmd.release_resources();
-}
-
-#endif /* UNIV_NVDIMM_CACHE */
 
 /** Acquire a tablespace X-latch.
 NOTE: use mtr_x_lock_space().
@@ -1267,23 +1227,6 @@ skip_redo:
 
   release_latches();
   release_resources();
-}
-
-void mtr_t::Command::execute_no_nvm() {
-	ut_ad(m_impl->m_log_mode != MTR_LOG_NONE);
-	fil_space_t* space = m_impl->m_user_space;
-	if (space != NULL && is_system_or_undo_tablespace(space->id)) {
-		space = NULL;
-	}
-
-	if (fil_names_write_if_was_clean(space, m_impl->m_mtr)) {
-		fprintf(stderr, "[JONGQ] fil_names_write_if_was_clean!!!\n");
-	}
-
-	//m_impl->m_mtr->m_commit_lsn = m_end_lsn;
-	release_blocks();
-	release_latches();
-	release_resources();
 }
 #endif /* UNIV_NVDIMM_CACHE */
 

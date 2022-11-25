@@ -255,6 +255,8 @@ ulong srv_nvdimm_pc_threshold_pct = 2;
 char* srv_nvdimm_home_dir = NULL;
 /** NVDIMM DWB enabled */
 my_bool srv_use_nvdimm_dwb = FALSE;
+/** NVDIMM REDO enabled */
+my_bool srv_use_nvdimm_redo = TRUE;
 #endif /* UNIV_NVDIMM_CACHE */
 
 /** Requested size in bytes */
@@ -1504,28 +1506,34 @@ srv_export_innodb_status(void)
 	export_vars.innodb_dblwr_writes = srv_stats.dblwr_writes;
 
 #ifdef UNIV_NVDIMM_CACHE
+    export_vars.innodb_nvdimm_pages_ckpt = srv_stats.nvdimm_pages_ckpt;
+    export_vars.innodb_nvdimm_pages_lsngap = srv_stats.nvdimm_pages_lsngap;
+
+    export_vars.innodb_nvdimm_pages_stored_wh = srv_stats.nvdimm_pages_stored_wh;
+    export_vars.innodb_nvdimm_pages_stored_dt = srv_stats.nvdimm_pages_stored_dt;
+    export_vars.innodb_nvdimm_pages_stored_ct = srv_stats.nvdimm_pages_stored_ct;
+    export_vars.innodb_nvdimm_pages_stored_ht = srv_stats.nvdimm_pages_stored_ht;
     export_vars.innodb_nvdimm_pages_stored_st = srv_stats.nvdimm_pages_stored_st;
-
     export_vars.innodb_nvdimm_pages_stored_ol = srv_stats.nvdimm_pages_stored_ol;
-    
     export_vars.innodb_nvdimm_pages_stored_od = srv_stats.nvdimm_pages_stored_od;
-
     export_vars.innodb_nvdimm_pages_stored_no = srv_stats.nvdimm_pages_stored_no;
 
+    export_vars.innodb_nvdimm_pages_read_wh = srv_stats.nvdimm_pages_read_wh;
+    export_vars.innodb_nvdimm_pages_read_dt = srv_stats.nvdimm_pages_read_dt;
+    export_vars.innodb_nvdimm_pages_read_ct = srv_stats.nvdimm_pages_read_ct;
+    export_vars.innodb_nvdimm_pages_read_ht = srv_stats.nvdimm_pages_read_ht;
     export_vars.innodb_nvdimm_pages_read_st = srv_stats.nvdimm_pages_read_st;
-
     export_vars.innodb_nvdimm_pages_read_ol = srv_stats.nvdimm_pages_read_ol;
-    
     export_vars.innodb_nvdimm_pages_read_od = srv_stats.nvdimm_pages_read_od;
-
     export_vars.innodb_nvdimm_pages_read_no = srv_stats.nvdimm_pages_read_no;
 
+    export_vars.innodb_nvdimm_pages_written_wh = srv_stats.nvdimm_pages_written_wh;
+    export_vars.innodb_nvdimm_pages_written_dt = srv_stats.nvdimm_pages_written_dt;
+    export_vars.innodb_nvdimm_pages_written_ct = srv_stats.nvdimm_pages_written_ct;
+    export_vars.innodb_nvdimm_pages_written_ht = srv_stats.nvdimm_pages_written_ht;
     export_vars.innodb_nvdimm_pages_written_st = srv_stats.nvdimm_pages_written_st;
-
     export_vars.innodb_nvdimm_pages_written_ol = srv_stats.nvdimm_pages_written_ol;
-    
     export_vars.innodb_nvdimm_pages_written_od = srv_stats.nvdimm_pages_written_od;
-
     export_vars.innodb_nvdimm_pages_written_no = srv_stats.nvdimm_pages_written_no;
 #endif /* UNIV_NVDIMM_CACHE */
 

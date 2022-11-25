@@ -52,20 +52,20 @@ void nc_recv_analysis() {
  unsigned char *addr = gb_pm_mmap + (6*1024*1024*1024UL);
  uint64_t page_num_chunks = static_cast<uint64_t>( (8*147324928UL)/4096);
 
+ struct timeval start, end;
+ gettimeofday(&start, NULL);
+
  // statisitics
  uint64_t safe_num=0, corrupt_num=0;
 
  for (uint64_t i=0; i < page_num_chunks; ++i) {
 
-//  space = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.space();
-//  page_no = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->page.id.page_no();
-//  unsigned char *frame = reinterpret_cast<buf_block_t*>((addr+ i * sizeof(buf_block_t)))->frame;
-
    unsigned char* frame = addr + 13107200 + (i * 4096);
    space = mach_read_from_4(frame + FIL_PAGE_SPACE_ID);
    page_no = mach_read_from_4(frame + FIL_PAGE_OFFSET);
  
-  if (space != 27 && space != 29 && space != 31) {
+  if (! (space >= 24 && space <= 32) ) {
+
     if (space == 4294967295
          && page_no == 4294967295) {
       continue;
@@ -86,6 +86,7 @@ void nc_recv_analysis() {
     }
 #endif
 
+    /*
     unsigned long check;
     fseg_header_t* seg_header = frame + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
     check = mach_read_from_4(seg_header + FSEG_HDR_SPACE);
@@ -95,15 +96,39 @@ void nc_recv_analysis() {
     } else {
       safe_num++;
     }
+    */
+
+    // debug
+    if ( ! 
+        (   mach_read_from_1(frame + PAGE_HEADER + PAGE_DIRECTION + 1) == 100
+          || mach_read_from_1(frame + PAGE_HEADER + PAGE_DIRECTION + 1) == 200
+        ) 
+       ){
+    
+      //ib::info() << "in-update flag error! page: " 
+      //  << space << " : " << page_no << " val: " 
+      //  << mach_read_from_1(frame + PAGE_HEADER + PAGE_DIRECTION + 1);
+    }
+
+    bool corrupt_flag = false;
+    if (mach_read_from_1(frame + PAGE_HEADER + PAGE_DIRECTION + 1) == 100) {
+      corrupt_flag = true;
+      corrupt_num++;
+    } else if (mach_read_from_1(frame + PAGE_HEADER + PAGE_DIRECTION + 1) == 200) {
+      corrupt_flag =false;
+      safe_num++;
+    } else {
+      corrupt_flag = true;
+      corrupt_num++;
+    }
 
     // we store relative position of nc page
-    //pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*sizeof(buf_block_t));
     pmem_nc_buffer_map[std::make_pair(space,page_no)].push_back(i*4096);
 
     uint64_t cur_page_lsn = mach_read_from_8(frame + FIL_PAGE_LSN);
 
-    ib::info() << "cur_page_lsn: " << cur_page_lsn;
     if (cur_page_lsn!=0
+        //&& corrupt_flag 
         &&
         (!min_nc_page_lsn 
         || min_nc_page_lsn > cur_page_lsn)) { 
@@ -112,41 +137,16 @@ void nc_recv_analysis() {
     }
 
     ib::info() << "safe_num: " << safe_num << " courrpt_num: " 
-        << corrupt_num << " total: " << (safe_num+corrupt_num);
+        << corrupt_num << " total: " << (safe_num+corrupt_num)
+        << " page: " << space << ":" << page_no;
   }
-
-#ifdef PMEM_RECV_DEBUG
-  fil_space_t* space_t = fil_space_get(space);
-  const page_id_t page_id(space,page_no);
-  const page_size_t page_size(space_t->flags);
-  if (buf_page_is_corrupted(true, frame, page_size,
-        fsp_is_checksum_disabled(space))) {
-    corrupt_num++;
-    fprintf(stderr, "(%lu:%lu) page is corruptted! lsn: %lu\n", space, page_no, mach_read_from_8(frame + FIL_PAGE_LSN));
-  } else {
-    safe_num++;
-    fprintf(stderr, "(%lu:%lu) page is good! lsn: %lu\n", space, page_no, mach_read_from_8(frame + FIL_PAGE_LSN));
-  }
-#endif
- 
  }
-}
+
+ gettimeofday(&end, NULL);
+ fprintf(stderr, "pmem_scan_time: %f seconds\n",
+     (double) (end.tv_usec - start.tv_usec) / 1000000 +
+     (double) (end.tv_sec - start.tv_sec));
 
 
-int nc_mtrlog_recv_read_hdr(unsigned char* addr) {
 
-  // read 4Byte
-  int type = -1;
-  memcpy(&type, addr, sizeof(int));
-  if (type == 1) {
-    ib::info() << "this is insert";
-  } else if (type == 2) {
-    ib::info() << "this is update";
-  } else if (type == 3) {
-    ib::info() << "this is delete";
-  } else {
-    ib::info() << "[debug] type: " << type;
-  }
-
-  return type;
 }

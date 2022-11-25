@@ -1855,6 +1855,9 @@ buf_LRU_make_block_young(
 
 	if (bpage->old) {
 		buf_pool->stat.n_pages_made_young++;
+#ifdef UNIV_NVDIMM_CACHE
+    bpage->moved_to_new = true;
+#endif
 	}
 
 	buf_LRU_remove_block(bpage);
@@ -2537,6 +2540,11 @@ buf_LRU_old_ratio_update_instance(
 	}
 	/* the reverse of
 	ratio = old_pct * BUF_LRU_OLD_RATIO_DIV / 100 */
+
+  /* mijin */
+  fprintf(stderr, "%u with ratio %u\n", buf_pool->instance_no, ratio);
+  /* end */
+
 	return((uint) (ratio * 100 / (double) BUF_LRU_OLD_RATIO_DIV + 0.5));
 }
 

@@ -32,6 +32,12 @@ Created 3/26/1996 Heikki Tuuri
 #include "mtr0mtr.h"
 #include "trx0sys.h"
 
+// jhpark
+// recovery time
+#include <time.h>
+#include <sys/time.h>
+extern struct timeval start, end;
+
 extern bool	trx_rollback_or_clean_is_active;
 
 /*******************************************************************//**

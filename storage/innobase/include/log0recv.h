@@ -358,6 +358,10 @@ struct recv_sys_t{
 
 	encryption_list_t*	/*!< Encryption information list */
 			encryption_list;
+  // ZZZ
+  lsn_t nc_scan_lsn;
+  lsn_t nc_parse_start_lsn;
+  ulint nc_len;
 };
 
 /** The recovery system */
@@ -401,8 +405,11 @@ extern volatile bool	recv_writer_thread_active;
 
 /** Size of the parsing buffer; it must accommodate RECV_SCAN_SIZE many
 times! */
+#ifdef UNIV_NVDIMM_CACHE
+#define RECV_PARSING_BUF_SIZE	(4 * 1024 * 1024)
+#else
 #define RECV_PARSING_BUF_SIZE	(2 * 1024 * 1024)
-
+#endif
 /** Size of block reads when the log groups are scanned forward to do a
 roll-forward */
 #define RECV_SCAN_SIZE		(4 * UNIV_PAGE_SIZE)

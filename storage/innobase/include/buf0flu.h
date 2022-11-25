@@ -169,6 +169,13 @@ bool
 buf_flush_single_page_from_LRU(
 /*===========================*/
 	buf_pool_t*	buf_pool);	/*!< in/out: buffer pool instance */
+
+bool
+buf_flush_single_page_from_NVDIMM_bufpool(
+/*===========================*/
+	buf_pool_t*	buf_pool);	/*!< in/out: buffer pool instance */
+
+
 /******************************************************************//**
 Waits until a flush batch of the given type ends */
 void

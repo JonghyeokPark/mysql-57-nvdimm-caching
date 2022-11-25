@@ -29,7 +29,7 @@ extern uint64_t nc_log_offset;
 const char filename[] = "/tmp/nclog.log";
 
 extern uint64_t min_nc_page_lsn;
-
+extern uint64_t org_page_lsn;
 
 // (jhpark): this header file for UNIV_NVDIMM_CACHE
 //					 use persistent memroy with mmap on dax-enabled file system
@@ -145,4 +145,25 @@ extern std::map<std::pair<uint64_t,uint64_t> , std::vector<uint64_t> > pmem_nc_b
 extern std::map<std::pair<uint64_t,uint64_t> , std::vector<uint64_t> > pmem_nc_page_map;
 uint64_t pm_mmap_recv_check_nc_buf(uint64_t space, uint64_t page_no);
 void nc_recv_analysis();
+
+void nc_set_in_update_flag(unsigned char* frame);
+void nc_unset_in_update_flag(unsigned char* frame);
+extern uint64_t in_update_page;
+
+
+// redo log
+struct nc_redo{
+  uint64_t nc_buf_free = 0;
+  uint64_t nc_lsn = 0;
+};
+
+// redo info spot
+#define REDO_INFO_OFFSET  (512*1024*1024)
+extern nc_redo* nc_redo_info;
+
+// redo log for NC pages threshold
+#define NC_REDO_LOG_THRESHOLD 100000
+extern uint64_t latest_nc_oldest_lsn;
+extern bool nc_flush_flag;
+
 #endif  /* __PMEMMAPOBJ_H__ */

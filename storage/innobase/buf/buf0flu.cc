@@ -677,6 +677,7 @@ buf_flush_remove(
 /*=============*/
 	buf_page_t*	bpage)	/*!< in: pointer to the block in question */
 {
+
 	buf_pool_t*	buf_pool = buf_pool_from_bpage(bpage);
 
 	ut_ad(buf_pool_mutex_own(buf_pool));
@@ -1076,11 +1077,28 @@ buf_flush_write_block_low(
 	/* Force the log to the disk before writing the modified block */
 	if (!srv_read_only_mode) {
 #ifdef UNIV_NVDIMM_CACHE
-		  log_write_up_to(bpage->newest_modification, true);
+     // (jhpark): NV-SQL-V1
+     
+     if ( 
+         //!srv_use_nvdimm_redo&& 
+         bpage->buf_pool_index < srv_buf_pool_instances
+         ) {
+        log_write_up_to(bpage->newest_modification, true);
+     }
+          
+     //if (!srv_use_nvdimm_redo) {
+     //   log_write_up_to(bpage->newest_modification, true);
+     //}
+     
 #else
-			log_write_up_to(bpage->newest_modification, true);
+	log_write_up_to(bpage->newest_modification, true);
 #endif /* UNIV_NVDIMM_CACHE */
 	}
+
+  // KKK
+#ifdef UNIV_NVDIMM_CACHE
+  uint64_t org_page_lsn;
+#endif
 
 	switch (buf_page_get_state(bpage)) {
 	case BUF_BLOCK_POOL_WATCH:
@@ -1104,13 +1122,24 @@ buf_flush_write_block_low(
 		if (!frame) {
 			frame = ((buf_block_t*) bpage)->frame;
 		}
+/*
+    if (bpage->moved_to_nvdimm
+        && bpage->buf_pool_index < srv_buf_pool_instances
+        && bpage->buf_fix_count == 0
+        && !is_pmem_recv
+        ) {
+      // (jhpark): this page_lsn info may not use promptly because (to-be) nvdimm caching page's buf_fix_count 
+      // is increased soon.
+        org_page_lsn = mach_read_from_8(reinterpret_cast<const buf_block_t *>(bpage)->frame + FIL_PAGE_LSN);
+    }  
+ */
+  	buf_flush_init_for_writing(
+        reinterpret_cast<const buf_block_t*>(bpage),
+        reinterpret_cast<const buf_block_t*>(bpage)->frame,
+		  	bpage->zip.data ? &bpage->zip : NULL,
+			  bpage->newest_modification,
+			  fsp_is_checksum_disabled(bpage->id.space()));
 
-		buf_flush_init_for_writing(
-			reinterpret_cast<const buf_block_t*>(bpage),
-			reinterpret_cast<const buf_block_t*>(bpage)->frame,
-			bpage->zip.data ? &bpage->zip : NULL,
-			bpage->newest_modification,
-			fsp_is_checksum_disabled(bpage->id.space()));
 		break;
 	}
 
@@ -1121,7 +1150,9 @@ buf_flush_write_block_low(
 #ifdef UNIV_NVDIMM_CACHE
     if (bpage->moved_to_nvdimm
         && bpage->buf_pool_index < srv_buf_pool_instances
-        && bpage->buf_fix_count == 0
+//        && !rw_lock_get_waiters(&reinterpret_cast<buf_block_t*>(bpage)->lock)
+//        && !rw_lock_get_reader_count(&reinterpret_cast<buf_block_t*>(bpage)->lock)
+        && bpage->buf_fix_count == 0        
         && !is_pmem_recv
         ) {
     
@@ -1134,41 +1165,61 @@ buf_flush_write_block_low(
         nvdimm_page = buf_page_init_for_read(&err, BUF_MOVE_TO_NVDIMM, page_id, page_size, false);
         
         if (nvdimm_page == NULL)    goto normal;
-        
-        /*ib::info() << "page_id = " << bpage->id.space()
+
+       /* 
+           ib::info() << "page_id = " << bpage->id.space()
             << " offset = " << bpage->id.page_no() 
             << " dst = " << &(((buf_block_t *)nvdimm_page)->frame) << " src = " << &(((buf_block_t *)bpage)->frame)
-            << " flush-type = " << bpage->flush_type;*/
-        memcpy(((buf_block_t *)nvdimm_page)->frame, ((buf_block_t *)bpage)->frame, UNIV_PAGE_SIZE);
+            << " flush-type = " << bpage->flush_type;
+       */
 
-        /* Set the oldest LSN of the NVDIMM page to the previous newest LSN. */
-        // (jhpark): keep page_lsn in original page
-        //uint64_t cur_page_lsn = mach_read_from_8(((buf_block_t *)bpage)->frame + FIL_PAGE_LSN);
+        memcpy(((buf_block_t *)nvdimm_page)->frame, ((buf_block_t *)bpage)->frame, UNIV_PAGE_SIZE);        
+        flush_cache(((buf_block_t *)nvdimm_page)->frame, UNIV_PAGE_SIZE);
 
+        // (jhpark): re-write the page LSN
+        /*
+        buf_flush_init_for_writing(
+          reinterpret_cast<const buf_block_t*>(nvdimm_page),
+          reinterpret_cast<const buf_block_t*>(nvdimm_page)->frame,
+  		  	nvdimm_page->zip.data ? &bpage->zip : NULL,
+          bpage->oldest_modification,
+		  	  fsp_is_checksum_disabled(nvdimm_page->id.space()));
+        */
+        uint64_t oldest_lsn = bpage->oldest_modification;
+        uint64_t newest_lsn = bpage->newest_modification;
+
+        /* Remove the target page from the original buffer pool. */
+        buf_page_io_complete(bpage, true);
+       
+        /* Set the oldest LSN of the NVDIMM page to the previous newest LSN. */       
         buf_flush_note_modification(
             (buf_block_t *)nvdimm_page
-            , bpage->oldest_modification
-            , bpage->newest_modification
+            , oldest_lsn
+            , newest_lsn
+            //, 0
             , nvdimm_page->flush_observer);
+        buf_page_io_complete(nvdimm_page, false);
 
-        // TODO: NVDIMM-porting
-        // 1
-        flush_cache(((buf_block_t *)nvdimm_page)->frame, UNIV_PAGE_SIZE);
-        // 2
-        
-        /* Remove the target page from the original buffer pool. */
-        buf_page_io_complete(nvdimm_page);
-        buf_page_io_complete(bpage, true);
-        
+
         /*buf_pool_t*	buf_pool = buf_pool_from_bpage(nvdimm_page);
         ib::info() << nvdimm_page->id.space() << " "
                 << nvdimm_page->id.page_no() << " is moved to "
                 << nvdimm_page->buf_pool_index << " from " << bpage->buf_pool_index;*/
     } else {
+
 normal:
         bpage->moved_to_nvdimm = false;
-
-        /*ib::info() << bpage->id.space() << " " << bpage->id.page_no()
+        /* mijin */
+        
+        /*if (bpage->cached_in_nvdimm) {
+          ib::info() << bpage->id.space() << " " << bpage->id.page_no()
+            << " update-count: " << bpage->update_count
+            << " moved_to_new: " << bpage->moved_to_new;
+        }*/
+        
+        /* end */
+/*
+           ib::info() << bpage->id.space() << " " << bpage->id.page_no()
                 << " is batch written. cached? " << bpage->cached_in_nvdimm
                 << " moved? " << bpage->moved_to_nvdimm
                 << " flush-type: " << flush_type
@@ -1180,8 +1231,11 @@ normal:
         if (!srv_use_doublewrite_buf
             || buf_dblwr == NULL
             || srv_read_only_mode
-            || fsp_is_system_temporary(bpage->id.space())
-            || bpage->cached_in_nvdimm) {
+            || fsp_is_system_temporary(bpage->id.space()) 
+            || bpage->cached_in_nvdimm
+            ){
+            // (JJJ) // HOT DEBUG
+            //|| bpage->cached_in_nvdimm) {
         
             ut_ad(!srv_read_only_mode
                     || fsp_is_system_temporary(bpage->id.space()));
@@ -1343,46 +1397,69 @@ buf_flush_page(
 
 #ifdef UNIV_NVDIMM_CACHE
         /* mijin */
-        /*if (bpage->id.space() >= 24 && bpage->id.space() <= 32) {
+    /*
+        if (bpage->id.space() >= 24 && bpage->id.space() <= 32) {
             lsn_t before_lsn = mach_read_from_8(reinterpret_cast<const buf_block_t *>(bpage)->frame + FIL_PAGE_LSN);
             lsn_t lsn_gap = bpage->oldest_modification - before_lsn;
             
             ib::info() << bpage->id.space() << " " << bpage->id.page_no()
                 << " is written with flush-type: " << flush_type
                 << " lsn-gap: " << lsn_gap;
-        }*/
+        }
+    */
         /* end */
-       
-        // (jhpark): change tablespace id for jhpark server
-        if ((bpage->id.space() >= 23 && bpage->id.space() <= 31)
+
+      if (bpage->flush_type == BUF_FLUSH_LIST
+            && (bpage->id.space() >= 24 && bpage->id.space() <= 32)
+            && bpage->buf_fix_count == 0 /* Not fixed */
+            && !bpage->moved_to_nvdimm
+            && !bpage->cached_in_nvdimm) { /* Not cached in NVDIMM */
+
+            //const byte *frame =
+            //    bpage->zip.data != NULL ? bpage->zip.data : ((buf_block_t *)bpage)->frame;
+
+            //if (page_is_leaf(frame) /* Leaf page */) {
+                bpage->moved_to_nvdimm = true;
+                srv_stats.nvdimm_pages_ckpt.inc();
+            //}
+        }
+
+        if ((bpage->id.space() >= 24 && bpage->id.space() <= 32)
                    && bpage->buf_fix_count == 0 /* Not fixed */
+                   && !bpage->moved_to_nvdimm
                    && !bpage->cached_in_nvdimm) { /* Not cached in NVDIMM */
             lsn_t before_lsn = mach_read_from_8(reinterpret_cast<const buf_block_t *>(bpage)->frame + FIL_PAGE_LSN);
             lsn_t lsn_gap = bpage->oldest_modification - before_lsn;
 
             /* FIXME: Ad-hoc method */
+            // 970pro gap
             if (0 < lsn_gap && lsn_gap < 30000000000) {
+            // 970pro + nobarrer
+            //if (0 < lsn_gap && lsn_gap < 26436991155) {
+            // micron gap
+            //if (0 < lsn_gap && lsn_gap < 15956238433) {
+            // p3600 gap
+            //if (0 < lsn_gap && lsn_gap < 18267379426) {
+            //if (0 < lsn_gap && lsn_gap < 19697259345) {
+            // JJJ
+            //if (0 < lsn_gap && lsn_gap < 9697259345) {
+            //if (0 < lsn_gap && lsn_gap < 3939451869) {
+            //if (0 < lsn_gap && lsn_gap < 9697259345) {
+            //if (0 < lsn_gap && lsn_gap < 1969725934) {
+            // PM9a3 gap
+            //if (0 < lsn_gap && lsn_gap < 27016753652) {
+            //if (0 < lsn_gap && lsn_gap < 20656386073) {
+            // 980 Pro gap
+            //if (0 < lsn_gap && lsn_gap < 17488271637) {
                 bpage->moved_to_nvdimm = true;
+                srv_stats.nvdimm_pages_lsngap.inc();
             }
         }
 
-        if (bpage->flush_type == BUF_FLUSH_LIST
-            && (bpage->id.space() >= 23 && bpage->id.space() <= 31) /* jhpark server */
-            //&& (bpage->id.space() >= 24 && bpage->id.space() <= 32)
-            && bpage->buf_fix_count == 0 /* Not fixed */
-            && !bpage->cached_in_nvdimm) { /* Not cached in NVDIMM */
-
-            const byte *frame =
-                bpage->zip.data != NULL ? bpage->zip.data : ((buf_block_t *)bpage)->frame;
-
-            if (page_is_leaf(frame) /* Leaf page */) {
-                bpage->moved_to_nvdimm = true;
-            }
-        }
 #endif /* UNIV_NVDIMM_CACHE */
 		
-        mutex_exit(block_mutex);
-		buf_pool_mutex_exit(buf_pool);
+      mutex_exit(block_mutex);
+		  buf_pool_mutex_exit(buf_pool);
 		
         if (flush_type == BUF_FLUSH_LIST
 		    && is_uncompressed
@@ -2326,7 +2403,46 @@ buf_flush_lists(
 	}
 
 	/* Flush to lsn_limit in all buffer pool instances */
-	for (i = 0; i < srv_buf_pool_instances; i++) {
+
+  if (nc_flush_flag) {
+
+  //ib::info() << "flush NC-resident pages!";
+
+  for (i = srv_buf_pool_instances; i < srv_buf_pool_instances + srv_nvdimm_buf_pool_instances; i++) {
+		buf_pool_t*	buf_pool;
+		ulint		page_count = 0;
+
+		buf_pool = buf_pool_from_array(i);
+
+		if (!buf_flush_do_batch(buf_pool,
+					BUF_FLUSH_LIST,
+					min_n,
+					lsn_limit,
+					&page_count)) {
+			/* We have two choices here. If lsn_limit was
+			specified then skipping an instance of buffer
+			pool means we cannot guarantee that all pages
+			up to lsn_limit has been flushed. We can
+			return right now with failure or we can try
+			to flush remaining buffer pools up to the
+			lsn_limit. We attempt to flush other buffer
+			pools based on the assumption that it will
+			help in the retry which will follow the
+			failure. */
+			success = false;
+
+			continue;
+		}
+
+		n_flushed += page_count;
+	}
+
+    nc_flush_flag = false;
+  }
+
+  // ZZZ
+  //for (i = 0; i < srv_buf_pool_instances + srv_nvdimm_buf_pool_instances; i++) {
+  for (i = 0; i < srv_buf_pool_instances; i++) {
 		buf_pool_t*	buf_pool;
 		ulint		page_count = 0;
 
@@ -2457,6 +2573,91 @@ buf_flush_single_page_from_LRU(
 
 	return(freed);
 }
+#ifdef UNIV_NVDIMM_CACHE
+bool
+buf_flush_single_page_from_NVDIMM_bufpool(
+/*===========================*/
+	buf_pool_t*	buf_pool)	/*!< in/out: buffer pool instance */
+{
+	ulint		scanned;
+	buf_page_t*	bpage;
+	ibool		freed;
+
+	buf_pool_mutex_enter(buf_pool);
+
+	for (bpage = buf_pool->single_scan_itr.start_nvdimm(), scanned = 0,
+	     freed = false;
+	     bpage != NULL;
+	     ++scanned, bpage = buf_pool->single_scan_itr.get()) {
+
+		ut_ad(buf_pool_mutex_own(buf_pool));
+
+		buf_page_t*	prev = UT_LIST_GET_PREV(LRU, bpage);
+      
+		buf_pool->single_scan_itr.set(prev);
+
+		BPageMutex*	block_mutex;
+
+		block_mutex = buf_page_get_mutex(bpage);
+
+		mutex_enter(block_mutex);
+
+		if (buf_flush_ready_for_replace(bpage)) {
+			/* block is ready for eviction i.e., it is
+			clean and is not IO-fixed or buffer fixed. */
+			mutex_exit(block_mutex);
+            
+            if (buf_LRU_free_page(bpage, true)) {
+				buf_pool_mutex_exit(buf_pool);
+				freed = true;
+				break;
+			}
+
+		} else if (buf_flush_ready_for_flush(
+				   bpage, BUF_FLUSH_SINGLE_PAGE)) {
+
+			/* Block is ready for flush. Try and dispatch an IO
+			request. We'll put it on free list in IO completion
+			routine if it is not buffer fixed. The following call
+			will release the buffer pool and block mutex.
+
+			Note: There is no guarantee that this page has actually
+			been freed, only that it has been flushed to disk */
+           
+			freed = buf_flush_page(
+				buf_pool, bpage, BUF_FLUSH_SINGLE_PAGE, true);
+
+			if (freed) {
+                break;
+			}
+
+			mutex_exit(block_mutex);
+		} else {
+			mutex_exit(block_mutex);
+		}
+        
+        ut_ad(!mutex_own(block_mutex));
+	}
+
+	if (!freed) {
+		/* Can't find a single flushable page. */
+		ut_a(!bpage);
+		buf_pool_mutex_exit(buf_pool);
+	}
+
+	if (scanned) {
+		MONITOR_INC_VALUE_CUMULATIVE(
+			MONITOR_LRU_SINGLE_FLUSH_SCANNED,
+			MONITOR_LRU_SINGLE_FLUSH_SCANNED_NUM_CALL,
+			MONITOR_LRU_SINGLE_FLUSH_SCANNED_PER_CALL,
+			scanned);
+	}
+
+	ut_ad(!buf_pool_mutex_own(buf_pool));
+
+	return(freed);
+}
+#endif
 
 /**
 Clears up tail of the LRU list of a given buffer pool instance:
@@ -3937,10 +4138,17 @@ FlushObserver::FlushObserver(
 	m_stage(stage),
 	m_interrupted(false)
 {
+#ifdef UNIV_NVDIMM_CACHE
+	m_flushed = UT_NEW_NOKEY(std::vector<ulint>(srv_buf_pool_instances + srv_nvdimm_buf_pool_instances));
+	m_removed = UT_NEW_NOKEY(std::vector<ulint>(srv_buf_pool_instances + srv_nvdimm_buf_pool_instances));
+
+	for (ulint i = 0; i < srv_buf_pool_instances + srv_nvdimm_buf_pool_instances; i++) {
+#else
 	m_flushed = UT_NEW_NOKEY(std::vector<ulint>(srv_buf_pool_instances));
 	m_removed = UT_NEW_NOKEY(std::vector<ulint>(srv_buf_pool_instances));
 
-	for (ulint i = 0; i < srv_buf_pool_instances; i++) {
+  for (ulint i = 0; i < srv_buf_pool_instances; i++) {
+#endif
 		m_flushed->at(i) = 0;
 		m_removed->at(i) = 0;
 	}

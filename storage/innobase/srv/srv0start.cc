@@ -112,6 +112,10 @@ char  PMEM_FILE_PATH [PMEM_MMAP_MAX_FILE_NAME_LENGTH];
 pfs_os_file_t gb_pm_dwb_file;
 #endif /* UNIV_NVDIMM_CACHE */
 
+#include <time.h>
+#include <sys/time.h>
+struct timeval start, end;
+
 #ifdef HAVE_LZO1X
 #include <lzo/lzo1x.h>
 extern bool srv_lzo_disabled;
@@ -1498,6 +1502,9 @@ innobase_start_or_create_for_mysql(void)
 	/* Reset the start state. */
 	srv_start_state = SRV_START_STATE_NONE;
 
+  // recovery time
+  gettimeofday(&start, NULL);
+
 	if (srv_force_recovery == SRV_FORCE_NO_LOG_REDO) {
 		srv_read_only_mode = true;
 	}
@@ -1935,6 +1942,7 @@ innobase_start_or_create_for_mysql(void)
 	recv_sys_create();
 	recv_sys_init(buf_pool_get_curr_size());
 	lock_sys_create(srv_lock_table_size);
+
 	srv_start_state_set(SRV_START_STATE_LOCK_SYS);
 
 	/* Create i/o-handler threads: */
@@ -2367,18 +2375,18 @@ files_checked:
 			return(srv_init_abort(DB_ERROR));
 		}
 
-		fprintf(stderr, "[JONGQ] ---- scan_and_parse log file finished\n");
-
 		/* We always try to do a recovery, even if the database had
 		been shut down normally: this is the normal startup path */
 
 		err = recv_recovery_from_checkpoint_start(flushed_lsn);
 
-		fprintf(stderr, "[JONGQ] ---- recv_recovery_from_checkpoint() finished\n");
+    gettimeofday(&end, NULL);
+    fprintf(stderr, "scan_time: %f seconds\n",
+         (double) (end.tv_usec - start.tv_usec) / 1000000 +
+                  (double) (end.tv_sec - start.tv_sec));
+    gettimeofday(&start, NULL);
 
 		recv_sys->dblwr.pages.clear();
-
-		fprintf(stderr, "[JONGQ] ---- dwb clear finished\n");
 
 		if (err == DB_SUCCESS) {
 			/* Initialize the change buffer. */
@@ -2402,8 +2410,6 @@ files_checked:
 
 		purge_queue = trx_sys_init_at_db_start();
 
-		fprintf(stderr, "[JONGQ] ---- trx_sys_init_at_db_start finished!\n");
-
 		if (srv_force_recovery < SRV_FORCE_NO_LOG_REDO) {
 			/* Apply the hashed log records to the
 			respective file pages, for the last batch of
@@ -2412,12 +2418,20 @@ files_checked:
 			recv_apply_hashed_log_recs(TRUE);
 			DBUG_PRINT("ib_log", ("apply completed"));
 
+    gettimeofday(&end, NULL);
+    fprintf(stderr, "redo_time: %f seconds\n",
+         (double) (end.tv_usec - start.tv_usec) / 1000000 +
+                  (double) (end.tv_sec - start.tv_sec));
+    gettimeofday(&start, NULL);
+
 			if (recv_needed_recovery) {
 				trx_sys_print_mysql_binlog_offset();
 			}
 		}
 
-		if (recv_sys->found_corrupt_log) {
+      ib::info() << "in_update_page: " << in_update_page;
+		
+      if (recv_sys->found_corrupt_log) {
 			ib::warn()
 				<< "The log file may have been corrupt and it"
 				" is possible that the log scan or parsing"
@@ -2626,9 +2640,6 @@ files_checked:
 	variable srv_available_undo_logs. The number of rsegs to use can
 	be set using the dynamic global variable srv_rollback_segments. */
 	
-	// debug
-	fprintf(stderr, "[JONGQ] initialize undo log lists\n");	
-
 	srv_available_undo_logs = trx_sys_create_rsegs(
 		srv_undo_tablespaces, srv_rollback_segments, srv_tmp_undo_logs);
 

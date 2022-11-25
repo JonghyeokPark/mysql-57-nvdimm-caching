@@ -1730,6 +1730,8 @@ public:
                              in the NVDIMM buffer */
     bool moved_to_nvdimm;  /*!< TRUE if the page needs to
                              be moved to the NVDIMM buffer */
+    ib_uint32_t update_count;
+    bool moved_to_new;
 #endif /* UNIV_NVDIMM_CACHE */
 };
 
@@ -2039,6 +2041,9 @@ public:
 	of the LRU list.
 	@return buf_page_t from where to start scan. */
 	buf_page_t* start();
+#ifdef UNIV_NVDIMM_CACHE
+  buf_page_t* start_nvdimm();
+#endif
 };
 
 /** Struct that is embedded in the free zip blocks */

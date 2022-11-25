@@ -159,7 +159,6 @@ buf_dblwr_init(
 		ut_zalloc_nokey(buf_size * sizeof(bool)));
 #ifdef UNIV_NVDIMM_CACHE
   // HOT DEBUG
-  // TODO(jhpark): recovery
 
   dberr_t err;
   byte* buf;
@@ -815,10 +814,19 @@ buf_dblwr_update(
 	if (!srv_use_doublewrite_buf
 	    || buf_dblwr == NULL
 	    || fsp_is_system_temporary(bpage->id.space())
+
+/*
+// DWB OFF HOT DEBUG
+#ifdef UNIV_NVDIMM_CACHE
+        || bpage->moved_to_nvdimm
+#endif 
+*/       
+        // JJJ: moved_to_nvdimmm pages are written to NVDIMM not SSSD
 #ifdef UNIV_NVDIMM_CACHE
         || bpage->cached_in_nvdimm
         || bpage->moved_to_nvdimm
-#endif /* UNIV_NVDIMM_CACHE */       
+#endif 
+/* UNIV_NVDIMM_CACHE */       
        ) {
 		return;
 	}
@@ -1191,7 +1199,17 @@ flush:
 	writes to the operating system. We don't flush the files
 	at this point. We leave it to the IO helper thread to flush
 	datafiles when the whole batch has been processed. */
+  // TODO(jhpark): what?
+#ifdef UNIV_NVDIMM_CACHE
+  /*
+  if (!srv_use_nvdimm_dwb) {
+  	os_aio_simulated_wake_handler_threads();
+  }
+  */
+  os_aio_simulated_wake_handler_threads();
+#else
 	os_aio_simulated_wake_handler_threads();
+#endif
 }
 
 /********************************************************************//**
@@ -1307,7 +1325,6 @@ try_again:
 		mutex_exit(&(buf_dblwr->mutex));
 
 		buf_dblwr_flush_buffered_writes();
-
 		return;
 	}
 

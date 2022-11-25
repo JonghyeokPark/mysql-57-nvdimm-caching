@@ -202,7 +202,6 @@ page_header_set_field(
 		  page_zip_write_header(page_zip,
 				      page + PAGE_HEADER + field, 1, NULL);
 	  }
-
   } else {
     mach_write_to_2(page + PAGE_HEADER + field, val);
 	  if (page_zip) {

@@ -2,7 +2,7 @@
 
 BASE_DIR=`pwd -P`
 BUILD_DIR=$BASE_DIR/bld
-PASSWD="sudo-passwd"
+PASSWD="vldb#7988"
 
 # Make a directory for build
 if [ ! -d "$BUILD_DIR" ]; then

@@ -3437,6 +3437,7 @@ row_ins_sec_index_entry(
 			index->last_sel_cur->invalid = true;
 		}
 
+    // FIXME(jhpark): secondary index b+tree bugs // 
 		err = row_ins_sec_index_entry_low(
 			flags, BTR_MODIFY_TREE, index,
 			offsets_heap, heap, entry, 0, thr,

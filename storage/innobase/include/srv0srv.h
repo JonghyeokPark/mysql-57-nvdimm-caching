@@ -97,45 +97,34 @@ struct srv_stats_t {
 	ulint_ctr_1_t		dblwr_pages_written;
 
 #ifdef UNIV_NVDIMM_CACHE
-    /** Store the number of Stock pages that currently been
-      stored in the NVDIMM buffer */
+    ulint_ctr_1_t       nvdimm_pages_ckpt;
+    ulint_ctr_1_t       nvdimm_pages_lsngap;
+    ulint_ctr_1_t       nvdimm_pages_stored_wh;
+    ulint_ctr_1_t       nvdimm_pages_stored_dt;
+    ulint_ctr_1_t       nvdimm_pages_stored_ct;
+    ulint_ctr_1_t       nvdimm_pages_stored_ht;
+    ulint_ctr_1_t       nvdimm_pages_stored_no;
+    ulint_ctr_1_t       nvdimm_pages_stored_od;
+    ulint_ctr_1_t       nvdimm_pages_stored_ol;
     ulint_ctr_1_t       nvdimm_pages_stored_st;
 
-    /** Store the number of Order-Line pages that currently been
-      stored in the NVDIMM buffer */
-    ulint_ctr_1_t       nvdimm_pages_stored_ol;
-
-     /** Store the number of Orders pages that currently been
-      stored in the NVDIMM buffer */
-    ulint_ctr_1_t       nvdimm_pages_stored_od;
-
-    /** Store the number of New-Orders pages that currently
-      been stored in the NVDIMM buffer */
-    ulint_ctr_1_t       nvdimm_pages_stored_no;
-
-    /** Store the number of Stock pages that been read */
+    ulint_ctr_1_t       nvdimm_pages_read_wh;
+    ulint_ctr_1_t       nvdimm_pages_read_dt;
+    ulint_ctr_1_t       nvdimm_pages_read_ct;
+    ulint_ctr_1_t       nvdimm_pages_read_ht;
+    ulint_ctr_1_t       nvdimm_pages_read_no;
+    ulint_ctr_1_t       nvdimm_pages_read_od;
+    ulint_ctr_1_t       nvdimm_pages_read_ol;
     ulint_ctr_1_t       nvdimm_pages_read_st;
 
-    /** Store the number of Order-Line pages that been read */
-    ulint_ctr_1_t       nvdimm_pages_read_ol;
-
-    /** Store the number of Orders pages that been read */
-    ulint_ctr_1_t       nvdimm_pages_read_od;
-
-    /** Store the number of New-Orders pages that been read */
-    ulint_ctr_1_t       nvdimm_pages_read_no;
-
-    /** Store the number of Stock pages that been written */
-    ulint_ctr_1_t       nvdimm_pages_written_st;
-
-    /** Store the number of Order-Line pages that been written */
-    ulint_ctr_1_t       nvdimm_pages_written_ol;
-
-    /** Store the number of Orders pages that been written */
-    ulint_ctr_1_t       nvdimm_pages_written_od;
-
-    /** Store the number of New-Orders pages that been written */
+    ulint_ctr_1_t       nvdimm_pages_written_wh;
+    ulint_ctr_1_t       nvdimm_pages_written_dt;
+    ulint_ctr_1_t       nvdimm_pages_written_ct;
+    ulint_ctr_1_t       nvdimm_pages_written_ht;
     ulint_ctr_1_t       nvdimm_pages_written_no;
+    ulint_ctr_1_t       nvdimm_pages_written_od;
+    ulint_ctr_1_t       nvdimm_pages_written_ol;
+    ulint_ctr_1_t       nvdimm_pages_written_st;
 #endif /* UNIV_NVDIMM_CACHE */
 
 	/** Store the number of write requests issued */
@@ -352,6 +341,9 @@ extern ulong srv_nvdimm_pc_threshold_pct;
 extern char* srv_nvdimm_home_dir;
 /** NVDIMM DWB enable */
 extern my_bool srv_use_nvdimm_dwb;
+/** NVDIMM REDO enable */
+extern my_bool srv_use_nvdimm_redo;
+
 #endif /* UNIV_NVDIMM_CACHE */
 
 /** Requested size in bytes */
@@ -967,18 +959,32 @@ struct export_var_t{
 	ulint innodb_dblwr_pages_written;	/*!< srv_dblwr_pages_written */
 	ulint innodb_dblwr_writes;		/*!< srv_dblwr_writes */
 #ifdef UNIV_NVDIMM_CACHE
-    ulint innodb_nvdimm_pages_stored_st;       /*!< srv_nvdimm_pages_stored_st */
-    ulint innodb_nvdimm_pages_stored_ol;       /*!< srv_nvdimm_pages_stored_ol */
-    ulint innodb_nvdimm_pages_stored_od;       /*!< srv_nvdimm_pages_stored_od */
-    ulint innodb_nvdimm_pages_stored_no;       /*!< srv_nvdimm_pages_stored_no */
-    ulint innodb_nvdimm_pages_read_st;         /*!< srv_nvdimm_pages_read_st */
-    ulint innodb_nvdimm_pages_read_ol;         /*!< srv_nvdimm_pages_read_ol */
-    ulint innodb_nvdimm_pages_read_od;         /*!< srv_nvdimm_pages_read_od */
-    ulint innodb_nvdimm_pages_read_no;         /*!< srv_nvdimm_pages_read_no */
-    ulint innodb_nvdimm_pages_written_st;      /*!< srv_nvdimm_pages_written_st */
-    ulint innodb_nvdimm_pages_written_ol;      /*!< srv_nvdimm_pages_written_ol */
-    ulint innodb_nvdimm_pages_written_od;      /*!< srv_nvdimm_pages_written_od */
-    ulint innodb_nvdimm_pages_written_no;      /*!< srv_nvdimm_pages_written_no */
+    ulint innodb_nvdimm_pages_ckpt;       /*!< srv_nvdimm_pages_stored_st */
+    ulint innodb_nvdimm_pages_lsngap;       /*!< srv_nvdimm_pages_stored_st */
+    ulint innodb_nvdimm_pages_stored_wh;       /*!< srv_nvdimm_pages_stored_st */
+    ulint innodb_nvdimm_pages_stored_dt;       /*!< srv_nvdimm_pages_stored_st */
+    ulint innodb_nvdimm_pages_stored_ct;       /*!< srv_nvdimm_pages_stored_st */
+    ulint innodb_nvdimm_pages_stored_ht;       /*!< srv_nvdimm_pages_stored_st */
+    ulint innodb_nvdimm_pages_stored_no;       /*!< srv_nvdimm_pages_stored_st */
+    ulint innodb_nvdimm_pages_stored_od;       /*!< srv_nvdimm_pages_stored_ol */
+    ulint innodb_nvdimm_pages_stored_ol;       /*!< srv_nvdimm_pages_stored_od */
+    ulint innodb_nvdimm_pages_stored_st;       /*!< srv_nvdimm_pages_stored_no */
+    ulint innodb_nvdimm_pages_read_wh;         /*!< srv_nvdimm_pages_read_st */
+    ulint innodb_nvdimm_pages_read_dt;         /*!< srv_nvdimm_pages_read_ol */
+    ulint innodb_nvdimm_pages_read_ct;         /*!< srv_nvdimm_pages_read_od */
+    ulint innodb_nvdimm_pages_read_ht;         /*!< srv_nvdimm_pages_read_no */
+    ulint innodb_nvdimm_pages_read_no;         /*!< srv_nvdimm_pages_read_st */
+    ulint innodb_nvdimm_pages_read_od;         /*!< srv_nvdimm_pages_read_ol */
+    ulint innodb_nvdimm_pages_read_ol;         /*!< srv_nvdimm_pages_read_od */
+    ulint innodb_nvdimm_pages_read_st;         /*!< srv_nvdimm_pages_read_no */
+    ulint innodb_nvdimm_pages_written_wh;      /*!< srv_nvdimm_pages_written_st */
+    ulint innodb_nvdimm_pages_written_dt;      /*!< srv_nvdimm_pages_written_st */
+    ulint innodb_nvdimm_pages_written_ct;      /*!< srv_nvdimm_pages_written_st */
+    ulint innodb_nvdimm_pages_written_ht;      /*!< srv_nvdimm_pages_written_st */
+    ulint innodb_nvdimm_pages_written_no;      /*!< srv_nvdimm_pages_written_st */
+    ulint innodb_nvdimm_pages_written_od;      /*!< srv_nvdimm_pages_written_ol */
+    ulint innodb_nvdimm_pages_written_ol;      /*!< srv_nvdimm_pages_written_od */
+    ulint innodb_nvdimm_pages_written_st;      /*!< srv_nvdimm_pages_written_no */
 #endif /* UNIV_NVDIMM_CACHE */
     ulint innodb_log_waits;			/*!< srv_log_waits */
 	ulint innodb_log_write_requests;	/*!< srv_log_write_requests */

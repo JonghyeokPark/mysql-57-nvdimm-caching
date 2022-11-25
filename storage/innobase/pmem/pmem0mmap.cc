@@ -14,6 +14,8 @@
 #include "mtr0log.h"
 #include "trx0undo.h"
 
+uint64_t in_update_page = 0;
+
 // gloabl persistent memmory region
 unsigned char* gb_pm_mmap;
 unsigned char* gb_pm_mtrlog;
@@ -24,12 +26,18 @@ int nc_log_fd;
 unsigned char* nc_log_ptr;
 uint64_t offset = 0;
 
+// nc redo info
+nc_redo* nc_redo_info = NULL;
+
 // recovery
 bool is_pmem_recv = false;
 uint64_t pmem_recv_offset = 0;
 uint64_t pmem_recv_size = 0;
-
 uint64_t min_nc_page_lsn = 0;
+uint64_t org_page_lsn =0;
+
+uint64_t latest_nc_oldest_lsn = 0;
+bool nc_flush_flag = false;
 
 /* nc-logging */
 std::map<std::pair<uint64_t,uint64_t> ,std::vector<uint64_t> > pmem_nc_buffer_map;
@@ -97,14 +105,17 @@ unsigned char* pm_mmap_create(const char* path, const uint64_t pool_size) {
     if (gb_pm_mmap == MAP_FAILED) {
       PMEMMMAP_ERROR_PRINT("pm_mmap mmap() faild recovery failed\n");
     }
-	
+
+    // check NC redo log buffer offset
+    memcpy(nc_redo_info, gb_pm_mmap + REDO_INFO_OFFSET, sizeof(nc_redo_info));
+
 	  // TODO(jhpark): real recovery process
 		is_pmem_recv = true;
     memcpy(gb_pm_mmap + 6*1024*1024*1024UL, gb_pm_mmap + 1*1024*1024*1024UL, 2*1024*1024*1024UL);
     nc_recv_analysis();
   }
 
-  // Force to set NVIMMM
+  // Force to set NVDIMMM
   setenv("PMEM_IS_PMEM_FORCE", "1", 1);
   PMEMMMAP_INFO_PRINT("Current kernel does not recognize NVDIMM as the persistenct memory \
       We force to set the environment variable PMEM_IS_PMEM_FORCE \
@@ -118,6 +129,21 @@ void pm_mmap_free(const uint64_t pool_size) {
 	munmap(gb_pm_mmap, pool_size);
 	close(gb_pm_mmap_fd);
 	PMEMMMAP_INFO_PRINT("munmap persistent memroy region\n");
+}
+
+void nc_set_in_update_flag(unsigned char* frame) {
+  // PAGE_DIRECTION + 1 Byte
+  mach_write_to_1(frame + PAGE_HEADER + PAGE_DIRECTION + 1, 100);
+  flush_cache(frame + PAGE_HEADER + PAGE_DIRECTION + 1, 1);
+}
+
+void nc_unset_in_update_flag(unsigned char* frame) {
+  // persistent support for NC page
+  flush_cache(frame, UNIV_PAGE_SIZE);
+
+  // PAGE_DIRECTION + 1 Byte
+  mach_write_to_1(frame + PAGE_HEADER + PAGE_DIRECTION + 1, 200);
+  flush_cache(frame + PAGE_HEADER + PAGE_DIRECTION + 1, 1);
 }
 
 

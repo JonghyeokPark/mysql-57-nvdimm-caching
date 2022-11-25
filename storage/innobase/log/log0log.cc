@@ -225,6 +225,48 @@ log_buffer_extend(
 	log_sys->buf_next_to_write -= move_start;
 
 	/* reallocate log buffer */
+#ifdef UNIV_NVDIMM_CACHE
+  // ZZZ
+  if (srv_use_nvdimm_redo) {
+    srv_log_buffer_size = len / UNIV_PAGE_SIZE + 1;
+    log_sys->buf_size = LOG_BUFFER_SIZE;
+
+    log_sys->buf_ptr = static_cast<byte*>(
+        ut_zalloc_nokey(log_sys->buf_size * 2 + OS_FILE_LOG_BLOCK_SIZE));
+    log_sys->buf = static_cast<byte*>(
+        ut_align(log_sys->buf_ptr, OS_FILE_LOG_BLOCK_SIZE));
+    
+    log_sys->first_in_use = true;
+    log_sys->max_buf_free = log_sys->buf_size / LOG_BUF_FLUSH_RATIO
+                - LOG_BUF_FLUSH_MARGIN;
+
+    // update lsn
+    nc_redo_info->nc_lsn = log_sys->lsn;
+    nc_redo_info->nc_buf_free = log_sys->buf_free;
+    memcpy(gb_pm_mmap + REDO_INFO_OFFSET, nc_redo_info, sizeof(nc_redo_info));
+    flush_cache(gb_pm_mmap + REDO_INFO_OFFSET, sizeof(nc_redo_info));
+
+  } else {
+  	srv_log_buffer_size = len / UNIV_PAGE_SIZE + 1;
+	  ut_free(log_sys->buf_ptr);
+
+  	log_sys->buf_size = LOG_BUFFER_SIZE;
+
+	  log_sys->buf_ptr = static_cast<byte*>(
+		  ut_zalloc_nokey(log_sys->buf_size * 2 + OS_FILE_LOG_BLOCK_SIZE));
+  	log_sys->buf = static_cast<byte*>(
+	  	ut_align(log_sys->buf_ptr, OS_FILE_LOG_BLOCK_SIZE));
+
+	  log_sys->first_in_use = true;
+
+	  log_sys->max_buf_free = log_sys->buf_size / LOG_BUF_FLUSH_RATIO
+		  - LOG_BUF_FLUSH_MARGIN;
+
+	  /* restore the last log block */
+	  ut_memcpy(log_sys->buf, tmp_buf, move_end - move_start);
+  }
+
+#else
 	srv_log_buffer_size = len / UNIV_PAGE_SIZE + 1;
 	ut_free(log_sys->buf_ptr);
 
@@ -242,6 +284,7 @@ log_buffer_extend(
 
 	/* restore the last log block */
 	ut_memcpy(log_sys->buf, tmp_buf, move_end - move_start);
+#endif
 
 	ut_ad(log_sys->is_extending);
 	log_sys->is_extending = false;
@@ -439,8 +482,12 @@ part_loop:
 	}
 
 #ifdef UNIV_NVDIMM_CACHE
-  ut_memcpy(log->buf + log->buf_free, str, len);
-  flush_cache(log->buf+log->buf_free, len);
+  if (srv_use_nvdimm_redo) { 
+    ut_memcpy(log->buf + log->buf_free, str, len);
+    flush_cache(log->buf+log->buf_free, len);
+  } else {
+    ut_memcpy(log->buf + log->buf_free, str, len);
+  }
 #else
   ut_memcpy(log->buf + log->buf_free, str, len);
 #endif
@@ -449,6 +496,8 @@ part_loop:
 	str_len -= len;
 	str = str + len;
 
+  // ZZZ 
+  // (jhpark): make this redo logging persistenet !!!
 	log_block = static_cast<byte*>(
 		ut_align_down(
 			log->buf + log->buf_free, OS_FILE_LOG_BLOCK_SIZE));
@@ -471,6 +520,21 @@ part_loop:
 	}
 
 	log->buf_free += len;
+
+
+  // TODO(jhpark): need to optimization
+  // persistent
+  //flush_cache(log_block, OS_FILE_LOG_BLOCK_SIZE);
+
+#ifdef UNIV_NVDIMM_CACHE
+  // ZZZ
+  if (srv_use_nvdimm_redo) {
+    nc_redo_info->nc_lsn = log_sys->lsn;
+    nc_redo_info->nc_buf_free = log_sys->buf_free;
+    memcpy(gb_pm_mmap+REDO_INFO_OFFSET, nc_redo_info, sizeof(nc_redo_info));
+    flush_cache(gb_pm_mmap + REDO_INFO_OFFSET, sizeof(nc_redo_info));
+  }
+#endif
 
 	ut_ad(log->buf_free <= log->buf_size);
 
@@ -824,9 +888,24 @@ log_init(void)
 
   /* nc-logging */
 #ifdef UNIV_NVDIMM_CACHE
-  log_sys->buf_ptr = static_cast<byte*>(gb_pm_mmap);
-  log_sys->buf = static_cast<byte*>(
-      ut_align(log_sys->buf_ptr, OS_FILE_LOG_BLOCK_SIZE));
+  if (srv_use_nvdimm_redo) {
+    // ZZZ
+    // initialize nc_redo_info
+    nc_redo_info = static_cast<nc_redo*> (malloc(sizeof(nc_redo)));
+    nc_redo_info->nc_lsn = 0;
+    nc_redo_info->nc_buf_free = 0;
+    memcpy(gb_pm_mmap + REDO_INFO_OFFSET, nc_redo_info, sizeof(nc_redo_info));
+    flush_cache(gb_pm_mmap + REDO_INFO_OFFSET, sizeof(nc_redo_info));
+
+    log_sys->buf_ptr = static_cast<byte*>(gb_pm_mmap);
+    log_sys->buf = static_cast<byte*>(
+        ut_align(log_sys->buf_ptr, OS_FILE_LOG_BLOCK_SIZE));
+  } else {
+    log_sys->buf_ptr = static_cast<byte*>(
+		  ut_zalloc_nokey(log_sys->buf_size * 2 + OS_FILE_LOG_BLOCK_SIZE));
+  	log_sys->buf = static_cast<byte*>(
+	  	ut_align(log_sys->buf_ptr, OS_FILE_LOG_BLOCK_SIZE));
+  }
 #else
 	log_sys->buf_ptr = static_cast<byte*>(
 		ut_zalloc_nokey(log_sys->buf_size * 2 + OS_FILE_LOG_BLOCK_SIZE));
@@ -1437,6 +1516,7 @@ log_buffer_flush_to_disk(
 	bool sync)
 {
 	ut_ad(!srv_read_only_mode);
+    // JJJ
 	log_write_up_to(log_get_lsn(), sync);
 }
 
@@ -1466,6 +1546,7 @@ log_buffer_sync_in_background(
 
 	log_mutex_exit();
 
+    // JJJ
 	log_write_up_to(lsn, flush);
 }
 
@@ -1630,6 +1711,15 @@ log_group_checkpoint(
 			      log_sys->next_checkpoint_no,
 			      log_sys->next_checkpoint_lsn,
 			      group->id));
+
+  // KKK
+  /*
+  ib::info() << "log_group_checkpoint "
+		<< log_sys->next_checkpoint_no << " at "
+		<< log_sys->next_checkpoint_lsn
+    << " written to group "
+    << group->id;
+  */
 
 	buf = group->checkpoint_buf;
 	memset(buf, 0, OS_FILE_LOG_BLOCK_SIZE);
@@ -1887,6 +1977,8 @@ log_checkpoint(
 
 	log_mutex_enter();
 
+  // (jhpark): if we keep NVDIMM-resident lsn then 
+  // we might faced this issue.
 	ut_ad(log_sys->flushed_to_disk_lsn >= flush_lsn);
 	ut_ad(flush_lsn >= oldest_lsn);
 
@@ -1909,7 +2001,57 @@ log_checkpoint(
 	}
 
 #ifdef UNIV_NVDIMM_CACHE
+  // check 
+  lsn_t nvdimm_lsn = nvdimm_buf_pool_get_oldest_modification();
+  if ( (nvdimm_lsn < oldest_lsn) 
+      && (oldest_lsn - nvdimm_lsn) > NC_REDO_LOG_THRESHOLD) {
+    nc_flush_flag = true;
+  }
+
 // TODO(jhpark): keep log files for switching log files
+  /*
+  lsn_t nvdimm_lsn = nvdimm_buf_pool_get_oldest_modification(); 
+  if (nvdimm_lsn != 0) { 
+ 
+  lsn_t nvdimm_lsn = nvdimm_buf_pool_get_oldest_modification();
+  ib::info() << "nvdimm_lsn : " << nvdimm_lsn 
+    << " ckpt_lsn : " << log_sys->next_checkpoint_lsn
+    << " last_ckpt_lsn : " << log_sys->last_checkpoint_lsn;
+
+  // step1. find max_checkpoint
+  log_group_t*  group = UT_LIST_GET_FIRST(log_sys->log_groups); 
+
+  // step2. read last_ckpt block and keep redo logs
+  lsn_t start_lsn = ut_uint64_align_down(log_sys->last_checkpoint_lsn, OS_FILE_LOG_BLOCK_SIZE);
+  lsn_t end_lsn = start_lsn + OS_FILE_LOG_BLOCK_SIZE;
+
+  ib::info() << "start_lsn: " << start_lsn << " end_lsn: " << end_lsn; 
+
+  // step3. read current redo log from redo logfile
+   byte *tmp_ptr = static_cast<byte*>(
+       ut_zalloc_nokey(4096 * 2 + OS_FILE_LOG_BLOCK_SIZE));
+
+  byte *tmp = static_cast<byte*>(
+  ut_align(tmp_ptr, OS_FILE_LOG_BLOCK_SIZE));
+
+  log_group_read_log_seg(
+      tmp, group, start_lsn, end_lsn);
+
+  // step4 parsing test
+  mlog_id_t type;
+  ulint space, page_no;
+  byte *body;
+
+  byte *ptr = tmp;
+  byte *end_ptr = tmp + OS_FILE_LOG_BLOCK_SIZE;
+
+  recv_parse_log_rec(&type, ptr +  log_block_get_first_rec_group(tmp), end_ptr, &space, &page_no, false, &body);
+
+  ib::info() << "(log parse wroks) space: " 
+    << space << ":" << page_no
+    << " type: " << type;
+  }
+  */
  /*
   lsn_t nvdimm_lsn = nvdimm_buf_pool_get_oldest_modification(); 
   if (nvdimm_lsn != 0) {
@@ -1924,8 +2066,8 @@ log_checkpoint(
   log_group_t*  max_cp_group;
     ulint   max_cp_field;
   dberr_t err = recv_find_max_checkpoint(&max_cp_group, &max_cp_field);
-  if (err != DB_SUCCESS) {
-    ib::info() << "Error!";
+  if (err != db_success) {
+    ib::info() << "error!";
   }
   log_group_header_read(max_cp_group, max_cp_field);
 
@@ -2111,11 +2253,10 @@ loop:
 	       (ulint) (source_offset % univ_page_size.physical()),
 	       len, buf, NULL);
 
-	start_lsn += len;
+  start_lsn += len;
 	buf += len;
 
 	if (start_lsn != end_lsn) {
-
 		goto loop;
 	}
 }
