@@ -504,6 +504,9 @@ SYSCONFDIR:PATH=/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/bld/etc
 //path to the executable
 TAR_EXECUTABLE:FILEPATH=/bin/tar
 
+//The directory containing a CMake configuration file for TBB.
+TBB_DIR:PATH=TBB_DIR-NOTFOUND
+
 //PATH to MySQL TMP dir. Defaults to the P_tmpdir macro in <stdio.h>
 TMPDIR:PATH=P_tmpdir
 

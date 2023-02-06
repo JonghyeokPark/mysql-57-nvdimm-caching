@@ -5,6 +5,7 @@ storage/innobase/cmake_install.cmake
 cscope.*
 storage/innobase/tags
 
+Docs/
 *.swp
 bld/
 boost/
@@ -3122,4 +3123,3 @@ client/mysql_ssl_rsa_setup
 
 # Allow
 !include/*/boost/geometry/*
-
