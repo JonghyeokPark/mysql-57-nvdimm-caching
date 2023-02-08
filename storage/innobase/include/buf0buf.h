@@ -165,7 +165,12 @@ struct buf_pool_info_t{
 					threads */
 	ulint	n_pending_flush_list;	/*!< Pages pending flush in FLUSH
 					LIST */
-	ulint	n_pages_made_young;	/*!< number of pages made young */
+#ifdef UNIV_FLUSH_MONITOR
+	ulint	n_flush_lru;        /*!< Pages flushed in LRU */
+    ulint	n_flush_spf;        /*!< Pages flushed in SPF */
+	ulint	n_flush_flush_list;	/*!< Pages flushed in FLUSH LIST */
+#endif /* UNIV_FLUSH_MONITOR */
+    ulint	n_pages_made_young;	/*!< number of pages made young */
 	ulint	n_pages_not_made_young;	/*!< number of pages not made young */
 	ulint	n_pages_read;		/*!< buf_pool->n_pages_read */
 	ulint	n_pages_created;	/*!< buf_pool->n_pages_created */
@@ -460,6 +465,10 @@ zero if all modified pages have been flushed to disk.
 @return oldest modification in pool, zero if none */
 lsn_t
 buf_pool_get_oldest_modification(void);
+#ifdef UNIV_NVDIMM_CACHE
+lsn_t
+nvdimm_buf_pool_get_oldest_modification(void);
+#endif
 /*==================================*/
 
 /********************************************************************//**
@@ -1721,6 +1730,8 @@ public:
                              in the NVDIMM buffer */
     bool moved_to_nvdimm;  /*!< TRUE if the page needs to
                              be moved to the NVDIMM buffer */
+    ib_uint32_t update_count;
+    bool moved_to_new;
 #endif /* UNIV_NVDIMM_CACHE */
 };
 
@@ -2030,6 +2041,9 @@ public:
 	of the LRU list.
 	@return buf_page_t from where to start scan. */
 	buf_page_t* start();
+#ifdef UNIV_NVDIMM_CACHE
+  buf_page_t* start_nvdimm();
+#endif
 };
 
 /** Struct that is embedded in the free zip blocks */
@@ -2299,6 +2313,11 @@ struct buf_pool_t{
 # error "BUF_BUDDY_LOW > UNIV_ZIP_SIZE_MIN"
 #endif
 	/* @} */
+#ifdef UNIV_FLUSH_MONITOR
+    ulint	n_flush_lru;        /*!< Pages flushed in LRU */
+    ulint	n_flush_spf;        /*!< Pages flushed in SPF */
+	ulint	n_flush_flush_list;	/*!< Pages flushed in FLUSH LIST */
+#endif /* UNIV_FLUSH_MONITOR */
 };
 
 /** Print the given buf_pool_t object.

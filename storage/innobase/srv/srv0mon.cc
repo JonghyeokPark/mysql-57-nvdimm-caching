@@ -1181,6 +1181,42 @@ static monitor_info_t	innodb_counter_info[] =
 	 MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_DBLWR_PAGES_WRITTEN},
 
 #ifdef UNIV_NVDIMM_CACHE
+    {"innodb_nvdimm_pages_ckpt", "server",
+     "Number of checkpointed pages that currently been migrated to NVDIMM buffer"
+     " (innodb_nvdimm_pages_ckpt)",
+     static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_CKPT},
+
+    {"innodb_nvdimm_pages_lsngap", "server",
+     "Number of LRU-flushed pages that currently been migrated to NVDIMM buffer"
+     " (innodb_nvdimm_pages_lsnagp)",
+     static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_LSNGAP},
+
+    {"innodb_nvdimm_pages_stored_wh", "server",
+     "Number of warehouse pages that currently been stored in NVDIMM buffer"
+     " (innodb_nvdimm_pages_stored_wh)",
+     static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_WH},
+
+    {"innodb_nvdimm_pages_stored_dt", "server",
+     "Number of district pages that currently been stored in NVDIMM buffer"
+     " (innodb_nvdimm_pages_stored_dt)",
+     static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_DT},
+
+    {"innodb_nvdimm_pages_stored_ct", "server",
+     "Number of customer pages that currently been stored in NVDIMM buffer"
+     " (innodb_nvdimm_pages_stored_ct)",
+     static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_CT},
+
+    {"innodb_nvdimm_pages_stored_ht", "server",
+     "Number of history pages that currently been stored in NVDIMM buffer"
+     " (innodb_nvdimm_pages_stored_ht)",
+     static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_HT},
+
     {"innodb_nvdimm_pages_stored_st", "server",
      "Number of stock pages that currently been stored in NVDIMM buffer"
      " (innodb_nvdimm_pages_stored_st)",
@@ -1205,53 +1241,101 @@ static monitor_info_t	innodb_counter_info[] =
      static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
      MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_NO},
 
-    {"innodb_nvdimm_pages_read_st", "server",
-     "Number of stock pages that been read"
-     " (innodb_nvdimm_pages_read_st)",
+    {"innodb_nvdimm_pages_read_wh", "server",
+     "Number of warehouse pages that been read"
+     " (innodb_nvdimm_pages_read_wh)",
      static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
-     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_ST},
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_READ_WH},
 
-    {"innodb_nvdimm_pages_read_ol", "server",
-     "Number of order-line pages that been read"
-     " (innodb_nvdimm_pages_read_ol)",
+    {"innodb_nvdimm_pages_read_dt", "server",
+     "Number of district pages that been read"
+     " (innodb_nvdimm_pages_read_dt)",
      static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
-     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_OL},
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_READ_DT},
+
+    {"innodb_nvdimm_pages_read_ct", "server",
+     "Number of customer pages that been read"
+     " (innodb_nvdimm_pages_read_ct)",
+     static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_READ_CT},
+
+    {"innodb_nvdimm_pages_read_ht", "server",
+     "Number of history pages that been read"
+     " (innodb_nvdimm_pages_read_ht)",
+     static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_READ_HT},
 
     {"innodb_nvdimm_pages_read_od", "server",
      "Number of orders pages that been read"
      " (innodb_nvdimm_pages_read_od)",
      static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
-     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_OD},
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_READ_OD},
 
     {"innodb_nvdimm_pages_read_no", "server",
      "Number of new-orders pages that been read"
      " (innodb_nvdimm_pages_read_no)",
      static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
-     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_NO},
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_READ_NO},
+
+    {"innodb_nvdimm_pages_read_st", "server",
+     "Number of stock pages that been read"
+     " (innodb_nvdimm_pages_read_st)",
+     static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_READ_ST},
+
+    {"innodb_nvdimm_pages_read_ol", "server",
+     "Number of order-line pages that been read"
+     " (innodb_nvdimm_pages_read_ol)",
+     static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_READ_OL},
+
+    {"innodb_nvdimm_pages_written_wh", "server",
+     "Number of warehouse pages that been written"
+     " (innodb_nvdimm_pages_written_wh)",
+     static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_WRITTEN_WH},
+
+    {"innodb_nvdimm_pages_written_dt", "server",
+     "Number of district pages that been written"
+     " (innodb_nvdimm_pages_written_dt)",
+     static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_WRITTEN_DT},
+
+    {"innodb_nvdimm_pages_written_ct", "server",
+     "Number of customer pages that been written"
+     " (innodb_nvdimm_pages_written_ct)",
+     static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_WRITTEN_CT},
+
+    {"innodb_nvdimm_pages_written_ht", "server",
+     "Number of history pages that been written"
+     " (innodb_nvdimm_pages_written_ht)",
+     static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_WRITTEN_HT},
 
     {"innodb_nvdimm_pages_written_st", "server",
      "Number of stock pages that been written"
      " (innodb_nvdimm_pages_written_st)",
      static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
-     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_ST},
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_WRITTEN_ST},
 
     {"innodb_nvdimm_pages_written_ol", "server",
      "Number of order-line pages that been written"
      " (innodb_nvdimm_pages_written_ol)",
      static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
-     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_OL},
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_WRITTEN_OL},
 
     {"innodb_nvdimm_pages_written_od", "server",
      "Number of orders pages that been written"
      " (innodb_nvdimm_pages_written_od)",
      static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
-     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_OD},
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_WRITTEN_OD},
 
     {"innodb_nvdimm_pages_written_no", "server",
      "Number of new-orders pages that been written"
      " (innodb_nvdimm_pages_written_no)",
      static_cast<monitor_type_t>(MONITOR_EXISTING | MONITOR_DEFAULT_ON),
-     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_NO},
+     MONITOR_DEFAULT_START, MONITOR_OVLD_SRV_NVDIMM_PAGES_WRITTEN_NO},
 #endif /* UNIV_NVDIMM_CACHE */
 
 	{"innodb_page_size", "server",
@@ -1796,6 +1880,36 @@ srv_mon_process_existing_counter(
 		break;
 
 #ifdef UNIV_NVDIMM_CACHE
+    /* innodb_nvdimm_pages_ckpt */
+    case MONITOR_OVLD_SRV_NVDIMM_PAGES_CKPT:
+        value = srv_stats.nvdimm_pages_ckpt;
+        break;
+
+    /* innodb_nvdimm_pages_lsngap */
+    case MONITOR_OVLD_SRV_NVDIMM_PAGES_LSNGAP:
+        value = srv_stats.nvdimm_pages_lsngap;
+        break;
+
+    /* innodb_nvdimm_pages_stored_wh */
+    case MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_WH:
+        value = srv_stats.nvdimm_pages_stored_wh;
+        break;
+
+    /* innodb_nvdimm_pages_stored_dt */
+    case MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_DT:
+        value = srv_stats.nvdimm_pages_stored_dt;
+        break;
+
+    /* innodb_nvdimm_pages_stored_ct */
+    case MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_CT:
+        value = srv_stats.nvdimm_pages_stored_ct;
+        break;
+
+    /* innodb_nvdimm_pages_stored_ht */
+    case MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_HT:
+        value = srv_stats.nvdimm_pages_stored_ht;
+        break;
+
     /* innodb_nvdimm_pages_stored_st */
     case MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_ST:
         value = srv_stats.nvdimm_pages_stored_st;
@@ -1814,6 +1928,26 @@ srv_mon_process_existing_counter(
     /* innodb_nvdimm_pages_stored_no */
     case MONITOR_OVLD_SRV_NVDIMM_PAGES_STORED_NO:
         value = srv_stats.nvdimm_pages_stored_no;
+        break;
+
+    /* innodb_nvdimm_pages_read_wh */
+    case MONITOR_OVLD_SRV_NVDIMM_PAGES_READ_WH:
+        value = srv_stats.nvdimm_pages_read_wh;
+        break;
+
+    /* innodb_nvdimm_pages_read_dt */
+    case MONITOR_OVLD_SRV_NVDIMM_PAGES_READ_DT:
+        value = srv_stats.nvdimm_pages_read_dt;
+        break;
+
+    /* innodb_nvdimm_pages_read_ct */
+    case MONITOR_OVLD_SRV_NVDIMM_PAGES_READ_CT:
+        value = srv_stats.nvdimm_pages_read_ct;
+        break;
+
+    /* innodb_nvdimm_pages_read_ht */
+    case MONITOR_OVLD_SRV_NVDIMM_PAGES_READ_HT:
+        value = srv_stats.nvdimm_pages_read_ht;
         break;
 
     /* innodb_nvdimm_pages_read_st */
@@ -1836,6 +1970,25 @@ srv_mon_process_existing_counter(
         value = srv_stats.nvdimm_pages_read_no;
         break;
 
+    /* innodb_nvdimm_pages_written_wh */
+    case MONITOR_OVLD_SRV_NVDIMM_PAGES_WRITTEN_WH:
+        value = srv_stats.nvdimm_pages_written_wh;
+        break;
+
+    /* innodb_nvdimm_pages_written_dt */
+    case MONITOR_OVLD_SRV_NVDIMM_PAGES_WRITTEN_DT:
+        value = srv_stats.nvdimm_pages_written_dt;
+        break;
+
+    /* innodb_nvdimm_pages_written_ct */
+    case MONITOR_OVLD_SRV_NVDIMM_PAGES_WRITTEN_CT:
+        value = srv_stats.nvdimm_pages_written_ct;
+        break;
+
+    /* innodb_nvdimm_pages_written_ht */
+    case MONITOR_OVLD_SRV_NVDIMM_PAGES_WRITTEN_HT:
+        value = srv_stats.nvdimm_pages_written_ht;
+        break;
     /* innodb_nvdimm_pages_written_st */
     case MONITOR_OVLD_SRV_NVDIMM_PAGES_WRITTEN_ST:
         value = srv_stats.nvdimm_pages_written_st;

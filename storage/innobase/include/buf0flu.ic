@@ -85,6 +85,10 @@ buf_flush_note_modification(
 	ut_ad(block->page.newest_modification <= end_lsn);
 	block->page.newest_modification = end_lsn;
 
+#ifdef UNIV_NVDIMM_CACHE
+  block->page.update_count++;
+#endif
+
 	/* Don't allow to set flush observer from non-null to null,
 	or from one observer to another. */
 	ut_ad(block->page.flush_observer == NULL

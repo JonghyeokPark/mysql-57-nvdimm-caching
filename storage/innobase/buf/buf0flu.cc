@@ -97,11 +97,34 @@ mysql_pfs_key_t page_cleaner_thread_key;
 mysql_pfs_key_t page_flush_nvdimm_thread_key;
 os_event_t buf_flush_nvdimm_event;
 bool buf_nvdimm_page_cleaner_is_active = false;
-#ifdef UNIV_NVDIMM_CACHE_ST
+
 mysql_pfs_key_t page_flush_nvdimm_stock_thread_key;
 os_event_t buf_flush_nvdimm_stock_event;
 bool buf_nvdimm_stock_page_cleaner_is_active = false;
-#endif /* UNIV_NVDIMM_CACHE_ST */
+
+mysql_pfs_key_t page_flush_nvdimm_thread2_key;
+os_event_t buf_flush_nvdimm_event2;
+bool buf_nvdimm_page_cleaner2_is_active = false;
+
+mysql_pfs_key_t page_flush_nvdimm_thread3_key;
+os_event_t buf_flush_nvdimm_event3;
+bool buf_nvdimm_page_cleaner3_is_active = false;
+
+mysql_pfs_key_t page_flush_nvdimm_thread4_key;
+os_event_t buf_flush_nvdimm_event4;
+bool buf_nvdimm_page_cleaner4_is_active = false;
+
+mysql_pfs_key_t page_flush_nvdimm_thread5_key;
+os_event_t buf_flush_nvdimm_event5;
+bool buf_nvdimm_page_cleaner5_is_active = false;
+
+mysql_pfs_key_t page_flush_nvdimm_thread6_key;
+os_event_t buf_flush_nvdimm_event6;
+bool buf_nvdimm_page_cleaner6_is_active = false;
+
+mysql_pfs_key_t page_flush_nvdimm_thread7_key;
+os_event_t buf_flush_nvdimm_event7;
+bool buf_nvdimm_page_cleaner7_is_active = false;
 #endif /* UNIV_NVDIMM_CACHE */
 
 /** Event to synchronise with the flushing. */
@@ -654,6 +677,7 @@ buf_flush_remove(
 /*=============*/
 	buf_page_t*	bpage)	/*!< in: pointer to the block in question */
 {
+
 	buf_pool_t*	buf_pool = buf_pool_from_bpage(bpage);
 
 	ut_ad(buf_pool_mutex_own(buf_pool));
@@ -1053,13 +1077,28 @@ buf_flush_write_block_low(
 	/* Force the log to the disk before writing the modified block */
 	if (!srv_read_only_mode) {
 #ifdef UNIV_NVDIMM_CACHE
-			if (bpage->buf_pool_index < srv_buf_pool_instances) {
-				log_write_up_to(bpage->newest_modification, true);
-			}
+     // (jhpark): NV-SQL-V1
+     
+     if ( 
+         //!srv_use_nvdimm_redo&& 
+         bpage->buf_pool_index < srv_buf_pool_instances
+         ) {
+        log_write_up_to(bpage->newest_modification, true);
+     }
+          
+     //if (!srv_use_nvdimm_redo) {
+     //   log_write_up_to(bpage->newest_modification, true);
+     //}
+     
 #else
-			log_write_up_to(bpage->newest_modification, true);
+	log_write_up_to(bpage->newest_modification, true);
 #endif /* UNIV_NVDIMM_CACHE */
 	}
+
+  // KKK
+#ifdef UNIV_NVDIMM_CACHE
+  uint64_t org_page_lsn;
+#endif
 
 	switch (buf_page_get_state(bpage)) {
 	case BUF_BLOCK_POOL_WATCH:
@@ -1083,13 +1122,24 @@ buf_flush_write_block_low(
 		if (!frame) {
 			frame = ((buf_block_t*) bpage)->frame;
 		}
+/*
+    if (bpage->moved_to_nvdimm
+        && bpage->buf_pool_index < srv_buf_pool_instances
+        && bpage->buf_fix_count == 0
+        && !is_pmem_recv
+        ) {
+      // (jhpark): this page_lsn info may not use promptly because (to-be) nvdimm caching page's buf_fix_count 
+      // is increased soon.
+        org_page_lsn = mach_read_from_8(reinterpret_cast<const buf_block_t *>(bpage)->frame + FIL_PAGE_LSN);
+    }  
+ */
+  	buf_flush_init_for_writing(
+        reinterpret_cast<const buf_block_t*>(bpage),
+        reinterpret_cast<const buf_block_t*>(bpage)->frame,
+		  	bpage->zip.data ? &bpage->zip : NULL,
+			  bpage->newest_modification,
+			  fsp_is_checksum_disabled(bpage->id.space()));
 
-		buf_flush_init_for_writing(
-			reinterpret_cast<const buf_block_t*>(bpage),
-			reinterpret_cast<const buf_block_t*>(bpage)->frame,
-			bpage->zip.data ? &bpage->zip : NULL,
-			bpage->newest_modification,
-			fsp_is_checksum_disabled(bpage->id.space()));
 		break;
 	}
 
@@ -1100,7 +1150,11 @@ buf_flush_write_block_low(
 #ifdef UNIV_NVDIMM_CACHE
     if (bpage->moved_to_nvdimm
         && bpage->buf_pool_index < srv_buf_pool_instances
-        && bpage->buf_fix_count == 0) {
+//        && !rw_lock_get_waiters(&reinterpret_cast<buf_block_t*>(bpage)->lock)
+//        && !rw_lock_get_reader_count(&reinterpret_cast<buf_block_t*>(bpage)->lock)
+        && bpage->buf_fix_count == 0        
+        && !is_pmem_recv
+        ) {
     
         buf_page_t *nvdimm_page;
         page_id_t page_id(bpage->id.space(), bpage->id.page_no());
@@ -1111,34 +1165,61 @@ buf_flush_write_block_low(
         nvdimm_page = buf_page_init_for_read(&err, BUF_MOVE_TO_NVDIMM, page_id, page_size, false);
         
         if (nvdimm_page == NULL)    goto normal;
-        
-        /*ib::info() << "page_id = " << bpage->id.space()
+
+       /* 
+           ib::info() << "page_id = " << bpage->id.space()
             << " offset = " << bpage->id.page_no() 
             << " dst = " << &(((buf_block_t *)nvdimm_page)->frame) << " src = " << &(((buf_block_t *)bpage)->frame)
-            << " flush-type = " << bpage->flush_type;*/
-        memcpy(((buf_block_t *)nvdimm_page)->frame, ((buf_block_t *)bpage)->frame, UNIV_PAGE_SIZE);
+            << " flush-type = " << bpage->flush_type;
+       */
 
-        /* Set the oldest LSN of the NVDIMM page to the previous newest LSN. */
-        buf_flush_note_modification((buf_block_t *)nvdimm_page, bpage->newest_modification, bpage->newest_modification, nvdimm_page->flush_observer);
-
-        // TODO: NVDIMM-porting
-        // 1
+        memcpy(((buf_block_t *)nvdimm_page)->frame, ((buf_block_t *)bpage)->frame, UNIV_PAGE_SIZE);        
         flush_cache(((buf_block_t *)nvdimm_page)->frame, UNIV_PAGE_SIZE);
-        // 2
-        
+
+        // (jhpark): re-write the page LSN
+        /*
+        buf_flush_init_for_writing(
+          reinterpret_cast<const buf_block_t*>(nvdimm_page),
+          reinterpret_cast<const buf_block_t*>(nvdimm_page)->frame,
+  		  	nvdimm_page->zip.data ? &bpage->zip : NULL,
+          bpage->oldest_modification,
+		  	  fsp_is_checksum_disabled(nvdimm_page->id.space()));
+        */
+        uint64_t oldest_lsn = bpage->oldest_modification;
+        uint64_t newest_lsn = bpage->newest_modification;
+
         /* Remove the target page from the original buffer pool. */
         buf_page_io_complete(bpage, true);
-        buf_page_io_complete(nvdimm_page);
-        
+       
+        /* Set the oldest LSN of the NVDIMM page to the previous newest LSN. */       
+        buf_flush_note_modification(
+            (buf_block_t *)nvdimm_page
+            , oldest_lsn
+            , newest_lsn
+            //, 0
+            , nvdimm_page->flush_observer);
+        buf_page_io_complete(nvdimm_page, false);
+
+
         /*buf_pool_t*	buf_pool = buf_pool_from_bpage(nvdimm_page);
         ib::info() << nvdimm_page->id.space() << " "
                 << nvdimm_page->id.page_no() << " is moved to "
                 << nvdimm_page->buf_pool_index << " from " << bpage->buf_pool_index;*/
     } else {
+
 normal:
         bpage->moved_to_nvdimm = false;
-
-        /*ib::info() << bpage->id.space() << " " << bpage->id.page_no()
+        /* mijin */
+        
+        /*if (bpage->cached_in_nvdimm) {
+          ib::info() << bpage->id.space() << " " << bpage->id.page_no()
+            << " update-count: " << bpage->update_count
+            << " moved_to_new: " << bpage->moved_to_new;
+        }*/
+        
+        /* end */
+/*
+           ib::info() << bpage->id.space() << " " << bpage->id.page_no()
                 << " is batch written. cached? " << bpage->cached_in_nvdimm
                 << " moved? " << bpage->moved_to_nvdimm
                 << " flush-type: " << flush_type
@@ -1150,8 +1231,11 @@ normal:
         if (!srv_use_doublewrite_buf
             || buf_dblwr == NULL
             || srv_read_only_mode
-            || fsp_is_system_temporary(bpage->id.space())
-            || bpage->cached_in_nvdimm) {
+            || fsp_is_system_temporary(bpage->id.space()) 
+            || bpage->cached_in_nvdimm
+            ){
+            // (JJJ) // HOT DEBUG
+            //|| bpage->cached_in_nvdimm) {
         
             ut_ad(!srv_read_only_mode
                     || fsp_is_system_temporary(bpage->id.space()));
@@ -1174,10 +1258,7 @@ normal:
             fil_io(request,
                     sync, bpage->id, bpage->size, 0, bpage->size.physical(),
                     frame, bpage); 
-
-            // jhpark: write oldest_modification_lsn of current NVDIMM-caching page
-            pm_mmap_write_logfile_header_lsn(bpage->oldest_modification);
-
+       
         } else if (flush_type == BUF_FLUSH_SINGLE_PAGE) {
             buf_dblwr_write_single_page(bpage, sync);
         } else {
@@ -1194,17 +1275,13 @@ normal:
                 fil_flush(bpage->id.space());
             }
             
-            /*ib::info() << bpage->id.space() << " "
-                << bpage->id.page_no() << " is spf "
-                << bpage->buf_pool_index << " cached? " << bpage->cached_in_nvdimm;
-*/
             /* true means we want to evict this page from the
                LRU list as well. */
             buf_page_io_complete(bpage, true);
         }
     }
 #else
-	if (!srv_use_doublewrite_buf
+    if (!srv_use_doublewrite_buf
 	    || buf_dblwr == NULL
 	    || srv_read_only_mode
 	    || fsp_is_system_temporary(bpage->id.space())) {
@@ -1319,60 +1396,70 @@ buf_flush_page(
 		++buf_pool->n_flush[flush_type];
 
 #ifdef UNIV_NVDIMM_CACHE
-        /* Separate Order-Line leaf page from the other pages. */
-        if (bpage->id.space() == 30 /* Order-Line tablespace */
-            && bpage->buf_fix_count == 0 /* Not fixed */
-            && !bpage->cached_in_nvdimm) { /* Not cached in NVDIMM */
+        /* mijin */
+    /*
+        if (bpage->id.space() >= 24 && bpage->id.space() <= 32) {
+            lsn_t before_lsn = mach_read_from_8(reinterpret_cast<const buf_block_t *>(bpage)->frame + FIL_PAGE_LSN);
+            lsn_t lsn_gap = bpage->oldest_modification - before_lsn;
             
-            const byte *frame =
-                bpage->zip.data != NULL ? bpage->zip.data : ((buf_block_t *)bpage)->frame;
-
-            const ulint page_type = fil_page_get_type(frame);
-
-            if ((page_type == FIL_PAGE_INDEX || page_type == FIL_PAGE_RTREE) /* Index page */
-                && page_is_leaf(frame) /* Leaf page */) {
-                //ib::info() << bpage->id.space() << " " << bpage->id.page_no() << " ol " << bpage->flush_type;
-                bpage->moved_to_nvdimm = true;
-            }
+            ib::info() << bpage->id.space() << " " << bpage->id.page_no()
+                << " is written with flush-type: " << flush_type
+                << " lsn-gap: " << lsn_gap;
         }
-#ifdef UNIV_NVDIMM_CACHE_OD
-        /* Separate Orders leaf page from the other pages. */
-        if (bpage->id.space() == 29 /* Order-Line tablespace */
+    */
+        /* end */
+
+      if (bpage->flush_type == BUF_FLUSH_LIST
+            && (bpage->id.space() >= 24 && bpage->id.space() <= 32)
             && bpage->buf_fix_count == 0 /* Not fixed */
+            && !bpage->moved_to_nvdimm
             && !bpage->cached_in_nvdimm) { /* Not cached in NVDIMM */
-            
-            const byte *frame =
-                bpage->zip.data != NULL ? bpage->zip.data : ((buf_block_t *)bpage)->frame;
 
-            const ulint page_type = fil_page_get_type(frame);
+            //const byte *frame =
+            //    bpage->zip.data != NULL ? bpage->zip.data : ((buf_block_t *)bpage)->frame;
 
-            if ((page_type == FIL_PAGE_INDEX || page_type == FIL_PAGE_RTREE) /* Index page */
-                && page_is_leaf(frame) /* Leaf page */) {
-                //ib::info() << bpage->id.space() << " " << bpage->id.page_no() << " od " << bpage->flush_type;
+            //if (page_is_leaf(frame) /* Leaf page */) {
                 bpage->moved_to_nvdimm = true;
-            }
+                srv_stats.nvdimm_pages_ckpt.inc();
+            //}
         }
-#endif /* UNIV_NVDIMM_CACHE_OD */
-#ifdef UNIV_NVDIMM_CACHE_ST
-        if (bpage->id.space() == 32 /* Stock tablespace */
+
+        if ((bpage->id.space() >= 24 && bpage->id.space() <= 32)
                    && bpage->buf_fix_count == 0 /* Not fixed */
+                   && !bpage->moved_to_nvdimm
                    && !bpage->cached_in_nvdimm) { /* Not cached in NVDIMM */
             lsn_t before_lsn = mach_read_from_8(reinterpret_cast<const buf_block_t *>(bpage)->frame + FIL_PAGE_LSN);
             lsn_t lsn_gap = bpage->oldest_modification - before_lsn;
 
             /* FIXME: Ad-hoc method */
-            if (0 < lsn_gap && lsn_gap < 15000000000) {
-            //if (0 < lsn_gap && lsn_gap < 500000000) {
-                //ib::info() << bpage->id.space() << " " << bpage->id.page_no() 
-                   // << " st " << bpage->flush_type << " " << lsn_gap;
+            // 970pro gap
+            if (0 < lsn_gap && lsn_gap < 30000000000) {
+            // 970pro + nobarrer
+            //if (0 < lsn_gap && lsn_gap < 26436991155) {
+            // micron gap
+            //if (0 < lsn_gap && lsn_gap < 15956238433) {
+            // p3600 gap
+            //if (0 < lsn_gap && lsn_gap < 18267379426) {
+            //if (0 < lsn_gap && lsn_gap < 19697259345) {
+            // JJJ
+            //if (0 < lsn_gap && lsn_gap < 9697259345) {
+            //if (0 < lsn_gap && lsn_gap < 3939451869) {
+            //if (0 < lsn_gap && lsn_gap < 9697259345) {
+            //if (0 < lsn_gap && lsn_gap < 1969725934) {
+            // PM9a3 gap
+            //if (0 < lsn_gap && lsn_gap < 27016753652) {
+            //if (0 < lsn_gap && lsn_gap < 20656386073) {
+            // 980 Pro gap
+            //if (0 < lsn_gap && lsn_gap < 17488271637) {
                 bpage->moved_to_nvdimm = true;
+                srv_stats.nvdimm_pages_lsngap.inc();
             }
         }
-#endif /* UNIV_NVDIMM_CACHE_ST */
+
 #endif /* UNIV_NVDIMM_CACHE */
 		
-        mutex_exit(block_mutex);
-		buf_pool_mutex_exit(buf_pool);
+      mutex_exit(block_mutex);
+		  buf_pool_mutex_exit(buf_pool);
 		
         if (flush_type == BUF_FLUSH_LIST
 		    && is_uncompressed
@@ -1407,18 +1494,25 @@ buf_flush_page(
 		buffer pool or removed from flush_list or LRU_list. */
 
         /* mijin */
-        if (bpage->id.space() == 32) {
+        /*if (bpage->id.space() == 32) {
             lsn_t before_lsn = mach_read_from_8(reinterpret_cast<const buf_block_t *>(bpage)->frame + FIL_PAGE_LSN);
             lsn_t lsn_gap = bpage->oldest_modification - before_lsn;
             
             ib::info() << bpage->id.space() << " " << bpage->id.page_no()
                 << " is written with flush-type: " << flush_type
                 << " lsn-gap: " << lsn_gap
-					      << " before lsn: " << before_lsn
-        				<< " oldest lsn: " << bpage->oldest_modification
                 << " fix-count: " << bpage->buf_fix_count;
-        }
+        }*/
         /* end */
+#ifdef UNIV_FLUSH_MONITOR
+        if (bpage->flush_type == BUF_FLUSH_LIST) {
+            buf_pool->n_flush_flush_list++;
+        } else if (bpage->flush_type == BUF_FLUSH_LRU) {
+            buf_pool->n_flush_lru++;
+        } else if (bpage->flush_type == BUF_FLUSH_SINGLE_PAGE) {
+            buf_pool->n_flush_spf++;
+        }
+#endif /* UNIV_FLUSH_MONITOR */
 
 		buf_flush_write_block_low(bpage, flush_type, sync);
     }
@@ -2309,7 +2403,46 @@ buf_flush_lists(
 	}
 
 	/* Flush to lsn_limit in all buffer pool instances */
-	for (i = 0; i < srv_buf_pool_instances; i++) {
+
+  if (nc_flush_flag) {
+
+  //ib::info() << "flush NC-resident pages!";
+
+  for (i = srv_buf_pool_instances; i < srv_buf_pool_instances + srv_nvdimm_buf_pool_instances; i++) {
+		buf_pool_t*	buf_pool;
+		ulint		page_count = 0;
+
+		buf_pool = buf_pool_from_array(i);
+
+		if (!buf_flush_do_batch(buf_pool,
+					BUF_FLUSH_LIST,
+					min_n,
+					lsn_limit,
+					&page_count)) {
+			/* We have two choices here. If lsn_limit was
+			specified then skipping an instance of buffer
+			pool means we cannot guarantee that all pages
+			up to lsn_limit has been flushed. We can
+			return right now with failure or we can try
+			to flush remaining buffer pools up to the
+			lsn_limit. We attempt to flush other buffer
+			pools based on the assumption that it will
+			help in the retry which will follow the
+			failure. */
+			success = false;
+
+			continue;
+		}
+
+		n_flushed += page_count;
+	}
+
+    nc_flush_flag = false;
+  }
+
+  // ZZZ
+  //for (i = 0; i < srv_buf_pool_instances + srv_nvdimm_buf_pool_instances; i++) {
+  for (i = 0; i < srv_buf_pool_instances; i++) {
 		buf_pool_t*	buf_pool;
 		ulint		page_count = 0;
 
@@ -2440,6 +2573,91 @@ buf_flush_single_page_from_LRU(
 
 	return(freed);
 }
+#ifdef UNIV_NVDIMM_CACHE
+bool
+buf_flush_single_page_from_NVDIMM_bufpool(
+/*===========================*/
+	buf_pool_t*	buf_pool)	/*!< in/out: buffer pool instance */
+{
+	ulint		scanned;
+	buf_page_t*	bpage;
+	ibool		freed;
+
+	buf_pool_mutex_enter(buf_pool);
+
+	for (bpage = buf_pool->single_scan_itr.start_nvdimm(), scanned = 0,
+	     freed = false;
+	     bpage != NULL;
+	     ++scanned, bpage = buf_pool->single_scan_itr.get()) {
+
+		ut_ad(buf_pool_mutex_own(buf_pool));
+
+		buf_page_t*	prev = UT_LIST_GET_PREV(LRU, bpage);
+      
+		buf_pool->single_scan_itr.set(prev);
+
+		BPageMutex*	block_mutex;
+
+		block_mutex = buf_page_get_mutex(bpage);
+
+		mutex_enter(block_mutex);
+
+		if (buf_flush_ready_for_replace(bpage)) {
+			/* block is ready for eviction i.e., it is
+			clean and is not IO-fixed or buffer fixed. */
+			mutex_exit(block_mutex);
+            
+            if (buf_LRU_free_page(bpage, true)) {
+				buf_pool_mutex_exit(buf_pool);
+				freed = true;
+				break;
+			}
+
+		} else if (buf_flush_ready_for_flush(
+				   bpage, BUF_FLUSH_SINGLE_PAGE)) {
+
+			/* Block is ready for flush. Try and dispatch an IO
+			request. We'll put it on free list in IO completion
+			routine if it is not buffer fixed. The following call
+			will release the buffer pool and block mutex.
+
+			Note: There is no guarantee that this page has actually
+			been freed, only that it has been flushed to disk */
+           
+			freed = buf_flush_page(
+				buf_pool, bpage, BUF_FLUSH_SINGLE_PAGE, true);
+
+			if (freed) {
+                break;
+			}
+
+			mutex_exit(block_mutex);
+		} else {
+			mutex_exit(block_mutex);
+		}
+        
+        ut_ad(!mutex_own(block_mutex));
+	}
+
+	if (!freed) {
+		/* Can't find a single flushable page. */
+		ut_a(!bpage);
+		buf_pool_mutex_exit(buf_pool);
+	}
+
+	if (scanned) {
+		MONITOR_INC_VALUE_CUMULATIVE(
+			MONITOR_LRU_SINGLE_FLUSH_SCANNED,
+			MONITOR_LRU_SINGLE_FLUSH_SCANNED_NUM_CALL,
+			MONITOR_LRU_SINGLE_FLUSH_SCANNED_PER_CALL,
+			scanned);
+	}
+
+	ut_ad(!buf_pool_mutex_own(buf_pool));
+
+	return(freed);
+}
+#endif
 
 /**
 Clears up tail of the LRU list of a given buffer pool instance:
@@ -3920,10 +4138,17 @@ FlushObserver::FlushObserver(
 	m_stage(stage),
 	m_interrupted(false)
 {
+#ifdef UNIV_NVDIMM_CACHE
+	m_flushed = UT_NEW_NOKEY(std::vector<ulint>(srv_buf_pool_instances + srv_nvdimm_buf_pool_instances));
+	m_removed = UT_NEW_NOKEY(std::vector<ulint>(srv_buf_pool_instances + srv_nvdimm_buf_pool_instances));
+
+	for (ulint i = 0; i < srv_buf_pool_instances + srv_nvdimm_buf_pool_instances; i++) {
+#else
 	m_flushed = UT_NEW_NOKEY(std::vector<ulint>(srv_buf_pool_instances));
 	m_removed = UT_NEW_NOKEY(std::vector<ulint>(srv_buf_pool_instances));
 
-	for (ulint i = 0; i < srv_buf_pool_instances; i++) {
+  for (ulint i = 0; i < srv_buf_pool_instances; i++) {
+#endif
 		m_flushed->at(i) = 0;
 		m_removed->at(i) = 0;
 	}
@@ -4060,8 +4285,6 @@ buf_flush_nvdimm_LRU_list_batch(
 
 		buf_page_t* prev = UT_LIST_GET_PREV(LRU, bpage);
 		buf_pool->lru_hp.set(prev);
-
-        //if (bpage->id.space() == 28)  continue;
 
 		BPageMutex*	block_mutex = buf_page_get_mutex(bpage);
 
@@ -4232,56 +4455,17 @@ DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
     buf_nvdimm_page_cleaner_is_active = true;
 
     ulint n_flushed = 0;
-    ulint next_loop_time = ut_time_ms() + 1000;
     ulint last_activity = srv_get_activity_count();
 
     os_event_wait(buf_flush_nvdimm_event);
 
-    ulint ret_sleep = 0;
-    ulint warn_interval = 1;
-    ulint warn_count = 0;
     buf_pool_t* buf_pool = &nvdimm_buf_pool_ptr[0];
     
     int64_t sig_count = os_event_reset(buf_flush_nvdimm_event);
 
     while (srv_shutdown_state == SRV_SHUTDOWN_NONE) {
-        if (srv_check_activity(last_activity) || n_flushed == 0) {
-            ret_sleep = pc_sleep_nvdimm_cleaner_if_needed(next_loop_time,
-                                    sig_count, buf_flush_nvdimm_event);
-        } else if (ut_time_ms() > next_loop_time) {
-            ret_sleep = OS_SYNC_TIME_EXCEEDED;
-        } else {
-            ret_sleep = 0;
-        }
-
+        os_event_wait(buf_flush_nvdimm_event);
         sig_count = os_event_reset(buf_flush_nvdimm_event);
-
-        if (ret_sleep == OS_SYNC_TIME_EXCEEDED) {
-            ulint curr_time = ut_time_ms();
-
-            if (curr_time > next_loop_time + 3000) {
-                if (warn_count == 0) {
-                    ib::info()
-                        << "NVDIMM Page cleaner took "
-                        << 1000 + curr_time - next_loop_time; 
-                    if (warn_interval > 300) {
-                        warn_interval = 600;
-                    } else {
-                        warn_interval *= 2;
-                    }
-
-                    warn_count = warn_interval;
-                } else {
-                    --warn_count;
-                }
-            } else {
-                /* reset counter */
-                warn_interval = 1;
-                warn_count = 0;
-            }
-
-            next_loop_time = curr_time + 1000;
-        }
 
         /* TODO: Need to fix for shutdown */
         if (!page_cleaner->is_running) {
@@ -4290,7 +4474,7 @@ DECLARE_THREAD(buf_flush_nvdimm_page_cleaner_thread)(
         
         if (srv_check_activity(last_activity)) {
             /* Flush pages from end of LRU */
-            buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
+            buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 2048, 0, &n_flushed);
         }
     }
 
@@ -4332,7 +4516,6 @@ thread_exit:
     OS_THREAD_DUMMY_RETURN;
 }
 
-#ifdef UNIV_NVDIMM_CACHE_ST
 /******************************************************************//**
 NVDIMM page_cleaner thread tasked with flushing dirty STOCK pages
 from the buffer pools.
@@ -4354,55 +4537,17 @@ DECLARE_THREAD(buf_flush_nvdimm_stock_cleaner_thread)(
     buf_nvdimm_stock_page_cleaner_is_active = true;
 
     ulint n_flushed = 0;
-    ulint next_loop_time = ut_time_ms() + 500;
     ulint last_activity = srv_get_activity_count();
 
     os_event_wait(buf_flush_nvdimm_stock_event);
 
-    ulint ret_sleep = 0;
-    ulint warn_interval = 1;
-    ulint warn_count = 0;
     buf_pool_t* buf_pool = &nvdimm_buf_pool_ptr[1];
+
     int64_t sig_count = os_event_reset(buf_flush_nvdimm_stock_event);
 
     while (srv_shutdown_state == SRV_SHUTDOWN_NONE) {
-        if (srv_check_activity(last_activity) || n_flushed == 0) {
-            ret_sleep = pc_sleep_nvdimm_cleaner_if_needed(next_loop_time,
-                                    sig_count, buf_flush_nvdimm_stock_event);
-        } else if (ut_time_ms() > next_loop_time) {
-            ret_sleep = OS_SYNC_TIME_EXCEEDED;
-        } else {
-            ret_sleep = 0;
-        }
-
+        os_event_wait(buf_flush_nvdimm_stock_event);
         sig_count = os_event_reset(buf_flush_nvdimm_stock_event);
-
-        if (ret_sleep == OS_SYNC_TIME_EXCEEDED) {
-            ulint curr_time = ut_time_ms();
-
-            if (curr_time > next_loop_time + 1500) {
-                if (warn_count == 0) {
-                    ib::info()
-                        << "NVDIMM Stock Page cleaner took "
-                        << 500 + curr_time - next_loop_time; 
-                    if (warn_interval > 300) {
-                        warn_interval = 600;
-                    } else {
-                        warn_interval *= 2;
-                    }
-
-                    warn_count = warn_interval;
-                } else {
-                    --warn_count;
-                }
-            } else {
-                /* reset counter */
-                warn_interval = 1;
-                warn_count = 0;
-            }
-
-            next_loop_time = curr_time + 500;
-        }
 
         /* TODO: Need to fix for shutdown */
         if (!page_cleaner->is_running) {
@@ -4411,7 +4556,7 @@ DECLARE_THREAD(buf_flush_nvdimm_stock_cleaner_thread)(
 
         if (srv_check_activity(last_activity)) {
             /* Flush pages from end of LRU */
-            buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
+            buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 2048, 0, &n_flushed);
         }
     }
 
@@ -4452,5 +4597,497 @@ thread_exit:
     os_thread_exit();
     OS_THREAD_DUMMY_RETURN;
 }
-#endif /* UNIV_NVDIMM_CACHE_ST */
+
+/******************************************************************//**
+NVDIMM page_cleaner thread tasked with flushing dirty pages from the
+buffer pools.
+@return a dummy parameter */
+extern "C"
+os_thread_ret_t
+DECLARE_THREAD(buf_flush_nvdimm_page_cleaner2_thread)(
+/*===============================================*/
+	void*	arg MY_ATTRIBUTE((unused)))
+			/*!< in: a dummy parameter required by
+			os_thread_create */
+{
+    my_thread_init();
+
+#ifdef UNIV_PFS_THREAD
+	pfs_register_thread(page_flush_nvdimm_thread2_key);
+#endif /* UNIV_PFS_THREAD */
+    
+    buf_nvdimm_page_cleaner2_is_active = true;
+
+    ulint n_flushed = 0;
+    ulint last_activity = srv_get_activity_count();
+
+    os_event_wait(buf_flush_nvdimm_event2);
+
+    buf_pool_t* buf_pool = &nvdimm_buf_pool_ptr[2];
+    
+    int64_t sig_count = os_event_reset(buf_flush_nvdimm_event2);
+
+    while (srv_shutdown_state == SRV_SHUTDOWN_NONE) {
+        os_event_wait(buf_flush_nvdimm_event2);
+        sig_count = os_event_reset(buf_flush_nvdimm_event2);
+
+        /* TODO: Need to fix for shutdown */
+        if (!page_cleaner->is_running) {
+            break;
+        }
+        
+        if (srv_check_activity(last_activity)) {
+            /* Flush pages from end of LRU */
+            buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 2048, 0, &n_flushed);
+        }
+    }
+
+    if (srv_fast_shutdown == 2
+            || srv_shutdown_state == SRV_SHUTDOWN_EXIT_THREADS) {
+        /* In very fast shutdown or when innodb failed to start, we
+           simulate a crash of the buffer pool. We are not required to do
+           any flushing. */
+        goto thread_exit;
+    }
+
+    n_flushed = 0;
+    do {
+        buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
+         
+        /* We sleep only if there are no pages to flush */
+		if (n_flushed == 0) {
+			os_thread_sleep(100000);
+		}
+    } while (srv_shutdown_state == SRV_SHUTDOWN_CLEANUP);
+
+    buf_flush_wait_nvdimm_LRU_batch_end(buf_pool);
+
+    n_flushed = 0;
+    do {
+        buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
+        
+        buf_flush_wait_nvdimm_LRU_batch_end(buf_pool);
+    } while (n_flushed > 0);
+
+    ut_a(UT_LIST_GET_LEN(buf_pool->flush_list) == 0);
+    
+    ib::info() << "Completed to clean the NVDIMM buffer";
+    
+thread_exit:
+    buf_nvdimm_page_cleaner2_is_active = false;
+    my_thread_end();
+    os_thread_exit();
+    OS_THREAD_DUMMY_RETURN;
+}
+
+/******************************************************************//**
+NVDIMM page_cleaner thread tasked with flushing dirty pages from the
+buffer pools.
+@return a dummy parameter */
+extern "C"
+os_thread_ret_t
+DECLARE_THREAD(buf_flush_nvdimm_page_cleaner3_thread)(
+/*===============================================*/
+	void*	arg MY_ATTRIBUTE((unused)))
+			/*!< in: a dummy parameter required by
+			os_thread_create */
+{
+    my_thread_init();
+
+#ifdef UNIV_PFS_THREAD
+	pfs_register_thread(page_flush_nvdimm_thread3_key);
+#endif /* UNIV_PFS_THREAD */
+    
+    buf_nvdimm_page_cleaner3_is_active = true;
+
+    ulint n_flushed = 0;
+    ulint last_activity = srv_get_activity_count();
+
+    os_event_wait(buf_flush_nvdimm_event3);
+
+    buf_pool_t* buf_pool = &nvdimm_buf_pool_ptr[3];
+    
+    int64_t sig_count = os_event_reset(buf_flush_nvdimm_event3);
+
+    while (srv_shutdown_state == SRV_SHUTDOWN_NONE) {
+        os_event_wait(buf_flush_nvdimm_event3);
+        sig_count = os_event_reset(buf_flush_nvdimm_event3);
+
+        /* TODO: Need to fix for shutdown */
+        if (!page_cleaner->is_running) {
+            break;
+        }
+        
+        if (srv_check_activity(last_activity)) {
+            /* Flush pages from end of LRU */
+            buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 2048, 0, &n_flushed);
+        }
+    }
+
+    if (srv_fast_shutdown == 2
+            || srv_shutdown_state == SRV_SHUTDOWN_EXIT_THREADS) {
+        /* In very fast shutdown or when innodb failed to start, we
+           simulate a crash of the buffer pool. We are not required to do
+           any flushing. */
+        goto thread_exit;
+    }
+
+    n_flushed = 0;
+    do {
+        buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
+         
+        /* We sleep only if there are no pages to flush */
+		if (n_flushed == 0) {
+			os_thread_sleep(100000);
+		}
+    } while (srv_shutdown_state == SRV_SHUTDOWN_CLEANUP);
+
+    buf_flush_wait_nvdimm_LRU_batch_end(buf_pool);
+
+    n_flushed = 0;
+    do {
+        buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
+        
+        buf_flush_wait_nvdimm_LRU_batch_end(buf_pool);
+    } while (n_flushed > 0);
+
+    ut_a(UT_LIST_GET_LEN(buf_pool->flush_list) == 0);
+    
+    ib::info() << "Completed to clean the NVDIMM buffer";
+    
+thread_exit:
+    buf_nvdimm_page_cleaner3_is_active = false;
+    my_thread_end();
+    os_thread_exit();
+    OS_THREAD_DUMMY_RETURN;
+}
+
+/******************************************************************//**
+NVDIMM page_cleaner thread tasked with flushing dirty pages from the
+buffer pools.
+@return a dummy parameter */
+extern "C"
+os_thread_ret_t
+DECLARE_THREAD(buf_flush_nvdimm_page_cleaner4_thread)(
+/*===============================================*/
+	void*	arg MY_ATTRIBUTE((unused)))
+			/*!< in: a dummy parameter required by
+			os_thread_create */
+{
+    my_thread_init();
+
+#ifdef UNIV_PFS_THREAD
+	pfs_register_thread(page_flush_nvdimm_thread4_key);
+#endif /* UNIV_PFS_THREAD */
+    
+    buf_nvdimm_page_cleaner4_is_active = true;
+
+    ulint n_flushed = 0;
+    ulint last_activity = srv_get_activity_count();
+
+    os_event_wait(buf_flush_nvdimm_event4);
+
+    buf_pool_t* buf_pool = &nvdimm_buf_pool_ptr[4];
+    
+    int64_t sig_count = os_event_reset(buf_flush_nvdimm_event4);
+
+    while (srv_shutdown_state == SRV_SHUTDOWN_NONE) {
+        os_event_wait(buf_flush_nvdimm_event4);
+        sig_count = os_event_reset(buf_flush_nvdimm_event4);
+
+        /* TODO: Need to fix for shutdown */
+        if (!page_cleaner->is_running) {
+            break;
+        }
+        
+        if (srv_check_activity(last_activity)) {
+            /* Flush pages from end of LRU */
+            buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 2048, 0, &n_flushed);
+        }
+    }
+
+    if (srv_fast_shutdown == 2
+            || srv_shutdown_state == SRV_SHUTDOWN_EXIT_THREADS) {
+        /* In very fast shutdown or when innodb failed to start, we
+           simulate a crash of the buffer pool. We are not required to do
+           any flushing. */
+        goto thread_exit;
+    }
+
+    n_flushed = 0;
+    do {
+        buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
+         
+        /* We sleep only if there are no pages to flush */
+		if (n_flushed == 0) {
+			os_thread_sleep(100000);
+		}
+    } while (srv_shutdown_state == SRV_SHUTDOWN_CLEANUP);
+
+    buf_flush_wait_nvdimm_LRU_batch_end(buf_pool);
+
+    n_flushed = 0;
+    do {
+        buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
+        
+        buf_flush_wait_nvdimm_LRU_batch_end(buf_pool);
+    } while (n_flushed > 0);
+
+    ut_a(UT_LIST_GET_LEN(buf_pool->flush_list) == 0);
+    
+    ib::info() << "Completed to clean the NVDIMM buffer";
+    
+thread_exit:
+    buf_nvdimm_page_cleaner4_is_active = false;
+    my_thread_end();
+    os_thread_exit();
+    OS_THREAD_DUMMY_RETURN;
+}
+
+/******************************************************************//**
+NVDIMM page_cleaner thread tasked with flushing dirty pages from the
+buffer pools.
+@return a dummy parameter */
+extern "C"
+os_thread_ret_t
+DECLARE_THREAD(buf_flush_nvdimm_page_cleaner5_thread)(
+/*===============================================*/
+	void*	arg MY_ATTRIBUTE((unused)))
+			/*!< in: a dummy parameter required by
+			os_thread_create */
+{
+    my_thread_init();
+
+#ifdef UNIV_PFS_THREAD
+	pfs_register_thread(page_flush_nvdimm_thread5_key);
+#endif /* UNIV_PFS_THREAD */
+    
+    buf_nvdimm_page_cleaner5_is_active = true;
+
+    ulint n_flushed = 0;
+    ulint last_activity = srv_get_activity_count();
+
+    os_event_wait(buf_flush_nvdimm_event5);
+
+    buf_pool_t* buf_pool = &nvdimm_buf_pool_ptr[5];
+    
+    int64_t sig_count = os_event_reset(buf_flush_nvdimm_event5);
+
+    while (srv_shutdown_state == SRV_SHUTDOWN_NONE) {
+        os_event_wait(buf_flush_nvdimm_event5);
+        sig_count = os_event_reset(buf_flush_nvdimm_event5);
+
+        /* TODO: Need to fix for shutdown */
+        if (!page_cleaner->is_running) {
+            break;
+        }
+        
+        if (srv_check_activity(last_activity)) {
+            /* Flush pages from end of LRU */
+            buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 2048, 0, &n_flushed);
+        }
+    }
+
+    if (srv_fast_shutdown == 2
+            || srv_shutdown_state == SRV_SHUTDOWN_EXIT_THREADS) {
+        /* In very fast shutdown or when innodb failed to start, we
+           simulate a crash of the buffer pool. We are not required to do
+           any flushing. */
+        goto thread_exit;
+    }
+
+    n_flushed = 0;
+    do {
+        buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
+         
+        /* We sleep only if there are no pages to flush */
+		if (n_flushed == 0) {
+			os_thread_sleep(100000);
+		}
+    } while (srv_shutdown_state == SRV_SHUTDOWN_CLEANUP);
+
+    buf_flush_wait_nvdimm_LRU_batch_end(buf_pool);
+
+    n_flushed = 0;
+    do {
+        buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
+        
+        buf_flush_wait_nvdimm_LRU_batch_end(buf_pool);
+    } while (n_flushed > 0);
+
+    ut_a(UT_LIST_GET_LEN(buf_pool->flush_list) == 0);
+    
+    ib::info() << "Completed to clean the NVDIMM buffer";
+    
+thread_exit:
+    buf_nvdimm_page_cleaner5_is_active = false;
+    my_thread_end();
+    os_thread_exit();
+    OS_THREAD_DUMMY_RETURN;
+}
+
+/******************************************************************//**
+NVDIMM page_cleaner thread tasked with flushing dirty pages from the
+buffer pools.
+@return a dummy parameter */
+extern "C"
+os_thread_ret_t
+DECLARE_THREAD(buf_flush_nvdimm_page_cleaner6_thread)(
+/*===============================================*/
+	void*	arg MY_ATTRIBUTE((unused)))
+			/*!< in: a dummy parameter required by
+			os_thread_create */
+{
+    my_thread_init();
+
+#ifdef UNIV_PFS_THREAD
+	pfs_register_thread(page_flush_nvdimm_thread6_key);
+#endif /* UNIV_PFS_THREAD */
+    
+    buf_nvdimm_page_cleaner6_is_active = true;
+
+    ulint n_flushed = 0;
+    ulint last_activity = srv_get_activity_count();
+
+    os_event_wait(buf_flush_nvdimm_event6);
+
+    buf_pool_t* buf_pool = &nvdimm_buf_pool_ptr[6];
+    
+    int64_t sig_count = os_event_reset(buf_flush_nvdimm_event6);
+
+    while (srv_shutdown_state == SRV_SHUTDOWN_NONE) {
+        os_event_wait(buf_flush_nvdimm_event6);
+        sig_count = os_event_reset(buf_flush_nvdimm_event6);
+
+        /* TODO: Need to fix for shutdown */
+        if (!page_cleaner->is_running) {
+            break;
+        }
+        
+        if (srv_check_activity(last_activity)) {
+            /* Flush pages from end of LRU */
+            buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 2048, 0, &n_flushed);
+        }
+    }
+
+    if (srv_fast_shutdown == 2
+            || srv_shutdown_state == SRV_SHUTDOWN_EXIT_THREADS) {
+        /* In very fast shutdown or when innodb failed to start, we
+           simulate a crash of the buffer pool. We are not required to do
+           any flushing. */
+        goto thread_exit;
+    }
+
+    n_flushed = 0;
+    do {
+        buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
+         
+        /* We sleep only if there are no pages to flush */
+		if (n_flushed == 0) {
+			os_thread_sleep(100000);
+		}
+    } while (srv_shutdown_state == SRV_SHUTDOWN_CLEANUP);
+
+    buf_flush_wait_nvdimm_LRU_batch_end(buf_pool);
+
+    n_flushed = 0;
+    do {
+        buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
+        
+        buf_flush_wait_nvdimm_LRU_batch_end(buf_pool);
+    } while (n_flushed > 0);
+
+    ut_a(UT_LIST_GET_LEN(buf_pool->flush_list) == 0);
+    
+    ib::info() << "Completed to clean the NVDIMM buffer";
+    
+thread_exit:
+    buf_nvdimm_page_cleaner6_is_active = false;
+    my_thread_end();
+    os_thread_exit();
+    OS_THREAD_DUMMY_RETURN;
+}
+
+/******************************************************************//**
+NVDIMM page_cleaner thread tasked with flushing dirty pages from the
+buffer pools.
+@return a dummy parameter */
+extern "C"
+os_thread_ret_t
+DECLARE_THREAD(buf_flush_nvdimm_page_cleaner7_thread)(
+/*===============================================*/
+	void*	arg MY_ATTRIBUTE((unused)))
+			/*!< in: a dummy parameter required by
+			os_thread_create */
+{
+    my_thread_init();
+
+#ifdef UNIV_PFS_THREAD
+	pfs_register_thread(page_flush_nvdimm_thread7_key);
+#endif /* UNIV_PFS_THREAD */
+    
+    buf_nvdimm_page_cleaner7_is_active = true;
+
+    ulint n_flushed = 0;
+    ulint last_activity = srv_get_activity_count();
+
+    os_event_wait(buf_flush_nvdimm_event7);
+
+    buf_pool_t* buf_pool = &nvdimm_buf_pool_ptr[7];
+    
+    int64_t sig_count = os_event_reset(buf_flush_nvdimm_event7);
+
+    while (srv_shutdown_state == SRV_SHUTDOWN_NONE) {
+        os_event_wait(buf_flush_nvdimm_event7);
+        sig_count = os_event_reset(buf_flush_nvdimm_event7);
+
+        /* TODO: Need to fix for shutdown */
+        if (!page_cleaner->is_running) {
+            break;
+        }
+        
+        if (srv_check_activity(last_activity)) {
+            /* Flush pages from end of LRU */
+            buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 2048, 0, &n_flushed);
+        }
+    }
+
+    if (srv_fast_shutdown == 2
+            || srv_shutdown_state == SRV_SHUTDOWN_EXIT_THREADS) {
+        /* In very fast shutdown or when innodb failed to start, we
+           simulate a crash of the buffer pool. We are not required to do
+           any flushing. */
+        goto thread_exit;
+    }
+
+    n_flushed = 0;
+    do {
+        buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
+         
+        /* We sleep only if there are no pages to flush */
+		if (n_flushed == 0) {
+			os_thread_sleep(100000);
+		}
+    } while (srv_shutdown_state == SRV_SHUTDOWN_CLEANUP);
+
+    buf_flush_wait_nvdimm_LRU_batch_end(buf_pool);
+
+    n_flushed = 0;
+    do {
+        buf_flush_do_nvdimm_batch(buf_pool, BUF_FLUSH_LRU, 1024, 0, &n_flushed);
+        
+        buf_flush_wait_nvdimm_LRU_batch_end(buf_pool);
+    } while (n_flushed > 0);
+
+    ut_a(UT_LIST_GET_LEN(buf_pool->flush_list) == 0);
+    
+    ib::info() << "Completed to clean the NVDIMM buffer";
+    
+thread_exit:
+    buf_nvdimm_page_cleaner7_is_active = false;
+    my_thread_end();
+    os_thread_exit();
+    OS_THREAD_DUMMY_RETURN;
+}
+
 #endif /* UNIV_NVDIMM_CACHE */

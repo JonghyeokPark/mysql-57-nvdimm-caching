@@ -10,7 +10,20 @@ Optimize MySQL/InnoDB using NVDIMM
 $ git clone https://github.com/meeeejin/mysql-57-nvdimm-caching.git
 ```
 
-2. Run the script file:
+2. Modify the `PASSWD` value in the build script:
+
+```bash
+$ vi build.sh
+
+#!/bin/bash
+
+BASE_DIR=`pwd -P`
+BUILD_DIR=$BASE_DIR/bld
+PASSWD="sudo-passwd"
+...
+```
+
+3. Run the script file:
 
 ```bash
 $ ./build.sh
@@ -21,10 +34,11 @@ The above command will compile and build the source code with the default option
 | Option     | Description |
 | :--------- | :---------- |
 | --origin   | No caching (Vanilla version)                        										 |
-| --nc    | Caching New-Orders and Order-Line pages (`default`) 										 |
-| --nc-st    | Caching New-Orders, Order-Line and Stock pages                  										 |
-| --nc-st-od | Caching New-Orders, Order-Line, Stock and Orders pages      										 |
-| --mtr 		 | Caching New-Orders, Order-Line, Stock and Orders pages with mtr logging enabled |
+| --origin-monitor |  No caching but monitoring the flush status                                         |
+| --nc       | Caching New-Orders and Order-Line pages (`default`) 										 |
+| --nc-st    | Caching New-Orders, Order-Line and Stock pages                  							 |
+| --nc-st-od | Caching New-Orders, Order-Line, Stock and Orders pages      					    		 |
+| --mtr 	 | Caching New-Orders, Order-Line, Stock and Orders pages with mtr logging enabled           |
 
 If you want the vanilla version, you can run the script as follows:
 

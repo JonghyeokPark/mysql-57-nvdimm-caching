@@ -838,6 +838,13 @@ trx_rollback_or_clean_recovered(
 	if (all) {
 		ib::info() << "Rollback of non-prepared transactions"
 			" completed";
+  
+		// jhpark
+  	gettimeofday(&end, NULL);
+  	fprintf(stderr, "undo_time: %f seconds\n",
+    	  (double) (end.tv_usec - start.tv_usec) / 1000000 +
+      	(double) (end.tv_sec - start.tv_sec));
+
 	}
 }
 

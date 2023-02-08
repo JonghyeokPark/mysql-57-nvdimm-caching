@@ -654,20 +654,26 @@ public:
 		}
 
 		ulint	n_bytes = n_elements * sizeof(T);
-    size_t offset = mmap_buf_sys->cur_offset;
-		pointer	ptr = reinterpret_cast<pointer>(
-      gb_pm_buf + offset
-    );
+        
+        size_t offset = mmap_buf_sys->cur_offset;
+		
+        pointer	ptr = reinterpret_cast<pointer>(
+            gb_pm_buf + offset
+        );
+
+        fprintf(stderr,"NC buffer allocate_large : %p offset: %lu\n", gb_pm_buf+offset, offset); 
 
 #ifdef UNIV_PFS_MEMORY
 		if (ptr != NULL) {
-			allocate_trace(n_bytes, NULL, pfx);
+	        fprintf(stderr, "ptr is null, %u\n", n_bytes);
+    		allocate_trace(n_bytes, NULL, pfx);
 		}
 #else
+        fprintf(stderr, "ptr is not null\n");
 		pfx->m_size = n_bytes;
 #endif /* UNIV_PFS_MEMORY */
 
-    mmap_buf_sys->cur_offset += n_bytes;
+        mmap_buf_sys->cur_offset += n_bytes;
 
 		return(ptr);
 	}

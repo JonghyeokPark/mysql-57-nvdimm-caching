@@ -6173,7 +6173,9 @@ lock_clust_rec_modify_check_and_lock(
 	if (err == DB_SUCCESS_LOCKED_REC) {
 		err = DB_SUCCESS;
 	}
-
+#ifdef UNIV_NVDIMM_CACHE
+  nc_set_in_update_flag(block->frame);
+#endif
 	return(err);
 }
 
@@ -6259,6 +6261,9 @@ lock_sec_rec_modify_check_and_lock(
 		err = DB_SUCCESS;
 	}
 
+#ifdef UNIV_NVDIMM_CACHE
+  nc_set_in_update_flag(block->frame);
+#endif
 	return(err);
 }
 

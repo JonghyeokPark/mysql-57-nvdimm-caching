@@ -20316,6 +20316,18 @@ static MYSQL_SYSVAR_STR(nvdimm_home_dir, srv_nvdimm_home_dir,
 	PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
 	"Path to NVDIMM-aware files.", NULL, NULL, NULL);
 
+static MYSQL_SYSVAR_BOOL(use_nvdimm_dwb, srv_use_nvdimm_dwb,
+  PLUGIN_VAR_NOCMDARG | PLUGIN_VAR_READONLY,
+  "Enable NVDIMM DWB (disabled by default).",
+  NULL, NULL, FALSE);
+
+// performance layer 
+static MYSQL_SYSVAR_BOOL(use_nvdimm_redo, srv_use_nvdimm_redo,
+  PLUGIN_VAR_NOCMDARG | PLUGIN_VAR_READONLY,
+  "Enable NVDIMM REDO log buffer (enabled by default).",
+  NULL, NULL, TRUE);
+
+
 #endif /* UNIV_NVDIMM_CACHE */
 
 static struct st_mysql_sys_var* innobase_system_variables[]= {
@@ -20496,6 +20508,8 @@ static struct st_mysql_sys_var* innobase_system_variables[]= {
   MYSQL_SYSVAR(nvdimm_buffer_pool_instances),
   MYSQL_SYSVAR(nvdimm_pc_threshold_pct),
 	MYSQL_SYSVAR(nvdimm_home_dir),
+  MYSQL_SYSVAR(use_nvdimm_dwb),
+  MYSQL_SYSVAR(use_nvdimm_redo),
 #endif /* UNIV_NVDIMM_CACHE */
   NULL
 };

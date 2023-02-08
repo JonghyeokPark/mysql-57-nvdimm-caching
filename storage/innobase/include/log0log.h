@@ -39,6 +39,18 @@ Created 12/9/1995 Heikki Tuuri
 #include "sync0rw.h"
 #endif /* !UNIV_HOTBACKUP */
 
+#ifdef UNIV_NVDIMM_CACHE
+ulint
+recv_parse_log_rec(
+    mlog_id_t* type,
+    byte* ptr,
+    byte* end_ptr,
+    ulint* space,
+    ulint* page_no,
+    bool apply,
+    byte** body);
+#endif
+
 /* Type used for all log sequence number storage and arithmetics */
 typedef	ib_uint64_t		lsn_t;
 
@@ -227,6 +239,13 @@ bool
 log_checkpoint(
 	bool	sync,
 	bool	write_always);
+
+// YYY
+extern
+dberr_t
+recv_find_max_checkpoint(
+  log_group_t** max_group,
+   ulint*    max_field);
 
 /** Make a checkpoint at or after a specified LSN.
 @param[in]	lsn		the log sequence number, or LSN_MAX
@@ -617,6 +636,7 @@ struct log_group_t{
 	byte*				checkpoint_buf;
 	/** list of log groups */
 	UT_LIST_NODE_T(log_group_t)	log_groups;
+
 };
 
 /** Redo log buffer */

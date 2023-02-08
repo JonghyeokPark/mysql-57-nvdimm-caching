@@ -69,6 +69,13 @@ btr_block_get_func(
 			? SYNC_IBUF_TREE_NODE : SYNC_TREE_NODE);
 	}
 
+  // (jhpark)
+  /*
+  if (block->page.moved_to_nvdimm) {
+    block->page.moved_to_nvdimm = false;
+  }
+  */
+
 	return(block);
 }
 

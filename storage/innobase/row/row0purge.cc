@@ -190,25 +190,6 @@ func_exit:
 	}
 
 	/* Persistent cursor is closed if reposition fails. */
-
-	// jhpark: blcok calling REDO logging 
-	//				 instead, persist NVDIMM region
-
-#ifdef UNIV_NVDIMM_CACHE
-    if (index->space == 28) {
-        if (node->found_clust) {
-            ut_ad(node->pcur.pos_state == BTR_PCUR_IS_POSITIONED);
-            node->pcur.latch_mode = BTR_NO_LATCHES;
-            mtr_commit(&mtr);
-            //mtr_commit_no_nvm(&mtr);
-            node->pcur.pos_state = BTR_PCUR_WAS_POSITIONED;			
-        } else {
-            mtr_commit_no_nvm(&mtr);
-        }	
-        return (success);
-    }
-#endif
-
 	if (node->found_clust) {
 		btr_pcur_commit_specify_mtr(&node->pcur, &mtr);
 	} else {
@@ -271,9 +252,6 @@ row_purge_poss_sec(
 {
 	bool	can_delete;
 	mtr_t	mtr;
-
-	// debug
-	fprintf(stderr, "[JONGQ] row_purge_poss_sec: %lu\n", index->space);
 	
 	ut_ad(!dict_index_is_clust(index));
 	mtr_start(&mtr);
@@ -313,9 +291,6 @@ row_purge_remove_sec_if_poss_tree(
 	mtr_t			mtr;
 	enum row_search_result	search_result;
 
-	// debug
-	fprintf(stderr, "[JONGQ] row_purge_remove_sec_if_poss_tree: %lu\n", index->space);
-	
 	log_free_check();
 	mtr_start(&mtr);
 	mtr.set_named_space(index->space);
@@ -435,9 +410,6 @@ row_purge_remove_sec_if_poss_leaf(
 	enum row_search_result	search_result;
 	bool			success	= true;
 
-	// debug
-	fprintf(stderr, "[JONGQ] row_purge_remove_sec_if_poss_leaf: %lu\n", index->space);
-	
 	log_free_check();
 
 	mtr_start(&mtr);

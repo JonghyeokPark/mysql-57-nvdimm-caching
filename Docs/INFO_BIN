@@ -1,0 +1,92 @@
+===== Information about the build process: =====
+Build was run at 2022-12-02 15:19:10 on host 'mijin'
+
+Build was done on  Linux-4.15.0-122-generic using x86_64
+Build was done using cmake 3.18.2 
+
+===== Compiler flags used (from the 'sql/' subdirectory): =====
+# compile C with /usr/bin/cc
+# compile CXX with /usr/bin/c++
+C_DEFINES = -DHAVE_CONFIG_H -DHAVE_LIBEVENT1 -DHAVE_REPLICATION -DMYSQL_SERVER -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE
+C_INCLUDES = -I/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/include -I/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/extra/rapidjson/include -I/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/libbinlogevents/include -I/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/libbinlogevents/export -I/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/sql/conn_handler -I/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/sql -I/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/sql/auth -I/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/regex -I/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/extra/yassl/include -I/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/extra/yassl/taocrypt/include -I/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/extra/lz4 -isystem /home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/zlib -isystem /home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/include/boost_1_59_0/patches -isystem /home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/boost/boost_1_59_0
+C_FLAGS = -DUNIV_NVDIMM_CACHE -Wall -Wextra -Wformat-security -Wvla -Wwrite-strings -Wdeclaration-after-statement -O3 -g -fabi-version=2 -fno-omit-frame-pointer -fno-strict-aliasing -DDBUG_OFF -fPIC   -DHAVE_YASSL -DYASSL_PREFIX -DHAVE_OPENSSL -DMULTI_THREADED
+CXX_DEFINES = -DHAVE_CONFIG_H -DHAVE_LIBEVENT1 -DHAVE_REPLICATION -DMYSQL_SERVER -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE
+CXX_INCLUDES = -I/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/include -I/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/extra/rapidjson/include -I/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/libbinlogevents/include -I/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/libbinlogevents/export -I/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/sql/conn_handler -I/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/sql -I/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/sql/auth -I/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/regex -I/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/extra/yassl/include -I/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/extra/yassl/taocrypt/include -I/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/extra/lz4 -isystem /home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/zlib -isystem /home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/include/boost_1_59_0/patches -isystem /home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/boost/boost_1_59_0
+CXX_FLAGS = -DUNIV_NVDIMM_CACHE -Wall -Wextra -Wformat-security -Wvla -Woverloaded-virtual -Wno-unused-parameter -O3 -g -fabi-version=2 -fno-omit-frame-pointer -fno-strict-aliasing -DDBUG_OFF -fPIC   -DHAVE_YASSL -DYASSL_PREFIX -DHAVE_OPENSSL -DMULTI_THREADED
+
+Pointer size: 8
+
+===== Feature flags used: =====
+-- Cache values
+BOOST_INCLUDE_DIR:PATH=/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/boost/boost_1_59_0
+BUNDLE_MECAB:BOOL=ON
+CMAKE_BACKWARDS_COMPATIBILITY:STRING=2.4
+CMAKE_BUILD_TYPE:STRING=RelWithDebInfo
+CMAKE_INSTALL_PREFIX:PATH=/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/bld
+COMMUNITY_BUILD:BOOL=ON
+CTAGS_EXECUTABLE:FILEPATH=/usr/bin/ctags
+DEB_CHANGELOG_TIMESTAMP:STRING=Wed, 24 Aug 2022 17:30:06 +0900
+DEB_CODENAME:STRING=xenial
+DOWNLOAD_BOOST:BOOL=ON
+DOWNLOAD_BOOST_TIMEOUT:STRING=600
+ENABLED_PROFILING:BOOL=ON
+ENABLE_DOWNLOADS:BOOL=OFF
+ENABLE_DTRACE:BOOL=ON
+ENABLE_GCOV:BOOL=OFF
+ENABLE_GPROF:BOOL=OFF
+ENABLE_MEMCACHED_SASL:BOOL=OFF
+ENABLE_MEMCACHED_SASL_PWDB:BOOL=OFF
+EXECUTABLE_OUTPUT_PATH:PATH=
+FEATURE_SET:STRING=community
+INSTALL_LAYOUT:STRING=STANDALONE
+INSTALL_PKGCONFIGDIR:PATH=
+LIBRARY_OUTPUT_PATH:PATH=
+LOCAL_BOOST_DIR:FILEPATH=/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/boost/boost_1_59_0
+LOCAL_BOOST_ZIP:FILEPATH=/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/boost/boost_1_59_0.tar.gz
+MUTEXTYPE:STRING=event
+MYSQL_DATADIR:PATH=/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/bld/data
+MYSQL_KEYRINGDIR:PATH=/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/bld/keyring
+MYSQL_MAINTAINER_MODE:BOOL=OFF
+OPTIMIZER_TRACE:BOOL=ON
+REPRODUCIBLE_BUILD:BOOL=OFF
+RPC_INCLUDE_DIR:PATH=/usr/include
+SASL_SYSTEM_LIBRARY:FILEPATH=SASL_SYSTEM_LIBRARY-NOTFOUND
+TBB_DIR:PATH=TBB_DIR-NOTFOUND
+TMPDIR:PATH=P_tmpdir
+WITH_ARCHIVE_STORAGE_ENGINE:BOOL=ON
+WITH_ASAN:BOOL=OFF
+WITH_ASAN_SCOPE:BOOL=OFF
+WITH_BLACKHOLE_STORAGE_ENGINE:BOOL=ON
+WITH_BOOST:PATH=/home/mijin/jhpark-temp/MERGE/mysql-57-nvdimm-caching/boost
+WITH_CLIENT_PROTOCOL_TRACING:BOOL=ON
+WITH_DEBUG:BOOL=0
+WITH_DEFAULT_COMPILER_OPTIONS:BOOL=ON
+WITH_DEFAULT_FEATURE_SET:BOOL=ON
+WITH_EDITLINE:STRING=bundled
+WITH_EMBEDDED_SERVER:BOOL=ON
+WITH_EMBEDDED_SHARED_LIBRARY:BOOL=OFF
+WITH_EXTRA_CHARSETS:STRING=all
+WITH_FEDERATED_STORAGE_ENGINE:BOOL=ON
+WITH_INNODB_EXTRA_DEBUG:BOOL=OFF
+WITH_INNODB_MEMCACHED:BOOL=OFF
+WITH_LIBEVENT:STRING=bundled
+WITH_LIBWRAP:BOOL=OFF
+WITH_LZ4:STRING=bundled
+WITH_MECAB:STRING=
+WITH_MSAN:BOOL=OFF
+WITH_NGRAM_PARSER:BOOL=ON
+WITH_NUMA:BOOL=ON
+WITH_PARTITION_STORAGE_ENGINE:BOOL=ON
+WITH_PIC:BOOL=OFF
+WITH_RAPID:BOOL=ON
+WITH_SASL:STRING=system
+WITH_SSL:STRING=bundled
+WITH_SYSTEMD:BOOL=OFF
+WITH_TEST_TRACE_PLUGIN:BOOL=OFF
+WITH_UBSAN:BOOL=OFF
+WITH_UNIT_TESTS:BOOL=ON
+WITH_VALGRIND:BOOL=OFF
+WITH_ZLIB:STRING=bundled
+XPLUGIN_LOG_PROTOBUF:STRING=1
+
+===== EOF =====
